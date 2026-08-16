@@ -1,0 +1,85 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Must match VITE_SUPERADMIN_EMAIL / VITE_SUPERADMIN_UID
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'sulemanmr551@gmail.com'
+        && request.auth.uid == '3BKWyktwaNOvhmDKoJf6yRye9FP2';
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Public CMS assets — anyone may read; only SuperAdmin may write
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /banners/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /hero/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /videos/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /services/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /blogs/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /gallery/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /gallery-hero/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /branding/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /vehicles/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /routes/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /faq/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /social/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Generic uploads — signed-in users may write their own folder; admin full access
+    match /uploads/{userId}/{allPaths=**} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+    }
+    match /uploads/{allPaths=**} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Payment proofs (if ever stored in Firebase Storage instead of ImgBB)
+    match /payment-proofs/{userId}/{allPaths=**} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+    }
+  }
+}

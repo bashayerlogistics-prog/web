@@ -1,0 +1,207 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Must match VITE_SUPERADMIN_EMAIL (AdminAuthContext). UID is checked client-side
+    // when VITE_SUPERADMIN_UID is set — requiring both here broke admin when env UID was empty/drifted.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() == 'sulemanmr551@gmail.com';
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBookingOwner() {
+      return isSignedIn()
+        && resource.data.userId != null
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // Signed-in owner may attach payment proof + timeline only — cannot change ownership or order #.
+    function isBookingProofUpdate() {
+      return isBookingOwner()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'paymentProofUrl',
+            'paymentProofUploadedAt',
+            'paymentStatus',
+            'updatedAt',
+            'trackingTimeline'
+          ])
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.orderNumber == resource.data.orderNumber
+        && (
+          request.resource.data.paymentStatus == resource.data.paymentStatus
+          || request.resource.data.paymentStatus == 'proof_submitted'
+        );
+    }
+
+    // Bound list queries so clients cannot dump whole collections in one shot.
+    function boundedList(max) {
+      return request.query.limit != null && request.query.limit <= max;
+    }
+
+    // ── Users (Google/email signup writes own profile) ─────
+    match /users/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create: if isAdmin() || isOwner(userId);
+      allow update: if isAdmin() || isOwner(userId);
+      allow delete: if isAdmin();
+    }
+
+    // ── Bookings — login required; userId must match auth ──
+    match /bookings/{bookingId} {
+      allow create: if isAdmin()
+        || (isSignedIn() && request.resource.data.userId == request.auth.uid);
+
+      allow get: if isAdmin() || isBookingOwner();
+
+      // Admin: paginated/live queries (limit ≤ 100). Users: only own rows via where userId.
+      allow list: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+          && boundedList(100)
+        );
+
+      allow update: if isAdmin() || isBookingProofUpdate();
+      allow delete: if isAdmin();
+    }
+
+    // ── Price requests (public form → admin inbox) ─────────
+    match /priceRequests/{requestId} {
+      allow create: if true;
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Public CMS (read anyone, write admin only) ─────────
+    match /packages/{packageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /gallery/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /blogs/{blogId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /routeCards/{cardId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /faqs/{faqId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /socialLinks/{linkId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /vehicles/{vehicleId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /siteSettings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Notifications ─────────────────────────────────────
+    match /notifications/{notifId} {
+      allow get: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      allow list: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid && boundedList(50));
+
+      allow create: if isAdmin()
+        || (
+          isSignedIn()
+          && request.resource.data.userId == request.auth.uid
+        );
+
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // ── Activity log (no public dumps; create only while signed in) ──
+    match /activityLog/{logId} {
+      allow create: if isSignedIn()
+        && request.resource.data.type is string
+        && request.resource.data.type.size() < 80;
+      allow get, list: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Order number counter (auth checkout transaction) ──
+    match /counters/{counterId} {
+      allow read: if isSignedIn() || isAdmin();
+      allow create, update: if (isSignedIn() && counterId == 'bookings') || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Chat (guest widget + admin replies)
+    // Guest widget queries by conversationId without auth — keep read open,
+    // but cap anonymous/list abuse with a max limit when not admin.
+    match /chatMessages/{messageId} {
+      allow get: if true;
+      allow list: if isAdmin() || boundedList(100);
+      allow create: if isAdmin()
+        || (
+          request.resource.data.senderRole in ['user', 'guest']
+          && request.resource.data.conversationId is string
+          && request.resource.data.message is string
+          && request.resource.data.message.size() > 0
+          && request.resource.data.message.size() < 2000
+        );
+      allow update: if isAdmin()
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAdmin();
+    }
+
+    // ── Email queue ───────────────────────────────────────
+    match /emailQueue/{emailId} {
+      allow create: if isSignedIn() || isAdmin();
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}

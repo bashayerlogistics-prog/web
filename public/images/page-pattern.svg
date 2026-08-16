@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" fill="none">
+  <rect width="1920" height="1080" fill="#FFFFFF"/>
+  <defs>
+    <pattern id="dots" x="0" y="0" width="48" height="48" patternUnits="userSpaceOnUse">
+      <circle cx="24" cy="24" r="1.2" fill="#3E0F77" opacity="0.07"/>
+    </pattern>
+    <pattern id="lines" x="0" y="0" width="96" height="96" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="96" stroke="#D5A027" stroke-width="0.5" opacity="0.04"/>
+      <line x1="48" y1="0" x2="48" y2="96" stroke="#3E0F77" stroke-width="0.5" opacity="0.03"/>
+    </pattern>
+    <radialGradient id="glow-tr" cx="100%" cy="0%" r="55%">
+      <stop offset="0%" stop-color="#3E0F77" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-bl" cx="0%" cy="100%" r="50%">
+      <stop offset="0%" stop-color="#D5A027" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#dots)"/>
+  <rect width="1920" height="1080" fill="url(#lines)"/>
+  <rect width="1920" height="1080" fill="url(#glow-tr)"/>
+  <rect width="1920" height="1080" fill="url(#glow-bl)"/>
+  <g opacity="0.035" stroke="#3E0F77" stroke-width="1" fill="none">
+    <path d="M120 180 L180 120 L240 180 L180 240 Z"/>
+    <path d="M1680 840 L1740 780 L1800 840 L1740 900 Z"/>
+    <path d="M960 520 L1020 460 L1080 520 L1020 580 Z"/>
+  </g>
+</svg>

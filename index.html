@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="theme-color" content="#3e0f77" />
+    <script>
+      (function () {
+        var lang = localStorage.getItem('language');
+        if (lang !== 'en' && lang !== 'ar') lang = 'ar';
+        var html = document.documentElement;
+        html.lang = lang;
+        html.dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+        function hexToRgb(hex) {
+          var h = String(hex || '').replace('#', '');
+          if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+          if (h.length !== 6) return null;
+          var n = parseInt(h, 16);
+          if (Number.isNaN(n)) return null;
+          return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+        }
+
+        function mix(hex1, hex2, weight) {
+          var a = hexToRgb(hex1);
+          var b = hexToRgb(hex2);
+          if (!a || !b) return hex1;
+          var w = weight / 100;
+          function ch(x, y) {
+            return Math.max(0, Math.min(255, Math.round(x * (1 - w) + y * w))).toString(16).padStart(2, '0');
+          }
+          return '#' + ch(a.r, b.r) + ch(a.g, b.g) + ch(a.b, b.b);
+        }
+
+        function applySplashBranding() {
+          var primary = '#3e0f77';
+          var secondary = '#d5a027';
+          var logoUrl = '';
+          try {
+            var raw = localStorage.getItem('rafiq_branding');
+            if (raw) {
+              var data = JSON.parse(raw);
+              if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(data.primaryColor || '')) primary = data.primaryColor;
+              if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(data.secondaryColor || '')) secondary = data.secondaryColor;
+              if (typeof data.logoUrl === 'string') logoUrl = data.logoUrl.trim();
+            }
+          } catch (e) { /* ignore cache errors */ }
+
+          var brandDark = mix(primary, '#000000', 24);
+          var brandDeep = mix(primary, '#000000', 52);
+          var goldLight = mix(secondary, '#ffffff', 24);
+          var goldRgb = hexToRgb(secondary);
+          var root = html.style;
+          root.setProperty('--color-brand', primary);
+          root.setProperty('--color-brand-dark', brandDark);
+          root.setProperty('--color-primary-900', brandDeep);
+          root.setProperty('--color-gold', secondary);
+          root.setProperty('--color-gold-light', goldLight);
+          if (goldRgb) root.setProperty('--color-gold-rgb', goldRgb.r + ', ' + goldRgb.g + ', ' + goldRgb.b);
+
+          var themeMeta = document.querySelector('meta[name="theme-color"]');
+          if (themeMeta) themeMeta.setAttribute('content', primary);
+
+          if (logoUrl) {
+            document.addEventListener('DOMContentLoaded', function () {
+              var logo = document.querySelector('.splash-logo');
+              if (logo) logo.src = logoUrl;
+            });
+          }
+        }
+
+        applySplashBranding();
+
+        var fonts = {
+          ar: ['lang-font-ar', 'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap'],
+          en: ['lang-font-en', 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap'],
+        };
+
+        function injectFont(pair, defer) {
+          if (document.getElementById(pair[0])) return;
+          var link = document.createElement('link');
+          link.id = pair[0];
+          link.rel = 'stylesheet';
+          link.href = pair[1];
+          if (defer) {
+            link.media = 'print';
+            link.onload = function () { link.media = 'all'; };
+          }
+          document.head.appendChild(link);
+        }
+
+        // Critical: active language font only — other language loads idle so LCP stays free
+        injectFont(fonts[lang], false);
+        var other = lang === 'ar' ? fonts.en : fonts.ar;
+        var idle = window.requestIdleCallback || function (cb) { return setTimeout(cb, 1200); };
+        idle(function () { injectFont(other, true); }, { timeout: 2500 });
+      })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <!-- LCP only: do not preload below-fold images (steals bandwidth from hero) -->
+    <link rel="preload" href="/images/hero-mobile.webp" as="image" type="image/webp" fetchpriority="high" media="(max-width: 767px)" />
+    <link rel="preload" href="/images/hero-desktop.webp" as="image" type="image/webp" fetchpriority="high" media="(min-width: 768px)" />
+    <link rel="preload" href="/images/logo-badge-light.svg" as="image" type="image/svg+xml" />
+    <link rel="dns-prefetch" href="https://images.unsplash.com" />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <style>
+      :root {
+        --color-brand: #3e0f77;
+        --color-brand-dark: #2a0a52;
+        --color-primary-900: #18062f;
+        --color-gold: #d5a027;
+        --color-gold-light: #e8b84a;
+        --color-gold-rgb: 213, 160, 39;
+      }
+      body.splash-active { overflow: hidden; background: var(--color-brand-dark); }
+      #initial-splash {
+        position: fixed; inset: 0; z-index: 99999;
+        display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(160deg, var(--color-brand-dark) 0%, var(--color-brand) 45%, var(--color-primary-900) 100%);
+        transition: opacity 0.12s ease, visibility 0.12s ease;
+      }
+      #initial-splash.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+      .splash-inner { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
+      .splash-logo-wrap { position: relative; width: 4.5rem; height: 4.5rem; }
+      .splash-logo {
+        width: 100%; height: 100%; object-fit: contain;
+        border-radius: 0.875rem;
+        animation: splash-pulse 2s ease-in-out infinite;
+      }
+      .splash-ring {
+        position: absolute; inset: -6px; border-radius: 50%;
+        border: 3px solid rgba(var(--color-gold-rgb), 0.25);
+        border-top-color: var(--color-gold);
+        animation: splash-spin 0.9s linear infinite;
+      }
+      .splash-bar {
+        width: 7rem; height: 3px; border-radius: 999px;
+        background: rgba(255,255,255,0.12); overflow: hidden;
+      }
+      .splash-bar-fill {
+        display: block; height: 100%; width: 40%; border-radius: 999px;
+        background: linear-gradient(90deg, var(--color-gold), var(--color-gold-light));
+        animation: splash-slide 1.2s ease-in-out infinite;
+      }
+      @keyframes splash-spin { to { transform: rotate(360deg); } }
+      @keyframes splash-pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.05); opacity: 0.92; }
+      }
+      @keyframes splash-slide {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(280%); }
+      }
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="شركة بشاير العطاء للنقل البري - توصيل من مطار جدة إلى مكة والمدينة بسيارات خاصة وسائقين محترفين" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <title>شركة بشاير العطاء للنقل البري | توصيل من مطار جدة إلى مكة والمدينة</title>
+  </head>
+  <body class="splash-active">
+    <div id="initial-splash" role="status" aria-label="Loading">
+      <div class="splash-inner">
+        <div class="splash-logo-wrap">
+          <img class="splash-logo" src="/images/logo-badge-light.svg" alt="" width="72" height="72" fetchpriority="high" />
+          <div class="splash-ring" aria-hidden="true"></div>
+        </div>
+        <div class="splash-bar" aria-hidden="true"><span class="splash-bar-fill"></span></div>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script>
+      (function () {
+        var hidden = false;
+        function hideSplash() {
+          if (hidden) return;
+          hidden = true;
+          var splash = document.getElementById('initial-splash');
+          if (splash) splash.classList.add('is-hidden');
+          document.body.classList.remove('splash-active');
+        }
+        var root = document.getElementById('root');
+        if (root) {
+          new MutationObserver(function (_m, observer) {
+            if (root.childElementCount > 0) {
+              requestAnimationFrame(hideSplash);
+              observer.disconnect();
+            }
+          }).observe(root, { childList: true });
+        }
+        setTimeout(hideSplash, 1600);
+      })();
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

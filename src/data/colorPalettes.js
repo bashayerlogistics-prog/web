@@ -1,0 +1,22 @@
+/** Curated AI-style color palette suggestions for transport/branding */
+export const AI_COLOR_PALETTES = [
+  { id: 'royal-purple', name: 'Royal Purple & Gold', primaryColor: '#3e0f77', secondaryColor: '#d5a027', tag: 'classic' },
+  { id: 'saudi-emerald', name: 'Saudi Emerald & Gold', primaryColor: '#075E54', secondaryColor: '#D4AF37', tag: 'recommended' },
+  { id: 'kaaba-black', name: 'Kaaba Black & Gold', primaryColor: '#171717', secondaryColor: '#C9A227', tag: 'luxury' },
+  { id: 'hijaz-navy', name: 'Hijaz Navy & Sand', primaryColor: '#12355B', secondaryColor: '#D8B26E', tag: 'recommended' },
+  { id: 'night-copper', name: 'Desert Night & Copper', primaryColor: '#243447', secondaryColor: '#C77D3B', tag: 'premium' },
+  { id: 'plum-champagne', name: 'Luxury Plum & Champagne', primaryColor: '#542344', secondaryColor: '#D9BC8C', tag: 'luxury' },
+  { id: 'pearl-blue', name: 'Pearl Blue & Gold', primaryColor: '#164E63', secondaryColor: '#E0B84A', tag: 'elegant' },
+  { id: 'swatch-duo', name: 'Purple & Amber Swatch', primaryColor: '#4a1878', secondaryColor: '#daa520', tag: 'premium' },
+  { id: 'emerald-luxury', name: 'Emerald Luxury', primaryColor: '#0d5c4b', secondaryColor: '#c9a84c', tag: 'premium' },
+  { id: 'midnight-blue', name: 'Midnight Blue', primaryColor: '#1a237e', secondaryColor: '#ffc107', tag: 'corporate' },
+  { id: 'desert-sand', name: 'Desert Sand', primaryColor: '#8b4513', secondaryColor: '#daa520', tag: 'warm' },
+  { id: 'ocean-teal', name: 'Ocean Teal', primaryColor: '#00695c', secondaryColor: '#ff6f00', tag: 'fresh' },
+  { id: 'crimson-gold', name: 'Crimson & Gold', primaryColor: '#b71c1c', secondaryColor: '#ffd700', tag: 'bold' },
+  { id: 'slate-modern', name: 'Slate Modern', primaryColor: '#263238', secondaryColor: '#00bcd4', tag: 'modern' },
+  { id: 'forest-green', name: 'Forest Green', primaryColor: '#1b5e20', secondaryColor: '#ff8f00', tag: 'natural' },
+  { id: 'navy-silver', name: 'Navy & Silver', primaryColor: '#0d47a1', secondaryColor: '#90a4ae', tag: 'elegant' },
+  { id: 'burgundy-cream', name: 'Burgundy Cream', primaryColor: '#6a1b3d', secondaryColor: '#f5e6c8', tag: 'luxury' },
+  { id: 'charcoal-amber', name: 'Charcoal Amber', primaryColor: '#37474f', secondaryColor: '#ffab00', tag: 'urban' },
+  { id: 'deep-violet', name: 'Deep Violet', primaryColor: '#4a148c', secondaryColor: '#e91e63', tag: 'vibrant' },
+];

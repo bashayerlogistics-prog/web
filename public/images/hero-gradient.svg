@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" fill="none" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1920" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1a3a5c"/>
+      <stop offset="35%" stop-color="#2a0a52"/>
+      <stop offset="70%" stop-color="#3e0f77"/>
+      <stop offset="100%" stop-color="#1a062e"/>
+    </linearGradient>
+    <linearGradient id="sunset" x1="1400" y1="0" x2="1920" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#d5a027" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#d5a027" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="960" y1="200" x2="960" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#d5a027" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#d5a027" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="road" x1="0" y1="700" x2="1920" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#150528" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#0d0318" stop-opacity="0.75"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <rect width="1920" height="1080" fill="url(#sunset)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <rect width="1920" height="1080" fill="url(#road)"/>
+  <path d="M0 820 Q480 760 960 800 T1920 820 L1920 1080 L0 1080 Z" fill="#12042a" opacity="0.45"/>
+  <path d="M200 1080 L960 720 L1780 1080" stroke="#d5a027" stroke-width="2" opacity="0.07"/>
+  <circle cx="1680" cy="220" r="140" fill="#d5a027" opacity="0.08"/>
+  <circle cx="300" cy="160" r="90" fill="#5c1ba8" opacity="0.12"/>
+</svg>
