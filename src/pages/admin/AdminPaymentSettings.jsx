@@ -57,7 +57,19 @@ export default function AdminPaymentSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updatePaymentSettings(form);
+      const payload = {
+        ...form,
+        gateway: {
+          ...form.gateway,
+          provider: form.methods?.onlineGateway ? (form.gateway?.provider || 'moyasar') : form.gateway?.provider,
+        },
+        moyasar: {
+          ...DEFAULT_PAYMENT_SETTINGS.moyasar,
+          ...(form.moyasar || {}),
+          enabled: Boolean(form.methods?.onlineGateway),
+        },
+      };
+      await updatePaymentSettings(payload);
       invalidatePaymentSettingsCache();
       await refresh();
       toast.success(t('payment.settings.saved'));
@@ -201,6 +213,7 @@ export default function AdminPaymentSettings() {
                 <input value={bank.accountHolder?.ar || ''} onChange={(e) => updateBank(bank.id, 'accountHolder.ar', e.target.value)} placeholder={t('payment.settings.accountHolderAr')} dir="rtl" className={inputClass} />
                 <input value={bank.iban || ''} onChange={(e) => updateBank(bank.id, 'iban', e.target.value.toUpperCase())} placeholder="IBAN (SA...)" dir="ltr" className={inputClass} />
                 <input value={bank.accountNumber || ''} onChange={(e) => updateBank(bank.id, 'accountNumber', e.target.value)} placeholder={t('payment.settings.accountNumber')} dir="ltr" className={inputClass} />
+                <input value={bank.swiftBic || ''} onChange={(e) => updateBank(bank.id, 'swiftBic', e.target.value.toUpperCase())} placeholder={t('payment.settings.swiftBic')} dir="ltr" className={inputClass} />
               </div>
             </div>
           ))}
@@ -293,16 +306,13 @@ export default function AdminPaymentSettings() {
           <Globe className="w-5 h-5 text-violet-500" />
           <h2 className="font-black text-dark-800 dark:text-white">{t('payment.settings.gatewayTitle')}</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <AdminSelect
-            value={form.gateway?.provider || ''}
+            value={form.gateway?.provider || 'moyasar'}
             onChange={(e) => setNested('gateway.provider', e.target.value)}
             className={inputClass}
           >
-            <option value="">{t('payment.settings.gatewayNone')}</option>
             <option value="moyasar">Moyasar</option>
-            <option value="hyperpay">HyperPay</option>
-            <option value="tap">Tap Payments</option>
           </AdminSelect>
           <input
             value={form.gateway?.publishableKey || ''}
@@ -312,9 +322,32 @@ export default function AdminPaymentSettings() {
             className={inputClass}
           />
         </div>
-        <p className="admin-gateway-warning text-xs mt-3 rounded-lg p-3">
+        <p className="text-xs text-gray-500 mb-4">{t('payment.settings.gatewayEnvHint')}</p>
+        <h3 className="font-bold text-sm mb-3">{t('payment.settings.moyasarMethodsTitle')}</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {[
+            { key: 'visa', label: 'Visa' },
+            { key: 'mastercard', label: 'Mastercard' },
+            { key: 'mada', label: 'Mada' },
+            { key: 'applePay', label: 'Apple Pay' },
+            { key: 'stcPay', label: 'STC Pay' },
+          ].map(({ key, label }) => (
+            <label key={key} className="flex items-center gap-2 p-3 rounded-xl border border-gray-200 dark:border-brand/20 cursor-pointer text-sm font-semibold">
+              <input
+                type="checkbox"
+                checked={form.moyasar?.[key] !== false}
+                onChange={(e) => setNested(`moyasar.${key}`, e.target.checked)}
+                className="w-4 h-4"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <p className="admin-gateway-warning text-xs mt-4 rounded-lg p-3">
           {t('payment.settings.gatewayHint')}
         </p>
+        <p className="text-xs text-gray-500 mt-2">{t('payment.settings.applePayHint')}</p>
+        <p className="text-xs text-gray-500 mt-1">{t('payment.settings.stcPayHint')}</p>
       </GlassCard>
 
       <AdminApplyButton
@@ -365,6 +398,7 @@ export default function AdminPaymentSettings() {
                 <input value={newBank.accountHolder.ar} onChange={(e) => setNewBank({ ...newBank, accountHolder: { ...newBank.accountHolder, ar: e.target.value } })} placeholder={t('payment.settings.accountHolderAr')} dir="rtl" className="admin-input w-full px-4 py-2.5 rounded-xl text-sm" />
                 <input value={newBank.iban} onChange={(e) => setNewBank({ ...newBank, iban: e.target.value.toUpperCase() })} placeholder="IBAN (SA...)" dir="ltr" className="admin-input w-full px-4 py-2.5 rounded-xl text-sm" />
                 <input value={newBank.accountNumber} onChange={(e) => setNewBank({ ...newBank, accountNumber: e.target.value })} placeholder={t('payment.settings.accountNumber')} dir="ltr" className="admin-input w-full px-4 py-2.5 rounded-xl text-sm" />
+                <input value={newBank.swiftBic || ''} onChange={(e) => setNewBank({ ...newBank, swiftBic: e.target.value.toUpperCase() })} placeholder={t('payment.settings.swiftBic')} dir="ltr" className="admin-input w-full px-4 py-2.5 rounded-xl text-sm" />
               </div>
 
               <label className="admin-surface flex items-center gap-2 p-3 rounded-xl border border-brand/10 dark:border-gold/15 text-sm font-bold cursor-pointer">

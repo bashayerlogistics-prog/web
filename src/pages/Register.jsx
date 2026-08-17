@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useSignIn, useSignUp } from '@clerk/clerk-react';
 import { AlertCircle, Mail, Phone, ShieldCheck, User, UserPlus } from 'lucide-react';
@@ -17,7 +17,12 @@ export default function Register() {
   const { isLoaded: signUpLoaded, signUp, setActive } = useSignUp();
   const { isLoaded: signInLoaded, signIn } = useSignIn();
   const navigate = useNavigate();
+  const location = useLocation();
   const lang = i18n.language;
+  const redirectFrom = location.state?.from;
+  const from = redirectFrom
+    ? `${redirectFrom.pathname || '/dashboard'}${redirectFrom.search || ''}`
+    : '/dashboard';
 
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -33,9 +38,9 @@ export default function Register() {
 
   useEffect(() => {
     if (user && !authAttemptRef.current && step !== 'details') {
-      navigate('/dashboard', { replace: true });
+      navigate(from, { replace: true });
     }
-  }, [user, navigate, step]);
+  }, [user, navigate, step, from]);
 
   useEffect(() => () => window.clearTimeout(redirectTimerRef.current), []);
 
@@ -141,7 +146,7 @@ export default function Register() {
           : 'Your details are saved and your account is ready.',
       });
       redirectTimerRef.current = window.setTimeout(
-        () => navigate('/dashboard', { replace: true }),
+        () => navigate(from, { replace: true }),
         SUCCESS_REDIRECT_MS,
       );
     } catch (error) {
@@ -265,7 +270,13 @@ export default function Register() {
 
         <p className="text-center mt-6 text-sm text-gray-500">
           {t('auth.hasAccount')}{' '}
-          <Link to="/login" className="text-brand hover:text-gold font-bold transition-colors">{t('auth.login')}</Link>
+          <Link
+            to="/login"
+            state={redirectFrom ? { from: redirectFrom } : undefined}
+            className="text-brand hover:text-gold font-bold transition-colors"
+          >
+            {t('auth.login')}
+          </Link>
         </p>
       </AuthGlassCard>
 

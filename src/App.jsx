@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import BookingSearch from './pages/BookingSearch';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { AuthProvider } from './context/AuthContext';
@@ -23,8 +24,8 @@ const Register = lazy(() => import('./pages/Register'));
 const SSOCallback = lazy(() => import('./pages/SSOCallback'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
-const BookingSearch = lazy(() => import('./pages/BookingSearch'));
 const Checkout = lazy(() => import('./pages/Checkout'));
+const PaymentReturn = lazy(() => import('./pages/PaymentReturn'));
 const Cart = lazy(() => import('./pages/Cart'));
 const VehicleDetail = lazy(() => import('./pages/VehicleDetail'));
 const CarCategory = lazy(() => import('./pages/CarCategory'));
@@ -54,7 +55,7 @@ const AdminSocialMedia = lazy(() => import('./pages/admin/AdminSocialMedia'));
 const AdminTravelReservations = lazy(() => import('./pages/admin/AdminTravelReservations'));
 const AdminFooter = lazy(() => import('./pages/admin/AdminFooter'));
 const AdminHero = lazy(() => import('./pages/admin/AdminHero'));
-const AdminBookingTripTypes = lazy(() => import('./pages/admin/AdminBookingTripTypes'));
+const AdminBookingForms = lazy(() => import('./pages/admin/AdminBookingForms'));
 const AdminBackgrounds = lazy(() => import('./pages/admin/AdminBackgrounds'));
 const AdminNotifications = lazy(() => import('./pages/admin/AdminNotifications'));
 const AdminChat = lazy(() => import('./pages/admin/AdminChat'));
@@ -113,11 +114,7 @@ export default function App() {
               <Route path="404" element={<SecurityNotFound />} />
               <Route
                 path="admin"
-                element={
-                  <LazyRoute>
-                    <AdminShell />
-                  </LazyRoute>
-                }
+                element={<AdminShell />}
               >
                 <Route index element={<LazyRoute><AdminOverview /></LazyRoute>} />
                 <Route path="orders" element={<LazyRoute><AdminOrders /></LazyRoute>} />
@@ -142,7 +139,9 @@ export default function App() {
                 <Route path="blogs" element={<LazyRoute><AdminBlogs /></LazyRoute>} />
                 <Route path="sections" element={<LazyRoute><AdminSections /></LazyRoute>} />
                 <Route path="hero" element={<LazyRoute><AdminHero /></LazyRoute>} />
-                <Route path="trip-types" element={<LazyRoute><AdminBookingTripTypes /></LazyRoute>} />
+                <Route path="booking-forms" element={<LazyRoute><AdminBookingForms /></LazyRoute>} />
+                <Route path="trip-types" element={<Navigate to="/admin/booking-forms" replace />} />
+                <Route path="booking-locations" element={<Navigate to="/admin/booking-forms" replace />} />
                 <Route path="backgrounds" element={<LazyRoute><AdminBackgrounds /></LazyRoute>} />
                 <Route path="banners" element={<LazyRoute><AdminBanners /></LazyRoute>} />
                 <Route path="gallery" element={<LazyRoute><AdminGallery /></LazyRoute>} />
@@ -164,7 +163,7 @@ export default function App() {
             <Route path="register" element={<LazyRoute><Register /></LazyRoute>} />
             <Route path="sso-callback" element={<LazyRoute><SSOCallback /></LazyRoute>} />
             <Route path="forgot-password" element={<LazyRoute><ForgotPassword /></LazyRoute>} />
-            <Route path="booking/search" element={<LazyRoute><BookingSearch /></LazyRoute>} />
+            <Route path="booking/search" element={<BookingSearch />} />
             <Route
               path="cart"
               element={
@@ -188,6 +187,14 @@ export default function App() {
                   <LazyRoute>
                     <Dashboard />
                   </LazyRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="payment/return"
+              element={
+                <ProtectedRoute>
+                  <LazyRoute><PaymentReturn /></LazyRoute>
                 </ProtectedRoute>
               }
             />

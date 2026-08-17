@@ -16,6 +16,14 @@ const DEFAULT_USERNAME = 'superadmin';
 const ADMIN_EMAIL = (import.meta.env.VITE_SUPERADMIN_EMAIL || 'sulemanmr551@gmail.com').trim().toLowerCase();
 const ADMIN_UID = import.meta.env.VITE_SUPERADMIN_UID || '';
 
+function readSessionHint() {
+  try {
+    return localStorage.getItem(ADMIN_SESSION_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 const AdminAuthContext = createContext(null);
 
 function isAdminEmail(input) {
@@ -43,8 +51,13 @@ function isFirebaseAdmin(user) {
 }
 
 export function AdminAuthProvider({ children }) {
-  const [adminUser, setAdminUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const sessionHint = readSessionHint();
+  const [adminUser, setAdminUser] = useState(() => (
+    sessionHint
+      ? { username: DEFAULT_USERNAME, email: ADMIN_EMAIL, uid: ADMIN_UID || '' }
+      : null
+  ));
+  const [loading, setLoading] = useState(!sessionHint);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -93,7 +106,7 @@ export function AdminAuthProvider({ children }) {
       });
 
       try {
-        await logActivity('admin_login', { username: isAdminEmail(trimmed) ? email : DEFAULT_USERNAME });
+        logActivity('admin_login', { username: isAdminEmail(trimmed) ? email : DEFAULT_USERNAME }).catch(() => {});
       } catch {
         // Activity log is optional if rules are not published yet
       }

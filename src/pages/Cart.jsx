@@ -20,7 +20,7 @@ import { usePaymentSettings } from '../hooks/usePaymentSettings';
 
 import { createOrderWithPayment } from '../firebase/payment';
 
-import { PAYMENT_METHODS } from '../data/paymentDefaults';
+import { DEFAULT_CURRENCY, PAYMENT_METHODS } from '../data/paymentDefaults';
 
 import {
 
@@ -35,6 +35,7 @@ import {
 import { formatOrderNumber } from '../utils/orderHelpers';
 
 import PaymentMethodSelector from '../components/ui/PaymentMethodSelector';
+import MoyasarCheckoutForm from '../components/ui/MoyasarCheckoutForm';
 
 import SuccessModal from '../components/ui/SuccessModal';
 
@@ -89,8 +90,9 @@ export default function Cart() {
   const [error, setError] = useState('');
 
   const [success, setSuccess] = useState(null);
+  const [moyasarOrder, setMoyasarOrder] = useState(null);
 
-
+  const isOnlinePayment = paymentMethod === PAYMENT_METHODS.ONLINE_GATEWAY;
 
   const handleSubmit = async (e) => {
 
@@ -150,13 +152,21 @@ export default function Cart() {
 
 
 
+      const resolvedMethod = isOnlinePayment ? PAYMENT_METHODS.MOYASAR : paymentMethod;
+
       const bookingData = {
 
         orderItems,
 
         totalPrice: cartTotal,
 
-        paymentMethod,
+        amount: cartTotal,
+
+        currency: DEFAULT_CURRENCY,
+
+        paymentMethod: resolvedMethod,
+
+        paymentProvider: isOnlinePayment ? 'moyasar' : null,
 
         paymentStatus: paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ? 'proof_submitted' : 'pending',
 
@@ -194,6 +204,19 @@ export default function Cart() {
         user.uid,
         { proofFile },
       );
+
+      if (isOnlinePayment) {
+        if (queued) {
+          toast.info(
+            lang === 'ar'
+              ? 'تم حفظ الطلب. أكمل الدفع عند عودة الاتصال.'
+              : 'Order saved. Complete payment when you are back online.',
+          );
+        }
+        setMoyasarOrder({ id, orderNumber, amount: cartTotal });
+        setSubmitting(false);
+        return;
+      }
 
 
 
@@ -505,21 +528,29 @@ export default function Cart() {
 
 
 
-                  <button
-
-                    type="submit"
-
-                    disabled={submitting || !name.trim() || !phone.trim() || !paymentMethod}
-
-                    className="w-full bg-brand hover:bg-brand-dark disabled:opacity-60 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-brand/20 mt-2"
-
-                  >
-
-                    <MessageCircle className="w-5 h-5 fill-white shrink-0" />
-
-                    {submitting ? t('common.loading') : t('checkout.confirmBooking')}
-
-                  </button>
+                  {moyasarOrder ? (
+                    <div className="pt-2 border-t border-gray-100 mt-2">
+                      <h3 className="font-black text-brand text-sm mb-3">{t('payment.moyasarPayNow')}</h3>
+                      <MoyasarCheckoutForm
+                        bookingId={moyasarOrder.id}
+                        orderNumber={moyasarOrder.orderNumber}
+                        amountSar={moyasarOrder.amount}
+                        customerName={name.trim()}
+                        customerEmail={email.trim()}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={submitting || !name.trim() || !phone.trim() || !paymentMethod}
+                      className="w-full bg-brand hover:bg-brand-dark disabled:opacity-60 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-brand/20 mt-2"
+                    >
+                      <MessageCircle className="w-5 h-5 fill-white shrink-0" />
+                      {submitting
+                        ? t('common.loading')
+                        : (isOnlinePayment ? t('payment.continueToPayment') : t('checkout.confirmBooking'))}
+                    </button>
+                  )}
 
                 </form>
 

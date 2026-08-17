@@ -14,6 +14,7 @@ import { HOURLY_FLEET_ROUTES } from '../data/hourlyPricing';
 import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
 import { DEFAULT_HOME_SECTIONS, mergeHomeSections } from '../data/homeSections';
 import { DEFAULT_BOOKING_TRIP_TYPES, buildBookingTripTypesFromFirestore } from '../data/bookingTripTypes';
+import { DEFAULT_BOOKING_LOCATIONS, buildBookingLocationsFromFirestore } from '../data/bookingLocations';
 import {
   DEFAULT_TRAVEL_RESERVATIONS,
   buildTravelReservationsFromFirestore,
@@ -30,7 +31,7 @@ import {
   DEFAULT_FOOTER_CREDIT,
 } from '../firebase/content';
 
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v25';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v26';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
@@ -98,6 +99,7 @@ export function sanitizeSiteContentCache(data) {
     religiousTours: buildReligiousToursFromFirestore(data.religiousTours ?? null),
     galleryHero: buildGalleryHeroFromFirestore(data.galleryHero ?? null),
     bookingTripTypes: buildBookingTripTypesFromFirestore(data.bookingTripTypes ?? null),
+    bookingLocations: buildBookingLocationsFromFirestore(data.bookingLocations ?? null),
     footerCredit: buildFooterCreditFromFirestore(data.footerCredit ?? null),
   };
 }
@@ -120,6 +122,7 @@ export function defaultSiteContentSnapshot() {
     religiousTours: DEFAULT_RELIGIOUS_TOURS,
     galleryHero: DEFAULT_GALLERY_HERO,
     bookingTripTypes: DEFAULT_BOOKING_TRIP_TYPES,
+    bookingLocations: DEFAULT_BOOKING_LOCATIONS,
     footerCredit: DEFAULT_FOOTER_CREDIT,
   });
 }

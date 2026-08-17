@@ -33,6 +33,31 @@ const EMPTY_BOOKING_COUNTS = {
   },
 };
 
+const BOOKING_STATS_CACHE_KEY = 'bashayer-admin-booking-stats-v1';
+const BOOKING_STATS_TTL_MS = 15 * 60_000;
+
+function readBookingStatsCache() {
+  try {
+    const raw = sessionStorage.getItem(BOOKING_STATS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.value || Date.now() - (parsed.at || 0) > BOOKING_STATS_TTL_MS) return null;
+    return parsed.value;
+  } catch {
+    return null;
+  }
+}
+
+function writeBookingStatsCache(value) {
+  try {
+    sessionStorage.setItem(BOOKING_STATS_CACHE_KEY, JSON.stringify({ at: Date.now(), value }));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+const cachedStatsOnBoot = readBookingStatsCache();
+
 export function AdminDataProvider({ children }) {
   const { isAdmin } = useAdminAuth();
   const { pathname } = useLocation();
@@ -41,7 +66,8 @@ export function AdminDataProvider({ children }) {
   const isUsers = pathname.startsWith('/admin/users');
   const isActivityPage = pathname.startsWith('/admin/activity');
   const needsUsers = isOverview || isUsers || isOrders;
-  const needsActivity = isOverview || isActivityPage;
+  const needsActivity = isActivityPage;
+  const needsOverviewActivity = isOverview;
   // Price-request list only when that page opens — Overview shows a link, not a full dump.
   const needsPriceRequests = pathname.startsWith('/admin/price-requests');
   // Counts are expensive aggregations — only Overview + Orders need them.
@@ -50,26 +76,28 @@ export function AdminDataProvider({ children }) {
   const needsRecentBookings = isUsers;
 
   const [bookings, setBookings] = useState([]);
-  const [bookingCounts, setBookingCounts] = useState(EMPTY_BOOKING_COUNTS);
+  const [bookingCounts, setBookingCounts] = useState(cachedStatsOnBoot || EMPTY_BOOKING_COUNTS);
   const [users, setUsers] = useState([]);
   const [activity, setActivity] = useState([]);
   const [priceRequests, setPriceRequests] = useState([]);
   const [chatUnread, setChatUnread] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedStatsOnBoot);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
   const hasLoadedRef = useRef(false);
   const loadedKeysRef = useRef({
     users: false,
+    usersLimit: 0,
     activity: false,
     activityPage: false,
     priceRequests: false,
     bookingStats: false,
     recentBookings: false,
   });
-  const bookingStatsCacheRef = useRef({ at: 0, value: null });
-  const BOOKING_STATS_TTL_MS = 15 * 60_000;
+  const bookingStatsCacheRef = useRef(
+    cachedStatsOnBoot ? { at: Date.now(), value: cachedStatsOnBoot } : { at: 0, value: null },
+  );
 
   const refresh = useCallback(async (opts = {}) => {
     if (!isAdmin) return;
@@ -78,13 +106,13 @@ export function AdminDataProvider({ children }) {
     setError(null);
 
     const keys = loadedKeysRef.current;
-    const fetchUsers = needsUsers && (force || !keys.users);
-    // Activity page needs a fuller window; re-fetch when opening it after a small Overview sample.
-    const fetchActivity = needsActivity && (
+    const usersLimitNeeded = isUsers ? 150 : (isOverview ? 15 : 40);
+    const fetchUsers = needsUsers && (
       force
-      || !keys.activity
-      || (isActivityPage && !keys.activityPage)
+      || !keys.users
+      || keys.usersLimit < usersLimitNeeded
     );
+    // Activity page needs a fuller window; re-fetch when opening it after a small Overview sample.
     const fetchPriceRequests = needsPriceRequests && (force || !keys.priceRequests);
     const statsFresh =
       bookingStatsCacheRef.current.value
@@ -92,7 +120,7 @@ export function AdminDataProvider({ children }) {
     const fetchBookingStats = needsBookingStats && (force || !statsFresh);
     const fetchRecent = needsRecentBookings && (force || !keys.recentBookings);
 
-    if (!force && !fetchUsers && !fetchActivity && !fetchPriceRequests && !fetchBookingStats && !fetchRecent) {
+    if (!force && !fetchUsers && !fetchPriceRequests && !fetchBookingStats && !fetchRecent) {
       setLoading(false);
       setRefreshing(false);
       return;
@@ -101,9 +129,8 @@ export function AdminDataProvider({ children }) {
     if (silent) setRefreshing(true);
     else setLoading(true);
 
-    const [usersResult, activityResult, priceRequestsResult, countsResult, recentResult] = await Promise.allSettled([
-      fetchUsers ? getAllUsers(isUsers ? 150 : 40) : Promise.resolve(null),
-      fetchActivity ? getActivityLog(isActivityPage ? 100 : 40) : Promise.resolve(null),
+    const [usersResult, priceRequestsResult, countsResult, recentResult] = await Promise.allSettled([
+      fetchUsers ? getAllUsers(isUsers ? 150 : (isOverview ? 15 : 40)) : Promise.resolve(null),
       fetchPriceRequests ? getAllPriceRequests(40) : Promise.resolve(null),
       fetchBookingStats
         ? getBookingStatsCounts({ includePayment: isOrders })
@@ -118,24 +145,11 @@ export function AdminDataProvider({ children }) {
         if (usersResult.status === 'fulfilled' && usersResult.value != null) {
           setUsers(usersResult.value.filter((x) => x.role !== 'superadmin'));
           keys.users = true;
+          keys.usersLimit = usersLimitNeeded;
         } else if (usersResult.status === 'rejected') {
           failures.push('users');
           setUsers([]);
           console.error('Admin users load failed:', usersResult.reason);
-        }
-      }
-
-      if (fetchActivity) {
-        if (activityResult.status === 'fulfilled' && activityResult.value != null) {
-          setActivity(activityResult.value);
-          keys.activity = true;
-          if (isActivityPage) keys.activityPage = true;
-        } else if (activityResult.status === 'rejected') {
-          failures.push('activity');
-          setActivity([]);
-          keys.activity = false;
-          keys.activityPage = false;
-          console.error('Admin activity load failed:', activityResult.reason);
         }
       }
 
@@ -153,6 +167,7 @@ export function AdminDataProvider({ children }) {
         setBookingCounts(nextCounts);
         if (fetchBookingStats) {
           bookingStatsCacheRef.current = { at: Date.now(), value: nextCounts };
+          writeBookingStatsCache(nextCounts);
           keys.bookingStats = true;
         }
       }
@@ -169,7 +184,7 @@ export function AdminDataProvider({ children }) {
       }
 
       if (failures.length > 0) {
-        const rejectedCode = [usersResult, activityResult, recentResult]
+        const rejectedCode = [usersResult, recentResult]
           .filter((result) => result.status === 'rejected')
           .map((result) => result.reason?.code)
           .find(Boolean);
@@ -185,14 +200,41 @@ export function AdminDataProvider({ children }) {
   }, [
     isAdmin,
     needsUsers,
-    needsActivity,
     needsPriceRequests,
     needsBookingStats,
     needsRecentBookings,
     isUsers,
     isOrders,
-    isActivityPage,
+    isOverview,
   ]);
+
+  // Activity log — deferred on Overview so stats/orders paint first.
+  useEffect(() => {
+    if (!isAdmin || (!needsActivity && !needsOverviewActivity)) return undefined;
+
+    const keys = loadedKeysRef.current;
+    const limit = isActivityPage ? 100 : 40;
+    const delayMs = isOverview && !isActivityPage ? 250 : 0;
+
+    const load = () => {
+      getActivityLog(limit)
+        .then((items) => {
+          startTransition(() => {
+            setActivity(items);
+            keys.activity = true;
+            if (isActivityPage) keys.activityPage = true;
+          });
+        })
+        .catch((err) => console.warn('Admin activity load failed:', err?.code || err?.message));
+    };
+
+    if (delayMs) {
+      const timerId = window.setTimeout(load, delayMs);
+      return () => window.clearTimeout(timerId);
+    }
+    load();
+    return undefined;
+  }, [isAdmin, needsActivity, needsOverviewActivity, isActivityPage, pathname]);
 
   // Overview: live newest orders so they keep arriving without full-collection reads.
   useEffect(() => {
@@ -200,7 +242,10 @@ export function AdminDataProvider({ children }) {
     const unsub = subscribeToBookingsPage(
       { pageSize: 20 },
       ({ items }) => {
-        startTransition(() => setBookings(items));
+        startTransition(() => {
+          setBookings(items);
+          setLoading(false);
+        });
       },
       (err) => console.warn('Overview bookings live failed:', err.code || err.message),
     );
@@ -220,6 +265,7 @@ export function AdminDataProvider({ children }) {
       hasLoadedRef.current = false;
       loadedKeysRef.current = {
         users: false,
+        usersLimit: 0,
         activity: false,
         activityPage: false,
         priceRequests: false,
@@ -229,8 +275,31 @@ export function AdminDataProvider({ children }) {
       bookingStatsCacheRef.current = { at: 0, value: null };
       return;
     }
-    refresh({ silent: hasLoadedRef.current });
-  }, [isAdmin, pathname, refresh]);
+
+    const run = () => refresh({ silent: hasLoadedRef.current });
+    const statsCached = Boolean(
+      bookingStatsCacheRef.current.value
+      && (Date.now() - bookingStatsCacheRef.current.at) < BOOKING_STATS_TTL_MS,
+    );
+
+    if (isOverview && statsCached) {
+      setLoading(false);
+      let idleId;
+      let timeoutId;
+      if (typeof window.requestIdleCallback === 'function') {
+        idleId = window.requestIdleCallback(run, { timeout: 1500 });
+      } else {
+        timeoutId = window.setTimeout(run, 120);
+      }
+      return () => {
+        if (idleId != null) window.cancelIdleCallback(idleId);
+        if (timeoutId != null) window.clearTimeout(timeoutId);
+      };
+    }
+
+    run();
+    return undefined;
+  }, [isAdmin, pathname, refresh, isOverview]);
 
   const usersMap = useMemo(() => {
     const map = {};

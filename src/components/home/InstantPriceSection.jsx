@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, startTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -23,8 +23,6 @@ import {
   Clock,
 } from 'lucide-react';
 import {
-  CITIES,
-  ONE_WAY_CITIES,
   TIME_SLOTS,
   CONTACT,
   getCarDisplayName,
@@ -35,11 +33,7 @@ import {
   DEFAULT_BOOKING_FROM,
   DEFAULT_BOOKING_TO,
   DEFAULT_ROUND_TRIP_ROUTE,
-  getRoundTripStation,
-  getRoundTripPickupOptions,
-  getRoundTripDropoffOptions,
 } from '../../data/staticData';
-import { HOURLY_BASE_CITIES } from '../../data/hourlyPricing';
 import { getBetweenCitiesDestinations } from '../../data/betweenCitiesPricing';
 import { createPriceRequest } from '../../firebase/bookings';
 import {
@@ -48,13 +42,20 @@ import {
   getHourlyDestinationsForCity,
   getHourlyDurationsForCity,
 } from '../../utils/bookingHelpers';
-import { filterVehiclesByCarType } from '../../utils/fleetHelpers';
+import { getCarTypesForForm } from '../../utils/carCatalogHelpers';
 import { useSiteContent } from '../../context/SiteContentContext';
 import { useToast } from '../../context/ToastContext';
 import { DEFAULT_INSTANT_PRICE } from '../../firebase/content';
 import { optimizedImageUrl } from '../../utils/mediaPerf';
 import { usePublicTripTypes } from '../../hooks/usePublicTripTypes';
+import { useBookingLocations } from '../../hooks/useBookingLocations';
 import BookingTripDetails from './BookingTripDetails';
+import CustomSelect from '../ui/CustomSelect';
+import {
+  getBookingPreviewVehicle,
+  resolveBookingSearchRouteId,
+} from '../../utils/bookingSearchNav';
+import { prefetchRoute } from '../../utils/prefetchRoutes';
 
 const INSTANT_BG_DESKTOP = '/images/instant-price-bg.webp';
 const INSTANT_BG_MOBILE = '/images/instant-price-bg-mobile.webp';
@@ -68,8 +69,6 @@ function resolveInstantBg(url) {
   const optimized = optimizedImageUrl(raw, 1280, 72);
   return { desktop: optimized, mobile: optimizedImageUrl(raw, 768, 68) || optimized };
 }
-
-const HOURLY_CITIES = HOURLY_BASE_CITIES.map((c) => ({ id: c.id, ar: c.ar, en: c.en }));
 
 function shortVehicleName(vehicle, lang) {
   const key = String(vehicle?.id || '').split('-')[0];
@@ -108,9 +107,9 @@ function buildSearchParams({
   isHourly,
   vehicleId,
   rtRoute,
+  station,
 }) {
   const usesStationRoute = isRound || isOneWay;
-  const station = usesStationRoute ? getRoundTripStation(rtRoute) : null;
   const routeId = usesStationRoute
     ? (rtRoute || DEFAULT_ROUND_TRIP_ROUTE)
     : isHourly
@@ -182,114 +181,19 @@ const darkField =
 const darkLabel =
   'block text-[9px] sm:text-[10px] font-bold tracking-[0.12em] uppercase text-gold/90 mb-1';
 
-/** Custom select — always opens downward; opaque menu so text stays readable. */
-function IpSelect({
-  value,
-  onChange,
-  options,
-  icon: Icon,
-  iconSide = 'end',
-  required,
-  disabled,
-  'aria-label': ariaLabel,
-  title,
-}) {
-  const listId = useId();
-  const rootRef = useRef(null);
-  const [open, setOpen] = useState(false);
-
-  const selected = options.find((o) => String(o.value) === String(value)) || options[0];
-
-  useEffect(() => {
-    const section = rootRef.current?.closest('.instant-price-section');
-    if (!section) return undefined;
-    if (open && !disabled) {
-      section.classList.add('instant-price-section--dropdown-open');
-      return () => section.classList.remove('instant-price-section--dropdown-open');
-    }
-    section.classList.remove('instant-price-section--dropdown-open');
-    return undefined;
-  }, [open, disabled]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDoc = (e) => {
-      if (!rootRef.current?.contains(e.target)) setOpen(false);
-    };
-    const onKey = (e) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onDoc);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDoc);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (disabled) setOpen(false);
-  }, [disabled]);
-
-  return (
-    <div
-      className={`ip-select ${open ? 'ip-select--open' : ''} ${disabled ? 'ip-select--disabled' : ''}`}
-      ref={rootRef}
-      title={title}
-    >
-      <button
-        type="button"
-        className={`ip-select__trigger ${iconSide === 'start' ? 'ip-select__trigger--icon-start' : ''}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-label={ariaLabel}
-        aria-required={required || undefined}
-        disabled={disabled}
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => {
-          if (!disabled) setOpen((v) => !v);
-        }}
-      >
-        <span className="ip-select__value">{selected?.label ?? ''}</span>
-        {Icon ? (
-          <Icon className={`ip-select__icon ip-select__icon--${iconSide}`} aria-hidden />
-        ) : (
-          <ChevronDown className={`ip-select__icon ip-select__icon--${iconSide}`} aria-hidden />
-        )}
-      </button>
-
-      {open && !disabled && (
-        <ul id={listId} role="listbox" className="ip-select__menu" tabIndex={-1}>
-          {options.map((opt) => {
-            const active = String(opt.value) === String(value);
-            return (
-              <li key={`${opt.value}-${opt.label}`} role="option" aria-selected={active}>
-                <button
-                  type="button"
-                  className={`ip-select__option ${active ? 'ip-select__option--active' : ''}`}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                >
-                  {opt.label}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export default function InstantPriceSection() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { instantPrice: cmsRaw, fleet, carCatalog, fleetRoutes } = useSiteContent();
+  const {
+    betweenCities: betweenCityOptions,
+    hourlyCities: hourlyCityOptions,
+    pickupOptions,
+    dropoffOptions,
+    findRoute,
+    cityName: resolveCityName,
+  } = useBookingLocations();
   const cms = cmsRaw || DEFAULT_INSTANT_PRICE;
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
   const { tripTypes: TRIP_TYPES, tripType, setTripType, formFields } = usePublicTripTypes('instantPrice', lang);
@@ -309,11 +213,7 @@ export default function InstantPriceSection() {
   const [passengers, setPassengers] = useState(DEFAULT_BOOKING_PASSENGERS);
   const [carType, setCarType] = useState(DEFAULT_BOOKING_CAR_TYPE);
   const [submitting, setSubmitting] = useState(false);
-  const [searching, setSearching] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [quoteReady, setQuoteReady] = useState(false);
-  const [quoteVehicles, setQuoteVehicles] = useState([]);
-  const [selectedVehicleId, setSelectedVehicleId] = useState('');
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -321,23 +221,39 @@ export default function InstantPriceSection() {
   const [suggestedPrice, setSuggestedPrice] = useState('');
   const [tripDetails, setTripDetails] = useState('');
 
-  const carTypes = useMemo(() => {
-    const live = (carCatalog || [])
-      .filter((c) => c?.active !== false && c?.id)
-      .map((c) => String(c.id));
-    if (!live.length) return BOOKING_CAR_TYPES;
-    const ordered = BOOKING_CAR_TYPES.filter((id) => live.includes(id));
-    const extras = live.filter((id) => !BOOKING_CAR_TYPES.includes(id));
-    return ordered.length ? [...ordered, ...extras] : BOOKING_CAR_TYPES;
-  }, [carCatalog]);
+  const carTypes = useMemo(
+    () => getCarTypesForForm(carCatalog, 'instantPrice'),
+    [carCatalog],
+  );
 
   const hourOptions = useMemo(
     () => getHourlyDurationsForCity(from, fleetRoutes),
     [from, fleetRoutes],
   );
 
-  const rtPickupOptions = useMemo(() => getRoundTripPickupOptions(lang), [lang]);
-  const rtDropoffOptions = useMemo(() => getRoundTripDropoffOptions(lang), [lang]);
+  const hourSelectOptions = useMemo(
+    () => hourOptions.map((h) => ({
+      value: String(h),
+      label: `${h} ${h === 1 ? t('booking.hour') : t('booking.hours_plural')}`,
+    })),
+    [hourOptions, t],
+  );
+
+  const isCustom = tripType === 'custom_price';
+  const isRound = tripType === 'round_trip';
+  const isHourly = tripType === 'hourly';
+  const isOneWay = tripType === 'one_way';
+  const isBetweenCities = tripType === 'between_cities';
+  const cityOptions = isHourly ? hourlyCityOptions : betweenCityOptions;
+
+  const rtPickupOptions = useMemo(
+    () => pickupOptions(lang, isOneWay ? 'oneWay' : 'roundTrip'),
+    [pickupOptions, lang, isOneWay],
+  );
+  const rtDropoffOptions = useMemo(
+    () => dropoffOptions(lang, 'roundTrip'),
+    [dropoffOptions, lang],
+  );
 
   const copy = useMemo(
     () => ({
@@ -364,33 +280,26 @@ export default function InstantPriceSection() {
     [cms, lang],
   );
 
-  const isCustom = tripType === 'custom_price';
-  const isRound = tripType === 'round_trip';
-  const isHourly = tripType === 'hourly';
-  const isOneWay = tripType === 'one_way';
-  const isBetweenCities = tripType === 'between_cities';
-  const cityOptions = isHourly ? HOURLY_CITIES : isBetweenCities ? ONE_WAY_CITIES : CITIES;
-
   const betweenCitiesToOptions = useMemo(() => {
     if (!isBetweenCities || !from) return cityOptions;
-    const valid = new Set(getBetweenCitiesDestinations(from));
+    const valid = new Set(getBetweenCitiesDestinations(from, betweenCityOptions));
     return cityOptions.filter((c) => valid.has(c.id));
-  }, [isBetweenCities, from, cityOptions]);
+  }, [isBetweenCities, from, cityOptions, betweenCityOptions]);
 
   useEffect(() => {
     if (!isBetweenCities || !from) return;
-    const valid = getBetweenCitiesDestinations(from);
+    const valid = getBetweenCitiesDestinations(from, betweenCityOptions);
     if (valid.length && !valid.includes(String(to))) {
       setTo(valid[0]);
     }
-  }, [isBetweenCities, from, to]);
+  }, [isBetweenCities, from, to, betweenCityOptions]);
 
   useEffect(() => {
     if (!isHourly) return;
-    if (!HOURLY_CITIES.some((c) => c.id === from)) {
-      setFrom(HOURLY_CITIES[0]?.id || DEFAULT_BOOKING_FROM);
+    if (!hourlyCityOptions.some((c) => c.id === from)) {
+      setFrom(hourlyCityOptions[0]?.id || DEFAULT_BOOKING_FROM);
     }
-  }, [isHourly, from]);
+  }, [isHourly, from, hourlyCityOptions]);
 
   const hourlyDestOptions = useMemo(() => {
     if (!from) return [];
@@ -415,26 +324,41 @@ export default function InstantPriceSection() {
     }
   }, [carTypes, carType]);
 
-  const selectedVehicle =
-    quoteVehicles.find((v) => v.id === selectedVehicleId) || quoteVehicles[0] || null;
+  useEffect(() => {
+    prefetchRoute('/booking/search');
+  }, []);
 
-  const cityName = (id) => {
-    const c = CITIES.find((x) => x.id === id);
-    return c ? c[lang] || c.ar : id;
-  };
+  const previewRouteId = useMemo(
+    () => resolveBookingSearchRouteId({
+      tripType,
+      from,
+      to,
+      rtRoute,
+      hours,
+      hourlyDest,
+    }),
+    [tripType, from, to, rtRoute, hours, hourlyDest],
+  );
+
+  const previewVehicle = useMemo(
+    () => getBookingPreviewVehicle(fleet, previewRouteId, carType),
+    [fleet, previewRouteId, carType],
+  );
+
+  const cityName = (id) => resolveCityName(id, lang);
 
   const routeDisplay = useMemo(() => {
     if (isRound) {
       const pickup = rtPickupOptions.find((s) => s.id === rtRoute)?.label;
       const dropoff = rtDropoffOptions.find((s) => s.id === rtRoute)?.label;
       if (pickup && dropoff) return `${pickup}  ↔  ${dropoff}`;
-      const station = getRoundTripStation(rtRoute);
+      const station = findRoute(rtRoute);
       return station?.title?.[lang] || station?.title?.ar || '';
     }
     if (isOneWay) {
       return (
         rtPickupOptions.find((s) => s.id === rtRoute)?.label ||
-        getRoundTripStation(rtRoute)?.title?.[lang] ||
+        findRoute(rtRoute)?.title?.[lang] ||
         ''
       );
     }
@@ -449,7 +373,7 @@ export default function InstantPriceSection() {
     }
     if (from && isHourly) return cityName(from);
     return '';
-  }, [from, to, isHourly, isOneWay, isRound, rtRoute, lang, hourlyDest, hourlyDestOptions, rtPickupOptions, rtDropoffOptions]);
+  }, [from, to, isHourly, isOneWay, isRound, rtRoute, lang, hourlyDest, hourlyDestOptions, rtPickupOptions, rtDropoffOptions, findRoute]);
 
   const tripDetailRows = useMemo(() => {
     if (isCustom) return [];
@@ -461,16 +385,16 @@ export default function InstantPriceSection() {
       : isOneWay || isHourly
         ? ''
         : cityName(to);
-    const priceValue = quoteReady && selectedVehicle
-      ? (selectedVehicle.hidePrice
+    const priceValue = previewVehicle
+      ? (previewVehicle.hidePrice
         ? t('booking.contactForPrice')
-        : formatPriceDisplay(selectedVehicle, t('booking.sar')))
+        : formatPriceDisplay(previewVehicle, t('booking.sar')))
       : '';
 
     return [
       {
         key: 'from',
-        show: showField('from') && !isHourly,
+        show: showField('from'),
         label: fieldLabel('from', copy.fromLabel),
         value: fromValue,
       },
@@ -479,12 +403,6 @@ export default function InstantPriceSection() {
         show: showField('to') && !isHourly && !isOneWay,
         label: fieldLabel('to', copy.toLabel),
         value: toValue,
-      },
-      {
-        key: 'location',
-        show: showField('location') && isHourly,
-        label: fieldLabel('location', copy.fromLabel),
-        value: routeDisplay,
       },
       {
         key: 'pickupTime',
@@ -511,8 +429,8 @@ export default function InstantPriceSection() {
         key: 'car',
         show: showField('car'),
         label: fieldLabel('car', copy.carLabel),
-        value: selectedVehicle
-          ? shortVehicleName(selectedVehicle, lang)
+        value: previewVehicle
+          ? shortVehicleName(previewVehicle, lang)
           : (carType ? getCarDisplayName(carType, lang) : ''),
       },
       {
@@ -525,21 +443,11 @@ export default function InstantPriceSection() {
     ];
   }, [
     isCustom, isRound, isOneWay, isHourly, from, to, rtRoute, date, time, hours,
-    passengers, carType, routeDisplay, quoteReady, selectedVehicle, formFields,
+    passengers, carType, routeDisplay, previewVehicle, formFields,
     copy, lang, t, rtPickupOptions, rtDropoffOptions,
   ]);
 
-  const selectedRange = selectedVehicle ? priceRange(selectedVehicle) : null;
-
-  const clearQuote = () => {
-    setQuoteReady(false);
-    setQuoteVehicles([]);
-    setSelectedVehicleId('');
-  };
-
-  useEffect(() => {
-    clearQuote();
-  }, [tripType, from, to, rtRoute, date, time, returnDate, returnTime, hours, hourlyDest, passengers, carType]);
+  const selectedRange = previewVehicle ? priceRange(previewVehicle) : null;
 
   useEffect(() => {
     if (!showSuccess) return undefined;
@@ -568,62 +476,31 @@ export default function InstantPriceSection() {
       isHourly,
       vehicleId,
       rtRoute,
+      station: findRoute(rtRoute),
     });
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (isCustom || searching) return;
+    if (isCustom) return;
 
     if (isRound || isOneWay) {
       if (!rtRoute) {
         toast.warning(t('instantPrice.needFrom'));
         return;
       }
-      setSearching(true);
-      toast.success(t('instantPrice.searchingPrices'), 1200);
-      const all = fleet?.getVehiclesForRoute?.(rtRoute) || [];
-      const vehicles = filterVehiclesByCarType(all, carType);
-      startTransition(() => {
-        setQuoteVehicles(vehicles);
-        setSelectedVehicleId(vehicles[0]?.id || '');
-        setQuoteReady(true);
-        setSearching(false);
-      });
-      return;
-    }
-
-    if (!from) {
+    } else if (!from) {
       toast.warning(t('instantPrice.needFrom'));
       return;
-    }
-    if (!isHourly && !to) {
+    } else if (!isHourly && !to) {
       toast.warning(t('instantPrice.needTo'));
       return;
     }
 
-    const routeId = isHourly
-      ? resolveHourlyRouteId(from, hourlyDest || 'internal', Number(hours))
-      : resolveRouteId(from, to || from);
-    setSearching(true);
-    toast.success(t('instantPrice.searchingPrices'), 1200);
-
-    const all = fleet?.getVehiclesForRoute?.(routeId) || [];
-    const vehicles = filterVehiclesByCarType(all, carType);
-    startTransition(() => {
-      setQuoteVehicles(vehicles);
-      setSelectedVehicleId(vehicles[0]?.id || '');
-      setQuoteReady(true);
-      setSearching(false);
-    });
-  };
-
-  const handleContinueBooking = () => {
-    const params = getFormParams(selectedVehicle?.id);
-    navigate(`/booking/search?${params.toString()}`);
+    navigate(`/booking/search?${getFormParams(previewVehicle?.id || '').toString()}`);
   };
 
   const handleWhatsAppOrder = () => {
-    const vehicle = selectedVehicle;
+    const vehicle = previewVehicle;
     const range = vehicle ? priceRange(vehicle) : null;
     const priceText = range ? `${range.low} - ${range.high}` : '—';
     const carName =
@@ -750,7 +627,7 @@ export default function InstantPriceSection() {
             </div>
           </div>
 
-          <div className="order-1 lg:order-2 instant-price-card">
+          <div className="order-1 lg:order-2 instant-price-card" data-dropdown-scope>
             <div className="instant-price-card__shine" aria-hidden="true" />
             <div className="relative z-10 space-y-3.5 sm:space-y-4">
               <div className="flex items-start gap-2.5 sm:gap-3">
@@ -805,7 +682,7 @@ export default function InstantPriceSection() {
                       <div className="grid grid-cols-1 gap-2 sm:gap-2.5">
                         <div>
                           <label className={darkLabel}>{t('booking.pickupArrival')}</label>
-                          <IpSelect
+                          <CustomSelect
                             value={rtRoute}
                             onChange={setRtRoute}
                             required
@@ -820,7 +697,7 @@ export default function InstantPriceSection() {
                         </div>
                         <div>
                           <label className={darkLabel}>{t('booking.dropoffDeparture')}</label>
-                          <IpSelect
+                          <CustomSelect
                             value={rtRoute}
                             onChange={setRtRoute}
                             required
@@ -838,7 +715,7 @@ export default function InstantPriceSection() {
                       <div className="grid grid-cols-1 gap-2 sm:gap-2.5">
                         <div>
                           <label className={darkLabel}>{t('booking.pickupArrival')}</label>
-                          <IpSelect
+                          <CustomSelect
                             value={rtRoute}
                             onChange={setRtRoute}
                             required
@@ -857,7 +734,7 @@ export default function InstantPriceSection() {
                         {showField('from') && (
                         <div>
                           <label className={darkLabel}>{fieldLabel('from', copy.fromLabel)}</label>
-                          <IpSelect
+                          <CustomSelect
                             value={from}
                             onChange={setFrom}
                             required
@@ -878,7 +755,7 @@ export default function InstantPriceSection() {
                         {!isHourly && showField('to') && (
                           <div>
                             <label className={darkLabel}>{fieldLabel('to', copy.toLabel)}</label>
-                            <IpSelect
+                            <CustomSelect
                               value={to}
                               onChange={setTo}
                               required
@@ -902,7 +779,7 @@ export default function InstantPriceSection() {
                     <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                       <div>
                         <label className={darkLabel}>{fieldLabel('pickupTime', copy.timeLabel)}</label>
-                        <IpSelect
+                        <CustomSelect
                           value={time}
                           onChange={setTime}
                           aria-label={fieldLabel('pickupTime', copy.timeLabel)}
@@ -935,7 +812,7 @@ export default function InstantPriceSection() {
                       {showField('passengers') && (
                       <div>
                         <label className={darkLabel}>{fieldLabel('passengers', copy.passengersLabel)}</label>
-                        <IpSelect
+                        <CustomSelect
                           value={passengers}
                           onChange={(v) => setPassengers(Number(v))}
                           aria-label={fieldLabel('passengers', copy.passengersLabel)}
@@ -951,7 +828,7 @@ export default function InstantPriceSection() {
                       {showField('car') && (
                       <div>
                         <label className={darkLabel}>{fieldLabel('car', copy.carLabel)}</label>
-                        <IpSelect
+                        <CustomSelect
                           value={carType}
                           onChange={setCarType}
                           aria-label={fieldLabel('car', copy.carLabel)}
@@ -980,7 +857,7 @@ export default function InstantPriceSection() {
                         </div>
                         <div>
                           <label className={darkLabel}>{t('booking.pickupTime')}</label>
-                          <IpSelect
+                          <CustomSelect
                             value={returnTime}
                             onChange={setReturnTime}
                             aria-label={t('booking.pickupTime')}
@@ -995,42 +872,17 @@ export default function InstantPriceSection() {
                       </div>
                     )}
 
-                    {isHourly && (showField('hours') || showField('location')) && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5">
-                        {showField('hours') && (
-                        <div>
-                          <label className={darkLabel}>{fieldLabel('hours', t('booking.hours'))}</label>
-                          <IpSelect
-                            value={hours}
-                            onChange={setHours}
-                            aria-label={fieldLabel('hours', t('booking.hours'))}
-                            icon={ChevronDown}
-                            iconSide="end"
-                            options={hourOptions.map((h) => ({
-                              value: String(h),
-                              label: `${h} ${h === 1 ? t('booking.hour') : t('booking.hours_plural')}`,
-                            }))}
-                          />
-                        </div>
-                        )}
-                        {showField('location') && (
-                        <div className="sm:col-span-2 min-w-0">
-                          <label className={darkLabel}>{fieldLabel('location', t('booking.destination'))}</label>
-                          <IpSelect
-                            value={hourlyDest}
-                            onChange={setHourlyDest}
-                            disabled={!from || !hourlyDestOptions.length}
-                            title={hourlyDestOptions.find((d) => d.key === hourlyDest)?.label || ''}
-                            aria-label={fieldLabel('location', t('booking.destination'))}
-                            icon={ChevronDown}
-                            iconSide="end"
-                            options={hourlyDestOptions.map((d) => ({
-                              value: d.key,
-                              label: d.label,
-                            }))}
-                          />
-                        </div>
-                        )}
+                    {isHourly && showField('hours') && (
+                      <div>
+                        <label className={darkLabel}>{fieldLabel('hours', t('booking.hours'))}</label>
+                        <CustomSelect
+                          value={hours}
+                          onChange={setHours}
+                          aria-label={fieldLabel('hours', t('booking.hours'))}
+                          icon={ChevronDown}
+                          iconSide="end"
+                          options={hourSelectOptions}
+                        />
                       </div>
                     )}
 
@@ -1038,123 +890,21 @@ export default function InstantPriceSection() {
 
                     <button
                       type="submit"
-                      disabled={searching}
                       className="instant-price-cta group w-full"
                     >
                       <span className="instant-price-cta__shine" aria-hidden="true" />
-                      {searching ? (
-                        <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin relative z-10" />
-                      ) : (
-                        <Search className="w-4 h-4 sm:w-5 sm:h-5 relative z-10 transition-transform group-hover:scale-110" />
-                      )}
-                      <span className="relative z-10">
-                        {searching ? t('instantPrice.searching') : copy.cta}
-                      </span>
+                      <Search className="w-4 h-4 sm:w-5 sm:h-5 relative z-10 transition-transform group-hover:scale-110" />
+                      <span className="relative z-10">{copy.cta}</span>
                     </button>
 
-                    {quoteReady && (
-                      <div className="instant-price-quote" role="region" aria-live="polite">
-                        {quoteVehicles.length === 0 ? (
-                          <>
-                            <p className="text-sm text-white/65 text-center py-2 mb-3">
-                              {t('instantPrice.noVehicles')}
-                            </p>
-                            <div className="instant-price-quote__actions">
-                              <button
-                                type="button"
-                                onClick={handleWhatsAppOrder}
-                                className="instant-price-quote__btn instant-price-quote__btn--whatsapp"
-                              >
-                                <MessageCircle className="w-4 h-4" />
-                                {t('instantPrice.bookWhatsApp')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleContinueBooking}
-                                className="instant-price-quote__btn instant-price-quote__btn--booking"
-                              >
-                                {t('instantPrice.continueBooking')}
-                                <ArrowLeft className="w-4 h-4 ltr:rotate-180" />
-                              </button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="instant-price-quote__estimate">
-                              <p className="instant-price-quote__label">
-                                {t('instantPrice.estimatedPrice')}
-                              </p>
-                              <p className="instant-price-quote__amount" dir="ltr">
-                                {selectedVehicle?.hidePrice
-                                  ? t('booking.contactForPrice')
-                                  : formatPriceDisplay(selectedVehicle, t('booking.sar'))}
-                              </p>
-                              {isRound && selectedVehicle && !selectedVehicle.hidePrice && (
-                                <p className="instant-price-quote__meta" dir="ltr">
-                                  {t('booking.pickupArrival')}: {selectedVehicle.pickupPrice ?? '—'}
-                                  {' + '}
-                                  {t('booking.dropoffDeparture')}: {selectedVehicle.dropoffPrice ?? '—'}
-                                </p>
-                              )}
-                            </div>
-
-                            <div className="instant-price-quote__cars">
-                              {quoteVehicles.map((vehicle, index) => {
-                                const range = priceRange(vehicle);
-                                const active = vehicle.id === selectedVehicle?.id;
-                                const badge =
-                                  index === 0
-                                    ? t('instantPrice.bestPrice')
-                                    : t('instantPrice.comfortOption');
-                                return (
-                                  <button
-                                    key={vehicle.id}
-                                    type="button"
-                                    onClick={() => setSelectedVehicleId(vehicle.id)}
-                                    className={`instant-price-quote__car ${
-                                      active ? 'instant-price-quote__car--active' : ''
-                                    }`}
-                                  >
-                                    <span className="instant-price-quote__car-badge">{badge}</span>
-                                    <span className="instant-price-quote__car-name">
-                                      {shortVehicleName(vehicle, lang)}
-                                    </span>
-                                    <span className="instant-price-quote__car-price" dir="ltr">
-                                      {vehicle.hidePrice
-                                        ? t('booking.contactForPrice')
-                                        : formatPriceDisplay(vehicle, t('booking.sar'))}
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-
-                            <div className="instant-price-quote__actions">
-                              <button
-                                type="button"
-                                onClick={handleWhatsAppOrder}
-                                className="instant-price-quote__btn instant-price-quote__btn--whatsapp"
-                              >
-                                <MessageCircle className="w-4 h-4" />
-                                {t('instantPrice.bookWhatsApp')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleContinueBooking}
-                                className="instant-price-quote__btn instant-price-quote__btn--booking"
-                              >
-                                {t('instantPrice.continueBooking')}
-                                <ArrowLeft className="w-4 h-4 ltr:rotate-180" />
-                              </button>
-                            </div>
-
-                            <p className="instant-price-quote__note">
-                              {t('instantPrice.priceDisclaimer')}
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={handleWhatsAppOrder}
+                      className="instant-price-quote__btn instant-price-quote__btn--whatsapp w-full mt-2"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      {t('instantPrice.bookWhatsApp')}
+                    </button>
                   </>
                 )}
 

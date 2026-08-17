@@ -517,6 +517,201 @@ exports.verifyEmailOtp = onCall(
 );
 
 const CLERK_SECRET_KEY = defineSecret('CLERK_SECRET_KEY');
+const MOYASAR_SECRET_KEY = defineSecret('MOYASAR_SECRET_KEY');
+
+const PAID_MOYASAR_STATUSES = new Set(['paid', 'captured']);
+const FAILED_MOYASAR_STATUSES = new Set(['failed', 'voided']);
+
+function sarToHalalas(amountSar) {
+  const n = Number(amountSar);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100);
+}
+
+async function fetchMoyasarPayment(paymentId) {
+  const secret = MOYASAR_SECRET_KEY.value();
+  if (!secret || !String(secret).startsWith('sk_')) {
+    throw new HttpsError('failed-precondition', 'Moyasar secret key is not configured on the server.');
+  }
+  const auth = Buffer.from(`${secret}:`).toString('base64');
+  const res = await fetch(`https://api.moyasar.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    console.error('Moyasar fetch failed', res.status, body.slice(0, 300));
+    throw new HttpsError('not-found', 'Payment could not be verified with Moyasar.');
+  }
+  return res.json();
+}
+
+async function markMoyasarBookingPaid(bookingRef, booking, payment, paymentId) {
+  const amountHalalas = Number(payment.amount);
+  const currency = String(payment.currency || 'SAR').toUpperCase();
+  const paidAt = payment.updated_at || payment.created_at || new Date().toISOString();
+
+  const duplicateSnap = await db.collection('bookings')
+    .where('paymentId', '==', paymentId)
+    .limit(1)
+    .get();
+  if (!duplicateSnap.empty && duplicateSnap.docs[0].id !== bookingRef.id) {
+    throw new HttpsError('failed-precondition', 'This payment was already used for another order.');
+  }
+
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(bookingRef);
+    if (!snap.exists()) throw new HttpsError('not-found', 'Booking not found.');
+    const current = snap.data();
+
+    if (current.paymentStatus === 'paid') {
+      if (current.paymentId === paymentId) return;
+      throw new HttpsError('failed-precondition', 'This booking is already paid.');
+    }
+
+    const expectedHalalas = sarToHalalas(current.totalPrice ?? current.price ?? 0);
+    if (expectedHalalas < 100) {
+      throw new HttpsError('failed-precondition', 'Invalid booking amount.');
+    }
+    if (amountHalalas !== expectedHalalas) {
+      throw new HttpsError('failed-precondition', 'Payment amount does not match the order total.');
+    }
+    if (currency !== 'SAR') {
+      throw new HttpsError('failed-precondition', 'Payment currency must be SAR.');
+    }
+
+    const timeline = Array.isArray(current.trackingTimeline) ? [...current.trackingTimeline] : [];
+    timeline.push({
+      status: 'paid',
+      label: 'Moyasar payment verified',
+      at: new Date().toISOString(),
+    });
+
+    transaction.update(bookingRef, {
+      paymentStatus: 'paid',
+      status: current.status === 'cancelled' ? current.status : 'confirmed',
+      paymentMethod: 'moyasar',
+      paymentProvider: 'moyasar',
+      paymentId,
+      transactionReference: payment.source?.reference_number || payment.id || paymentId,
+      amount: Number(current.totalPrice ?? current.price ?? 0),
+      currency: 'SAR',
+      paidAt,
+      updatedAt: FieldValue.serverTimestamp(),
+      trackingTimeline: timeline,
+    });
+  });
+
+  try {
+    const settingsSnap = await db.doc('siteSettings/payment').get();
+    const settings = settingsSnap.exists ? settingsSnap.data() : {};
+    const orderNumber = booking.orderNumber;
+    const email = String(booking.customerEmail || '').trim().toLowerCase();
+    if (email) {
+      await db.collection('emailQueue').add({
+        to: email,
+        subject: `Payment confirmed #${orderNumber}`,
+        html: `<p>Your payment for order #${orderNumber} has been confirmed.</p>`,
+        type: 'payment_confirmed',
+        bookingId: bookingRef.id,
+        orderNumber,
+        status: 'queued',
+        createdAt: FieldValue.serverTimestamp(),
+        from: settings?.email?.fromEmail || '',
+        fromName: settings?.email?.fromName?.en || settings?.email?.brandName?.en || '',
+        replyTo: settings?.email?.replyTo || '',
+      });
+    }
+    if (booking.userId) {
+      await db.collection('notifications').add({
+        userId: booking.userId,
+        type: 'payment_update',
+        title: 'Payment Confirmed',
+        titleAr: 'تم تأكيد الدفع',
+        message: `Your payment for order #${orderNumber} is confirmed.`,
+        messageAr: `تم تأكيد دفعتك للطلب #${orderNumber}.`,
+        bookingId: bookingRef.id,
+        read: false,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await db.collection('activityLog').add({
+      type: 'payment_confirmed',
+      bookingId: bookingRef.id,
+      paymentId,
+      provider: 'moyasar',
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn('Post-payment notifications skipped:', err?.message || err);
+  }
+}
+
+exports.verifyMoyasarPayment = onCall(
+  { region: 'us-central1', secrets: [MOYASAR_SECRET_KEY] },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError('unauthenticated', 'Sign in to verify payment.');
+    }
+
+    const bookingId = String(request.data?.bookingId || '').trim();
+    const paymentId = String(request.data?.paymentId || '').trim();
+    if (!bookingId || !paymentId) {
+      throw new HttpsError('invalid-argument', 'Missing booking or payment ID.');
+    }
+
+    const bookingRef = db.collection('bookings').doc(bookingId);
+    const bookingSnap = await bookingRef.get();
+    if (!bookingSnap.exists()) {
+      throw new HttpsError('not-found', 'Booking not found.');
+    }
+    const booking = { id: bookingSnap.id, ...bookingSnap.data() };
+
+    if (booking.userId && booking.userId !== request.auth.uid) {
+      throw new HttpsError('permission-denied', 'You can only verify your own bookings.');
+    }
+
+    if (booking.paymentStatus === 'paid') {
+      return {
+        status: 'paid',
+        bookingId,
+        orderNumber: booking.orderNumber,
+        paymentId: booking.paymentId || paymentId,
+      };
+    }
+
+    const payment = await fetchMoyasarPayment(paymentId);
+    const status = String(payment.status || '').toLowerCase();
+
+    const metaBookingId = payment.metadata?.bookingId || payment.metadata?.booking_id;
+    if (metaBookingId && metaBookingId !== bookingId) {
+      throw new HttpsError('failed-precondition', 'Payment does not belong to this booking.');
+    }
+
+    if (PAID_MOYASAR_STATUSES.has(status)) {
+      await markMoyasarBookingPaid(bookingRef, booking, payment, paymentId);
+      return { status: 'paid', bookingId, orderNumber: booking.orderNumber, paymentId };
+    }
+
+    if (FAILED_MOYASAR_STATUSES.has(status)) {
+      await bookingRef.set({
+        paymentStatus: 'failed',
+        paymentProvider: 'moyasar',
+        paymentId,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return { status: 'failed', bookingId, paymentId };
+    }
+
+    await bookingRef.set({
+      paymentId,
+      paymentProvider: 'moyasar',
+      paymentMethod: 'moyasar',
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return { status: 'pending', bookingId, paymentId };
+  },
+);
 
 exports.exchangeClerkSession = onCall(
   { region: 'us-central1', secrets: [CLERK_SECRET_KEY] },

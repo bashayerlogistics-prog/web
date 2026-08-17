@@ -21,6 +21,7 @@ const navGroups = [
     id: 'main',
     labelKey: 'admin.nav.groupMain',
     items: [
+      { to: '/admin/booking-forms', icon: ListOrdered, labelKey: 'admin.nav.bookingForms' },
       { to: '/admin', icon: LayoutDashboard, labelKey: 'admin.nav.overview', end: true },
       { to: '/admin/orders', icon: ShoppingBag, labelKey: 'admin.nav.orders', badgeKey: 'pending' },
       { to: '/admin/users', icon: Users, labelKey: 'admin.nav.users' },
@@ -94,7 +95,6 @@ const navGroups = [
       { to: '/admin/hero', icon: Monitor, labelKey: 'admin.nav.hero' },
       { to: '/admin/travel-reservations', icon: MessageCircle, labelKey: 'admin.nav.travelReservations' },
       { to: '/admin/backgrounds', icon: Images, labelKey: 'admin.nav.backgrounds' },
-      { to: '/admin/trip-types', icon: ListOrdered, labelKey: 'admin.nav.tripTypes' },
       { to: '/admin/sections', icon: ToggleLeft, labelKey: 'admin.nav.sections' },
       { to: '/admin/settings', icon: Settings, labelKey: 'admin.nav.settings' },
       { to: '/admin/backup', icon: DatabaseBackup, labelKey: 'admin.nav.backup' },

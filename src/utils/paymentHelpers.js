@@ -24,7 +24,52 @@ export function formatBankDetails(settings, lang = 'ar') {
   if (bank.accountNumber) {
     lines.push({ label: lang === 'ar' ? 'رقم الحساب' : 'Account Number', value: bank.accountNumber, ltr: true });
   }
+  if (bank.swiftBic) {
+    lines.push({ label: 'SWIFT/BIC', value: bank.swiftBic, ltr: true });
+  }
   return lines;
+}
+
+/** Convert SAR amount to Moyasar halalas (smallest currency unit). */
+export function sarToHalalas(amountSar) {
+  const n = Number(amountSar);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100);
+}
+
+export function getMoyasarPublishableKey(settings) {
+  const fromEnv = import.meta.env.VITE_MOYASAR_PUBLISHABLE_KEY;
+  if (fromEnv && String(fromEnv).startsWith('pk_')) return String(fromEnv).trim();
+  const fromSettings = settings?.gateway?.publishableKey;
+  if (fromSettings && String(fromSettings).startsWith('pk_')) return String(fromSettings).trim();
+  return '';
+}
+
+export function buildMoyasarFormConfig(settings, lang = 'ar') {
+  const moyasar = settings?.moyasar || {};
+  const methods = [];
+  const supportedNetworks = [];
+  if (moyasar.visa) supportedNetworks.push('visa');
+  if (moyasar.mastercard) supportedNetworks.push('mastercard');
+  if (moyasar.mada) supportedNetworks.push('mada');
+  if (supportedNetworks.length) methods.push('creditcard');
+  if (moyasar.applePay) methods.push('applepay');
+  if (moyasar.stcPay) methods.push('stcpay');
+  return {
+    methods,
+    supported_networks: supportedNetworks.length ? supportedNetworks : ['mada', 'visa', 'mastercard'],
+    language: lang === 'en' ? 'en' : 'ar',
+    country: 'SA',
+  };
+}
+
+export function isOnlinePaymentConfigured(settings) {
+  if (!settings?.methods?.onlineGateway) return false;
+  if (settings?.gateway?.provider && settings.gateway.provider !== 'moyasar') return false;
+  const key = getMoyasarPublishableKey(settings);
+  if (!key) return false;
+  const { methods } = buildMoyasarFormConfig(settings);
+  return methods.length > 0;
 }
 
 export function buildCheckoutWhatsAppMessage({
@@ -76,6 +121,7 @@ export function getPaymentMethodLabel(method, lang = 'ar') {
     whatsapp: { ar: 'واتساب', en: 'WhatsApp' },
     bank_transfer: { ar: 'تحويل بنكي', en: 'Bank Transfer' },
     online_gateway: { ar: 'دفع إلكتروني', en: 'Online Payment' },
+    moyasar: { ar: 'دفع إلكتروني', en: 'Online Payment' },
     card: { ar: 'بطاقة', en: 'Card' },
     cash: { ar: 'نقداً', en: 'Cash' },
   };
@@ -87,6 +133,8 @@ export function getPaymentStatusLabel(status, lang = 'ar') {
     pending: { ar: 'معلق', en: 'Pending' },
     proof_submitted: { ar: 'بانتظار المراجعة', en: 'Awaiting Review' },
     paid: { ar: 'مدفوع', en: 'Paid' },
+    failed: { ar: 'فشل', en: 'Failed' },
+    cancelled: { ar: 'ملغي', en: 'Cancelled' },
     rejected: { ar: 'مرفوض', en: 'Rejected' },
     refunded: { ar: 'مسترد', en: 'Refunded' },
   };

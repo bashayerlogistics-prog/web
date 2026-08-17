@@ -160,9 +160,28 @@ export const HOURLY_PRICE_MATRIX = {
   },
 };
 
+const CITY_ID_TO_KEY = { '1': 'mecca', '2': 'jeddah', '3': 'taif', '5': 'medina' };
+let EXTRA_CITY_KEYS = {};
+let EXTRA_CITY_NAMES = {};
+
+/** SuperAdmin-added cities overlay (keys used in hourly route ids). */
+export function setExtraHourlyCities(cities = []) {
+  const keys = {};
+  const names = {};
+  (cities || []).forEach((city) => {
+    const id = String(city?.id || '').trim();
+    const key = String(city?.key || '').trim();
+    if (!id || !key) return;
+    keys[id] = key;
+    names[key] = { ar: city.ar || city.en || key, en: city.en || city.ar || key };
+  });
+  EXTRA_CITY_KEYS = keys;
+  EXTRA_CITY_NAMES = names;
+}
+
 export function cityIdToKey(cityId) {
-  const map = { '1': 'mecca', '2': 'jeddah', '3': 'taif', '5': 'medina' };
-  return map[String(cityId)] || 'taif';
+  const id = String(cityId);
+  return CITY_ID_TO_KEY[id] || EXTRA_CITY_KEYS[id] || id;
 }
 
 /**
@@ -170,7 +189,7 @@ export function cityIdToKey(cityId) {
  * Full duration text stays on the Hours control — avoids truncated selects.
  */
 export function buildHourlyDestinationLabel(_hours, baseCityKey, destKey, lang = 'ar') {
-  const dest = CITY_NAMES[destKey];
+  const dest = CITY_NAMES[destKey] || EXTRA_CITY_NAMES[destKey];
 
   if (destKey === 'internal') {
     const labels = {
@@ -179,7 +198,14 @@ export function buildHourlyDestinationLabel(_hours, baseCityKey, destKey, lang =
       jeddah: { ar: 'مشاوير داخل جدة', en: 'Trips within Jeddah' },
       medina: { ar: 'مشاوير داخل المدينة', en: 'Trips within Madinah' },
     };
-    return labels[baseCityKey]?.[lang] || labels[baseCityKey]?.ar || '';
+    if (labels[baseCityKey]) return labels[baseCityKey]?.[lang] || labels[baseCityKey]?.ar || '';
+    const extra = EXTRA_CITY_NAMES[baseCityKey];
+    if (extra) {
+      return lang === 'ar'
+        ? `مشاوير داخل ${extra.ar || extra.en}`
+        : `Trips within ${extra.en || extra.ar}`;
+    }
+    return '';
   }
 
   const destName = dest?.[lang] || dest?.ar || destKey;
@@ -224,11 +250,18 @@ function liveHourlyDestKeys(baseCityId, hours, fleetRoutes) {
   return keys.size ? keys : null;
 }
 
+function mapHourlyDestinations(baseCityId, hours, cityKey, destKeys, lang) {
+  return destKeys.map((destKey) => ({
+    key: destKey,
+    routeId: buildHourlyRouteId(hours, baseCityId, destKey),
+    label: buildHourlyDestinationLabel(hours, cityKey, destKey, lang),
+  }));
+}
+
 /** Live SuperAdmin hourly packages for a city → duration options. */
 export function getHourlyDurationsForCity(baseCityId, fleetRoutes = null) {
-  // No live catalog yet → static defaults. Empty live catalog → no options.
-  if (!Array.isArray(fleetRoutes)) return [...HOURLY_DURATIONS];
-  if (!fleetRoutes.length) return [];
+  // No live catalog yet → static defaults.
+  if (!Array.isArray(fleetRoutes) || !fleetRoutes.length) return [...HOURLY_DURATIONS];
 
   const cityKey = cityIdToKey(baseCityId);
   const hours = new Set();
@@ -246,33 +279,29 @@ export function getHourlyDurationsForCity(baseCityId, fleetRoutes = null) {
       hours.add(Number(route.hours));
     }
   }
-  return HOURLY_DURATIONS.filter((h) => hours.has(h));
+
+  const matched = HOURLY_DURATIONS.filter((h) => hours.has(h));
+  return matched.length ? matched : [...HOURLY_DURATIONS];
 }
 
 export function getHourlyDestinationsForCity(baseCityId, hours, lang = 'ar', fleetRoutes = null) {
   const cityKey = cityIdToKey(baseCityId);
   const staticKeys = HOURLY_DESTINATIONS_BY_CITY[cityKey] || [];
 
-  if (Array.isArray(fleetRoutes)) {
-    if (!fleetRoutes.length) return [];
-    const liveKeys = liveHourlyDestKeys(baseCityId, hours, fleetRoutes);
-    if (!liveKeys) return [];
-    const destKeys = [
-      ...staticKeys.filter((k) => liveKeys.has(k)),
-      ...[...liveKeys].filter((k) => !staticKeys.includes(k)),
-    ];
-    return destKeys.map((destKey) => ({
-      key: destKey,
-      routeId: buildHourlyRouteId(hours, baseCityId, destKey),
-      label: buildHourlyDestinationLabel(hours, cityKey, destKey, lang),
-    }));
+  if (!Array.isArray(fleetRoutes) || !fleetRoutes.length) {
+    return mapHourlyDestinations(baseCityId, hours, cityKey, staticKeys, lang);
   }
 
-  return staticKeys.map((destKey) => ({
-    key: destKey,
-    routeId: buildHourlyRouteId(hours, baseCityId, destKey),
-    label: buildHourlyDestinationLabel(hours, cityKey, destKey, lang),
-  }));
+  const liveKeys = liveHourlyDestKeys(baseCityId, hours, fleetRoutes);
+  if (!liveKeys) {
+    return mapHourlyDestinations(baseCityId, hours, cityKey, staticKeys, lang);
+  }
+
+  const destKeys = [
+    ...staticKeys.filter((k) => liveKeys.has(k)),
+    ...[...liveKeys].filter((k) => !staticKeys.includes(k)),
+  ];
+  return mapHourlyDestinations(baseCityId, hours, cityKey, destKeys, lang);
 }
 
 export function resolveHourlyRouteId(fromCityId, destKey, hours = 4) {

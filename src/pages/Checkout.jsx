@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useTranslation } from 'react-i18next';
 
@@ -20,7 +20,7 @@ import { getCityName } from '../utils/bookingHelpers';
 
 import { createOrderWithPayment } from '../firebase/payment';
 
-import { PAYMENT_METHODS } from '../data/paymentDefaults';
+import { DEFAULT_CURRENCY, PAYMENT_METHODS } from '../data/paymentDefaults';
 
 import {
 
@@ -41,14 +41,14 @@ import AlertBanner from '../components/ui/AlertBanner';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 import PaymentMethodSelector from '../components/ui/PaymentMethodSelector';
-
-
+import MoyasarCheckoutForm from '../components/ui/MoyasarCheckoutForm';
 
 export default function Checkout() {
-
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const { user, clerkUser } = useAuth();
+  const { user, clerkUser, loading: authLoading } = useAuth();
 
   const { toast } = useToast();
 
@@ -82,6 +82,10 @@ export default function Checkout() {
     }
   }, [user, clerkEmail, clerkName]);
 
+  useEffect(() => {
+    setMoyasarOrder(null);
+  }, [paymentMethod]);
+
   const [proofUrl, setProofUrl] = useState(null);
   const [proofFile, setProofFile] = useState(null);
   const [proofPreview, setProofPreview] = useState(null);
@@ -91,8 +95,7 @@ export default function Checkout() {
   const [error, setError] = useState('');
 
   const [success, setSuccess] = useState(null);
-
-
+  const [moyasarOrder, setMoyasarOrder] = useState(null);
 
   const tripType = searchParams.get('trip_type') || 'one_way';
 
@@ -124,16 +127,13 @@ export default function Checkout() {
 
   const routeId = searchParams.get('route') || '';
 
-
+  const isOnlinePayment = paymentMethod === PAYMENT_METHODS.ONLINE_GATEWAY;
+  const orderTotal = total || basePrice;
 
   const vehicle = fleet.findVehicleById(vehicleKey || vehicleId);
 
-
-
   const routeDisplay = from && to
-
     ? `${getCityName(CITIES, from, lang)} → ${getCityName(CITIES, to, lang)}`
-
     : fleet.getRouteLabel(routeId, lang);
 
 
@@ -177,10 +177,12 @@ export default function Checkout() {
     try {
 
       if (!user?.uid) {
-        setError(lang === 'ar' ? 'يجب تسجيل الدخول لإتمام الطلب' : 'Please log in to place an order');
+        navigate('/login', { state: { from: location } });
         setLoading(false);
         return;
       }
+
+      const resolvedMethod = isOnlinePayment ? PAYMENT_METHODS.MOYASAR : paymentMethod;
 
       const bookingData = {
 
@@ -204,9 +206,15 @@ export default function Checkout() {
 
         basePrice,
 
-        totalPrice: total,
+        totalPrice: orderTotal,
 
-        paymentMethod,
+        amount: orderTotal,
+
+        currency: DEFAULT_CURRENCY,
+
+        paymentMethod: resolvedMethod,
+
+        paymentProvider: isOnlinePayment ? 'moyasar' : null,
 
         paymentStatus: paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ? 'proof_submitted' : 'pending',
 
@@ -242,6 +250,19 @@ export default function Checkout() {
         user.uid,
         { proofFile },
       );
+
+      if (isOnlinePayment) {
+        if (queued) {
+          toast.info(
+            lang === 'ar'
+              ? 'تم حفظ الطلب. أكمل الدفع عند عودة الاتصال.'
+              : 'Order saved. Complete payment when you are back online.',
+          );
+        }
+        setMoyasarOrder({ id, orderNumber, amount: orderTotal });
+        setLoading(false);
+        return;
+      }
 
 
 
@@ -433,6 +454,26 @@ export default function Checkout() {
 
               <h2 className="text-lg font-black text-brand mb-5">{t('checkout.payment')}</h2>
 
+              {!authLoading && !user?.uid && (
+                <div className="mb-4">
+                  <AlertBanner
+                    type="info"
+                    message={
+                      lang === 'ar'
+                        ? 'سجّل الدخول لإتمام الحجز. يمكنك تعبئة البيانات الآن.'
+                        : 'Sign in to complete your booking. You can fill in your details now.'
+                    }
+                  />
+                  <Link
+                    to="/login"
+                    state={{ from: location }}
+                    className="mt-2 inline-block text-sm font-bold text-brand hover:underline"
+                  >
+                    {t('auth.login')}
+                  </Link>
+                </div>
+              )}
+
               {error && <div className="mb-4"><AlertBanner type="error" message={error} /></div>}
 
 
@@ -527,15 +568,28 @@ export default function Checkout() {
 
                 />
 
-
-
-                <button type="submit" disabled={loading || !paymentMethod || !customerName.trim() || !customerPhone.trim()}
-
-                  className="w-full bg-brand hover:bg-brand-dark disabled:opacity-60 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-brand/20">
-
-                  {loading ? t('common.loading') : t('checkout.confirmBooking')}
-
-                </button>
+                {moyasarOrder ? (
+                  <div className="pt-2 border-t border-gray-100">
+                    <h3 className="font-black text-brand text-sm mb-3">{t('payment.moyasarPayNow')}</h3>
+                    <MoyasarCheckoutForm
+                      bookingId={moyasarOrder.id}
+                      orderNumber={moyasarOrder.orderNumber}
+                      amountSar={moyasarOrder.amount}
+                      customerName={customerName.trim()}
+                      customerEmail={customerEmail.trim()}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={loading || !paymentMethod || !customerName.trim() || !customerPhone.trim()}
+                    className="w-full bg-brand hover:bg-brand-dark disabled:opacity-60 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-brand/20"
+                  >
+                    {loading
+                      ? t('common.loading')
+                      : (isOnlinePayment ? t('payment.continueToPayment') : t('checkout.confirmBooking'))}
+                  </button>
+                )}
 
               </form>
 

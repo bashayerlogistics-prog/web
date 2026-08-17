@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageCircle, Landmark, Globe, Upload, Copy, Check } from 'lucide-react';
+import { MessageCircle, Landmark, Globe, Upload, Copy, Check, CreditCard, Smartphone } from 'lucide-react';
 import { usePaymentSettings } from '../../hooks/usePaymentSettings';
-import { formatBankDetails, getPaymentMethodLabel } from '../../utils/paymentHelpers';
+import {
+  formatBankDetails,
+  getPaymentMethodLabel,
+  isOnlinePaymentConfigured,
+} from '../../utils/paymentHelpers';
 import { uploadImage } from '../../firebase/storage';
 import { PAYMENT_METHODS } from '../../data/paymentDefaults';
 import LoadingSpinner from '../ui/LoadingSpinner';
@@ -10,7 +14,7 @@ import LoadingSpinner from '../ui/LoadingSpinner';
 const METHOD_CONFIG = [
   { id: PAYMENT_METHODS.WHATSAPP, icon: MessageCircle, enabledKey: 'whatsapp' },
   { id: PAYMENT_METHODS.BANK_TRANSFER, icon: Landmark, enabledKey: 'bankTransfer' },
-  { id: PAYMENT_METHODS.ONLINE_GATEWAY, icon: Globe, enabledKey: 'onlineGateway', disabled: true },
+  { id: PAYMENT_METHODS.ONLINE_GATEWAY, icon: Globe, enabledKey: 'onlineGateway' },
 ];
 
 export default function PaymentMethodSelector({
@@ -27,8 +31,12 @@ export default function PaymentMethodSelector({
   const [copied, setCopied] = useState('');
   const [uploading, setUploading] = useState(false);
 
+  const onlineReady = isOnlinePaymentConfigured(settings);
+
   const enabledMethods = METHOD_CONFIG.filter((m) => {
-    if (m.disabled && !settings.methods?.onlineGateway) return false;
+    if (m.id === PAYMENT_METHODS.ONLINE_GATEWAY) {
+      return settings.methods?.onlineGateway && onlineReady;
+    }
     return settings.methods?.[m.enabledKey];
   });
 
@@ -56,7 +64,6 @@ export default function PaymentMethodSelector({
       const url = await uploadImage(file, 'payment-proofs');
       onProofChange?.(url, file);
     } catch {
-      // Keep the Blob in IndexedDB with the order; it will upload during sync.
       onProofChange?.(null, file);
     } finally {
       setUploading(false);
@@ -75,6 +82,15 @@ export default function PaymentMethodSelector({
 
   const bankLines = formatBankDetails(settings, lang);
   const instructions = settings.instructions?.[lang] || settings.instructions?.ar;
+  const moyasar = settings.moyasar || {};
+
+  const onlineOptions = [
+    { key: 'visa', label: 'Visa', icon: CreditCard, enabled: moyasar.visa },
+    { key: 'mastercard', label: 'Mastercard', icon: CreditCard, enabled: moyasar.mastercard },
+    { key: 'mada', label: 'Mada', icon: CreditCard, enabled: moyasar.mada },
+    { key: 'applePay', label: 'Apple Pay', icon: Smartphone, enabled: moyasar.applePay },
+    { key: 'stcPay', label: 'STC Pay', icon: Smartphone, enabled: moyasar.stcPay },
+  ].filter((opt) => opt.enabled);
 
   return (
     <div className={`space-y-4 ${className}`}>
@@ -93,9 +109,6 @@ export default function PaymentMethodSelector({
             <m.icon className="w-5 h-5 shrink-0" />
             <div>
               <p className="font-bold text-sm">{getPaymentMethodLabel(m.id, lang)}</p>
-              {m.id === PAYMENT_METHODS.ONLINE_GATEWAY && (
-                <p className="text-[10px] text-gray-400">{t('payment.comingSoon')}</p>
-              )}
             </div>
           </button>
         ))}
@@ -152,6 +165,24 @@ export default function PaymentMethodSelector({
         <p className="text-xs text-gray-600 p-3 rounded-xl bg-green-50 border border-green-100">
           {t('payment.whatsappHint')}
         </p>
+      )}
+
+      {value === PAYMENT_METHODS.ONLINE_GATEWAY && onlineOptions.length > 0 && (
+        <div className="p-4 rounded-2xl border border-violet-200 bg-violet-50/50 space-y-3">
+          <h3 className="font-black text-brand text-sm">{t('payment.onlineOptionsTitle')}</h3>
+          <div className="flex flex-wrap gap-2">
+            {onlineOptions.map(({ key, label, icon: Icon }) => (
+              <span
+                key={key}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-violet-100 text-xs font-bold text-brand"
+              >
+                <Icon className="w-3.5 h-3.5 text-violet-600" />
+                {label}
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-gray-600">{t('payment.moyasarSecureHint')}</p>
+        </div>
       )}
     </div>
   );

@@ -17,8 +17,12 @@ export function getVehiclesForRoute(fleetRoutes, routeId = 'ow-2-1') {
   const routes = hasLive ? fleetRoutes : ALL_FLEET_ROUTES;
   const route = routes.find((r) => r.id === routeId);
   if (route?.vehicles?.length) return route.vehicles;
-  // Never inject static/dummy cars when SuperAdmin packages are loaded
-  if (hasLive) return [];
+  // Live catalog loaded but route missing — fall back to built-in hourly/static routes.
+  if (hasLive) {
+    const staticRoute = ALL_FLEET_ROUTES.find((r) => r.id === routeId);
+    if (staticRoute?.vehicles?.length) return staticRoute.vehicles;
+    return [];
+  }
   const staticRoute = ALL_FLEET_ROUTES.find((r) => r.id === routeId);
   if (staticRoute?.vehicles?.length) return staticRoute.vehicles;
   return routes[0]?.vehicles || [];
@@ -33,7 +37,8 @@ export function filterVehiclesByCarType(vehicles, carType) {
     const prefix = id.split('-')[0];
     return prefix === key || id.startsWith(`${key}-`);
   });
-  return matched.slice(0, 1);
+  if (matched.length) return matched.slice(0, 1);
+  return vehicles.slice(0, 1);
 }
 
 export function getRouteLabel(fleetRoutes, routeId, lang = 'ar') {

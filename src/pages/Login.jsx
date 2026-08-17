@@ -19,7 +19,10 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const lang = i18n.language;
-  const from = location.state?.from?.pathname || '/dashboard';
+  const redirectFrom = location.state?.from;
+  const from = redirectFrom
+    ? `${redirectFrom.pathname || '/dashboard'}${redirectFrom.search || ''}`
+    : '/dashboard';
 
   const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_KEY) || '');
   const [code, setCode] = useState('');
@@ -211,7 +214,11 @@ export default function Login() {
 
         <p className="text-center mt-6 text-sm text-gray-500">
           {t('auth.noAccount')}{' '}
-          <Link to="/register" className="text-brand hover:text-gold font-bold transition-colors">
+          <Link
+            to="/register"
+            state={redirectFrom ? { from: redirectFrom } : undefined}
+            className="text-brand hover:text-gold font-bold transition-colors"
+          >
             {t('auth.register')}
           </Link>
         </p>

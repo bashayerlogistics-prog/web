@@ -1834,9 +1834,32 @@ select {
 }
 
 /* Let open dropdown paint over the next home sections (no clip / stacking trap). */
+.instant-price-section.dropdown-scope--open,
 .instant-price-section.instant-price-section--dropdown-open {
   z-index: 80;
   isolation: auto;
+  overflow: visible;
+}
+
+.booking-form-card.dropdown-scope--open {
+  z-index: 50;
+  isolation: auto;
+  overflow: visible;
+}
+
+.rt-card.dropdown-scope--open,
+.instant-price-card.dropdown-scope--open {
+  z-index: 50;
+  isolation: auto;
+  overflow: visible;
+}
+
+.booking-form-card form > .grid,
+.booking-form-row,
+.instant-price-card form > .grid,
+.instant-price-card .grid,
+.rt-card form > .grid,
+.rt-card .grid {
   overflow: visible;
 }
 
@@ -2080,6 +2103,10 @@ select.instant-price-field {
   color: #fff;
 }
 
+.ip-select--light .ip-select__value {
+  color: rgb(var(--color-brand-rgb));
+}
+
 .ip-select__icon {
   position: absolute;
   top: 50%;
@@ -2107,7 +2134,7 @@ select.instant-price-field {
   transform: translateY(-50%) rotate(180deg);
 }
 
-/* Forced downward — never flip up; thin scrollbar (no fat sidebar bar) */
+/* Forced downward — portaled menus use fixed coords from the trigger rect */
 .ip-select__menu {
   position: absolute;
   top: calc(100% + 0.45rem);
@@ -2130,6 +2157,35 @@ select.instant-price-field {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--color-gold-rgb), 0.45) transparent;
+}
+
+.ip-select__menu--portal {
+  inset-inline: auto;
+  bottom: auto !important;
+  position: fixed !important;
+  transform: none !important;
+}
+
+.ip-select__menu--portal.ip-select__menu--light {
+  background: #fff;
+  border: 1px solid rgba(var(--color-brand-rgb), 0.12);
+  box-shadow:
+    0 12px 32px -8px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+}
+
+.ip-select__menu--portal.ip-select__menu--light .ip-select__option {
+  color: rgb(var(--color-brand-rgb));
+}
+
+.ip-select__menu--portal.ip-select__menu--light .ip-select__option:hover {
+  background: rgba(var(--color-brand-rgb), 0.06);
+  color: rgb(var(--color-brand-rgb));
+}
+
+.ip-select__menu--portal.ip-select__menu--light .ip-select__option--active {
+  background: rgba(var(--color-gold-rgb), 0.18);
+  color: rgb(var(--color-brand-rgb));
 }
 
 .ip-select__menu::-webkit-scrollbar {
@@ -2167,6 +2223,62 @@ select.instant-price-field {
 .ip-select__option--active {
   background: rgba(var(--color-gold-rgb), 0.32);
   color: #fff;
+}
+
+/* Light variant — homepage booking form */
+.ip-select--light .ip-select__trigger {
+  background: #fff;
+  border: 1px solid rgba(var(--color-brand-rgb), 0.12);
+  color: rgb(var(--color-brand-rgb));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  min-height: 2.75rem;
+  padding-inline-start: 0.75rem;
+  padding-inline-end: 2.35rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.ip-select--light .ip-select__trigger--icon-start {
+  padding-inline-start: 2.35rem;
+  padding-inline-end: 0.75rem;
+}
+
+.ip-select--light .ip-select__trigger:hover {
+  border-color: rgba(var(--color-brand-rgb), 0.22);
+  background: #fff;
+}
+
+.ip-select--light.ip-select--open .ip-select__trigger {
+  border-color: rgb(var(--color-brand-rgb));
+  box-shadow: 0 0 0 2px rgba(var(--color-brand-rgb), 0.15);
+  background: #fff;
+}
+
+.ip-select--light .ip-select__icon {
+  color: rgba(var(--color-brand-rgb), 0.45);
+}
+
+.ip-select--light .ip-select__menu {
+  background: #fff;
+  border: 1px solid rgba(var(--color-brand-rgb), 0.12);
+  box-shadow:
+    0 12px 32px -8px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+}
+
+.ip-select--light .ip-select__option {
+  color: rgb(var(--color-brand-rgb));
+}
+
+.ip-select--light .ip-select__option:hover {
+  background: rgba(var(--color-brand-rgb), 0.06);
+  color: rgb(var(--color-brand-rgb));
+}
+
+.ip-select--light .ip-select__option--active {
+  background: rgba(var(--color-gold-rgb), 0.18);
+  color: rgb(var(--color-brand-rgb));
 }
 
 .instant-price-chip {

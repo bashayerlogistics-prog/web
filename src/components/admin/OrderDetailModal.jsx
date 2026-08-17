@@ -88,6 +88,21 @@ export default function OrderDetailModal({
             <div className="grid grid-cols-2 gap-3 text-sm mb-3">
               <div><span className="text-gray-500">{t('admin.paymentMethod')}:</span> <span className="font-semibold ms-1">{getPaymentMethodLabel(booking.paymentMethod, lang)}</span></div>
               <div><span className="text-gray-500">{t('admin.paymentStatus')}:</span> <span className="font-bold text-primary-600 ms-1">{getPaymentStatusLabel(booking.paymentStatus || 'pending', lang)}</span></div>
+              {booking.paymentProvider && (
+                <div><span className="text-gray-500">{t('payment.provider')}:</span> <span className="font-semibold ms-1 capitalize">{booking.paymentProvider}</span></div>
+              )}
+              {(booking.amount != null || booking.totalPrice != null) && (
+                <div><span className="text-gray-500">{t('admin.orders.amount')}:</span> <span className="font-semibold ms-1">{booking.amount ?? booking.totalPrice ?? booking.price} {booking.currency || t('booking.sar')}</span></div>
+              )}
+              {booking.paymentId && (
+                <div className="col-span-2" dir="ltr"><span className="text-gray-500">{t('payment.transactionId')}:</span> <span className="font-mono text-xs font-semibold ms-1 break-all">{booking.paymentId}</span></div>
+              )}
+              {booking.transactionReference && booking.transactionReference !== booking.paymentId && (
+                <div className="col-span-2" dir="ltr"><span className="text-gray-500">{t('payment.transactionReference')}:</span> <span className="font-mono text-xs font-semibold ms-1 break-all">{booking.transactionReference}</span></div>
+              )}
+              {booking.paidAt && (
+                <div className="col-span-2"><span className="text-gray-500">{t('payment.paidAt')}:</span> <span className="font-semibold ms-1">{formatBookingDateTime({ toDate: () => new Date(booking.paidAt) }, lang)}</span></div>
+              )}
               {booking.orderSource && (
                 <div className="col-span-2"><span className="text-gray-500">{t('payment.orderSource')}:</span> <span className="font-semibold ms-1 capitalize">{booking.orderSource}</span></div>
               )}
@@ -109,7 +124,9 @@ export default function OrderDetailModal({
               </div>
             )}
 
-            {(booking.paymentStatus === 'proof_submitted' || booking.paymentStatus === 'pending') && onConfirmPayment && (
+            {(booking.paymentStatus === 'proof_submitted' || booking.paymentStatus === 'pending')
+              && onConfirmPayment
+              && booking.paymentProvider !== 'moyasar' && (
               <div className="flex gap-2 mb-3">
                 <button
                   type="button"
@@ -138,7 +155,13 @@ export default function OrderDetailModal({
               </div>
             )}
 
-            {onRejectPayment && (
+            {booking.paymentProvider === 'moyasar' && booking.paymentStatus === 'pending' && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                {t('payment.moyasarAdminPending')}
+              </p>
+            )}
+
+            {onRejectPayment && booking.paymentProvider !== 'moyasar' && (
               <input
                 type="text"
                 value={rejectReason}
@@ -149,7 +172,7 @@ export default function OrderDetailModal({
             )}
 
             <div className="flex flex-wrap gap-2">
-              {['pending', 'proof_submitted', 'paid', 'rejected', 'refunded'].map((ps) => (
+              {['pending', 'proof_submitted', 'paid', 'failed', 'cancelled', 'rejected', 'refunded'].map((ps) => (
                 <button key={ps} type="button" onClick={() => onPaymentChange(booking.id, ps)}
                   className={`flex-1 min-w-[80px] py-2 rounded-xl text-xs font-bold transition-all hover:scale-105 ${
                     (booking.paymentStatus || 'pending') === ps

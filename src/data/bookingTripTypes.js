@@ -57,7 +57,7 @@ function makeFormFields(overrides = {}) {
 /** Default field visibility / labels for each of the 3 homepage forms. */
 export const DEFAULT_FORM_FIELDS = {
   booking: makeFormFields({ price: { show: false } }),
-  instantPrice: makeFormFields(),
+  instantPrice: makeFormFields({ location: { show: false } }),
   religiousTours: makeFormFields({
     from: { show: false },
     to: { show: false },

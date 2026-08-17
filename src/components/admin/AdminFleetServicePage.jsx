@@ -165,6 +165,7 @@ export default function AdminFleetServicePage({ serviceId }) {
   const { data: allProducts, loading, refresh } = useAdminDataLoader(
     () => getProductsByTripType(service.loadTripType),
     [service.loadTripType],
+    { cacheKey: `products:${service.loadTripType}` },
   );
 
   const rawMatched = useMemo(

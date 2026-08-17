@@ -25,6 +25,8 @@ import {
 
   getBookingTripTypesContent,
 
+  getBookingLocationsContent,
+
   getFooterCreditContent,
 
   subscribeHeroContent,
@@ -34,6 +36,8 @@ import {
   subscribeGalleryHeroContent,
 
   subscribeBookingTripTypesContent,
+
+  subscribeBookingLocationsContent,
 
   subscribeContentRevision,
 
@@ -69,6 +73,8 @@ import {
 
   buildBookingTripTypesFromFirestore,
 
+  buildBookingLocationsFromFirestore,
+
   buildTravelReservationsFromFirestore,
 
   subscribeToActiveCollection,
@@ -81,7 +87,8 @@ import {
 
 import { FLEET_ROUTES, ROUND_TRIP_FLEET_ROUTES, SERVICES, BLOG_POSTS, ROUTE_CARDS, FAQ_ITEMS, SOCIAL_LINKS, DEFAULT_GALLERY_ITEMS, setLiveCarCatalog, getDefaultCarCatalog, getLiveCarCatalog, getCarImage } from '../data/staticData';
 
-import { HOURLY_FLEET_ROUTES } from '../data/hourlyPricing';
+import { HOURLY_FLEET_ROUTES, setExtraHourlyCities } from '../data/hourlyPricing';
+import { DEFAULT_BOOKING_LOCATIONS } from '../data/bookingLocations';
 
 import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
 
@@ -196,6 +203,10 @@ export function SiteContentProvider({ children }) {
     () => initialSnapshot.bookingTripTypes || buildBookingTripTypesFromFirestore(null),
   );
 
+  const [bookingLocations, setBookingLocations] = useState(
+    () => initialSnapshot.bookingLocations || buildBookingLocationsFromFirestore(null),
+  );
+
   const [footerCredit, setFooterCredit] = useState(
     () => initialSnapshot.footerCredit || buildFooterCreditFromFirestore(null),
   );
@@ -214,6 +225,12 @@ export function SiteContentProvider({ children }) {
   });
 
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const hourlyCities = (bookingLocations?.cities || DEFAULT_BOOKING_LOCATIONS.cities)
+      .filter((city) => city.active !== false && city.forms?.hourly !== false);
+    setExtraHourlyCities(hourlyCities);
+  }, [bookingLocations]);
 
   const writeCacheThrottled = useMemo(() => createThrottledCacheWriter(CACHE_KEY, 900), []);
 
@@ -252,6 +269,7 @@ export function SiteContentProvider({ children }) {
         religiousToursData,
         galleryHeroData,
         bookingTripTypesData,
+        bookingLocationsData,
         footerCreditData,
         activeTravelReservations,
       ] = await Promise.all([
@@ -269,6 +287,7 @@ export function SiteContentProvider({ children }) {
         getReligiousToursContent(),
         getGalleryHeroContent(),
         getBookingTripTypesContent(),
+        getBookingLocationsContent(),
         getFooterCreditContent(),
         getActiveContentCollection('travelReservations'),
       ]);
@@ -294,6 +313,8 @@ export function SiteContentProvider({ children }) {
       const nextGalleryHero = buildGalleryHeroFromFirestore(galleryHeroData);
 
       const nextBookingTripTypes = buildBookingTripTypesFromFirestore(bookingTripTypesData);
+
+      const nextBookingLocations = buildBookingLocationsFromFirestore(bookingLocationsData);
 
       const nextFooterCredit = buildFooterCreditFromFirestore(footerCreditData);
 
@@ -325,6 +346,8 @@ export function SiteContentProvider({ children }) {
       setGalleryHero(nextGalleryHero);
 
       setBookingTripTypes(nextBookingTripTypes);
+
+      setBookingLocations(nextBookingLocations);
 
       setFooterCredit(nextFooterCredit);
 
@@ -363,6 +386,8 @@ export function SiteContentProvider({ children }) {
         galleryHero: nextGalleryHero,
 
         bookingTripTypes: nextBookingTripTypes,
+
+        bookingLocations: nextBookingLocations,
 
         footerCredit: nextFooterCredit,
 
@@ -679,6 +704,14 @@ export function SiteContentProvider({ children }) {
             },
             (err) => console.warn('Booking trip types listener failed:', err.code || err.message),
           ),
+          subscribeBookingLocationsContent(
+            (data) => {
+              const nextBookingLocations = buildBookingLocationsFromFirestore(data);
+              setBookingLocations(nextBookingLocations);
+              persistCache({ bookingLocations: nextBookingLocations });
+            },
+            (err) => console.warn('Booking locations listener failed:', err.code || err.message),
+          ),
         );
       }
 
@@ -720,7 +753,7 @@ export function SiteContentProvider({ children }) {
 
   useEffect(() => {
 
-    if (typeof BroadcastChannel === 'undefined') return undefined;
+    if (!needsLivePublicContent || typeof BroadcastChannel === 'undefined') return undefined;
 
 
 
@@ -739,7 +772,7 @@ export function SiteContentProvider({ children }) {
 
     return () => channel.close();
 
-  }, [refresh]);
+  }, [needsLivePublicContent, refresh]);
 
   // One-doc publish signal: when SuperAdmin saves on live (or any browser),
   // local / other tabs refresh once. Avoids continuous multi-collection listeners.
@@ -875,6 +908,8 @@ export function SiteContentProvider({ children }) {
 
     bookingTripTypes,
 
+    bookingLocations,
+
     footerCredit,
 
     carCatalog,
@@ -920,6 +955,8 @@ export function SiteContentProvider({ children }) {
     travelReservations,
 
     bookingTripTypes,
+
+    bookingLocations,
 
     footerCredit,
 
@@ -992,6 +1029,8 @@ export function useSiteContent() {
       travelReservations: fallback.travelReservations || DEFAULT_TRAVEL_RESERVATIONS,
 
       bookingTripTypes: fallback.bookingTripTypes || buildBookingTripTypesFromFirestore(null),
+
+      bookingLocations: fallback.bookingLocations || buildBookingLocationsFromFirestore(null),
 
       footerCredit: fallback.footerCredit || buildFooterCreditFromFirestore(null),
 

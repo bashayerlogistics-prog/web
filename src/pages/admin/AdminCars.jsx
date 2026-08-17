@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Download, Eye, EyeOff, Save } from 'lucide-react';
+import { ArrowLeft, Download, Eye, EyeOff, Save, Plus } from 'lucide-react';
 import {
   getAllCars,
   seedDefaultCars,
   updateCarAndSyncPackages,
+  createCarWithPackages,
 } from '../../firebase/admin';
 import MediaUpload from '../../components/admin/MediaUpload';
+import AddCarModal from '../../components/admin/AddCarModal';
+import { CAR_FORM_IDS, DEFAULT_CAR_FORMS } from '../../utils/carCatalogHelpers';
 import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
 import { useAdminDataLoader } from '../../hooks/useAdminDataLoader';
 import { useToast } from '../../context/ToastContext';
@@ -21,25 +24,26 @@ import GlassCard from '../../components/ui/GlassCard';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 function mergeCars(dbCars = []) {
-  const byId = new Map((dbCars || []).map((c) => [c.id, c]));
-  return getDefaultCarCatalog().map((fallback) => {
-    const live = byId.get(fallback.id);
-    if (!live) return { ...fallback };
-    return {
+  const byId = new Map();
+  getDefaultCarCatalog().forEach((fallback) => {
+    const live = (dbCars || []).find((c) => c.id === fallback.id);
+    byId.set(fallback.id, live ? {
       ...fallback,
       ...live,
       id: fallback.id,
-      nameEn: live.nameEn || live.modelEn || fallback.nameEn,
-      nameAr: live.nameAr || live.modelAr || fallback.nameAr,
-      modelEn: live.modelEn || live.nameEn || fallback.modelEn,
-      modelAr: live.modelAr || live.nameAr || fallback.modelAr,
-      imageUrl: live.imageUrl || fallback.imageUrl,
-      passengers: Number(live.passengers) || fallback.passengers,
-      vip: live.vip ?? fallback.vip,
-      sortOrder: Number(live.sortOrder) ?? fallback.sortOrder,
-      active: live.active !== false,
-    };
+      forms: live.forms || fallback.forms || DEFAULT_CAR_FORMS,
+    } : { ...fallback });
   });
+  (dbCars || []).forEach((live) => {
+    if (!byId.has(live.id)) {
+      byId.set(live.id, {
+        ...live,
+        forms: live.forms || DEFAULT_CAR_FORMS,
+        active: live.active !== false,
+      });
+    }
+  });
+  return [...byId.values()].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
 function useAdminFleetBase() {
@@ -51,8 +55,8 @@ function useAdminFleetBase() {
   return { basePath, itemId, isCategories };
 }
 
-/** Index: 5 cards → separate admin pages */
-function AdminCarsIndex({ cars, seeding, onSeed, lang, t, basePath, isCategories }) {
+/** Index: car cards → separate admin pages */
+function AdminCarsIndex({ cars, seeding, onSeed, onAdd, lang, t, basePath, isCategories }) {
   return (
     <div className="space-y-4 sm:space-y-6">
       <AdminPageHeader
@@ -65,6 +69,14 @@ function AdminCarsIndex({ cars, seeding, onSeed, lang, t, basePath, isCategories
       >
         <button
           type="button"
+          onClick={onAdd}
+          className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-brand text-white font-bold text-sm touch-target"
+        >
+          <Plus className="w-4 h-4" />
+          <span className="hidden sm:inline">{t('admin.cars.addNew')}</span>
+        </button>
+        <button
+          type="button"
           onClick={onSeed}
           disabled={seeding}
           className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-brand/20 font-bold text-sm text-brand hover:bg-brand/5 touch-target"
@@ -72,9 +84,6 @@ function AdminCarsIndex({ cars, seeding, onSeed, lang, t, basePath, isCategories
           <Download className="w-4 h-4" />
           <span className="hidden sm:inline">
             {seeding ? t('admin.cars.seeding') : t('admin.cars.importDefaults')}
-          </span>
-          <span className="sm:hidden">
-            {seeding ? '…' : t('admin.cars.importShort', { defaultValue: 'Import' })}
           </span>
         </button>
       </AdminPageHeader>
@@ -136,6 +145,7 @@ function AdminCarsIndex({ cars, seeding, onSeed, lang, t, basePath, isCategories
 /** Single-item SuperAdmin page (car or category) */
 function AdminCarDetail({
   car,
+  allCars,
   draft,
   busy,
   lang,
@@ -203,17 +213,17 @@ function AdminCarDetail({
       </AdminPageHeader>
 
       <div className="flex flex-wrap gap-2">
-        {BOOKING_CAR_TYPES.map((id) => (
+        {(allCars || []).map((item) => (
           <Link
-            key={id}
-            to={`${basePath}/${id}`}
+            key={item.id}
+            to={`${basePath}/${item.id}`}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-              id === car.id
+              item.id === car.id
                 ? 'bg-brand text-white border-brand'
                 : 'border-brand/15 text-brand hover:bg-brand/5'
             }`}
           >
-            {getCarDisplayName(id, lang)}
+            {getCarDisplayName(item.id, lang)}
           </Link>
         ))}
       </div>
@@ -292,6 +302,25 @@ function AdminCarDetail({
           />
         </div>
 
+        <div className="rounded-xl border border-brand/10 p-3 space-y-2">
+          <p className="text-[11px] font-black uppercase tracking-wide text-brand">{t('admin.cars.formsTitle')}</p>
+          <div className="flex flex-wrap gap-2">
+            {CAR_FORM_IDS.map((key) => (
+              <label key={key} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-xs font-bold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={(draft.forms || DEFAULT_CAR_FORMS)[key] !== false}
+                  onChange={() => setField('forms', {
+                    ...(draft.forms || DEFAULT_CAR_FORMS),
+                    [key]: !(draft.forms || DEFAULT_CAR_FORMS)[key],
+                  })}
+                />
+                {t(`admin.cars.forms.${key}`)}
+              </label>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
             type="button"
@@ -328,6 +357,8 @@ export default function AdminCars() {
   const [drafts, setDrafts] = useState({});
   const [savingId, setSavingId] = useState(null);
   const [seeding, setSeeding] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const { data: dbCars, loading, refresh } = useAdminDataLoader(getAllCars);
   const cars = useMemo(() => mergeCars(dbCars), [dbCars]);
@@ -372,8 +403,9 @@ export default function AdminCars() {
           imageUrl: draft.imageUrl.trim(),
           passengers: Number(draft.passengers) || 4,
           vip: Boolean(draft.vip),
-          sortOrder: Number(draft.sortOrder) || BOOKING_CAR_TYPES.indexOf(targetId),
+          sortOrder: Number(draft.sortOrder) ?? (BOOKING_CAR_TYPES.indexOf(targetId) >= 0 ? BOOKING_CAR_TYPES.indexOf(targetId) : 99),
           active: draft.active !== false,
+          forms: draft.forms || DEFAULT_CAR_FORMS,
         },
         {
           nameEn: original?.nameEn,
@@ -419,6 +451,22 @@ export default function AdminCars() {
     }
   };
 
+  const handleAddCar = async (payload) => {
+    setAdding(true);
+    try {
+      const result = await createCarWithPackages(payload);
+      await publishSite('soft');
+      await refresh();
+      setAddOpen(false);
+      toast.success(t('admin.cars.addNewSuccess', { id: result.id, count: result.packagesCreated }));
+    } catch (err) {
+      console.error(err);
+      toast.error(err?.message || t('admin.cars.addNewFailed'));
+    } finally {
+      setAdding(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -428,10 +476,12 @@ export default function AdminCars() {
   }
 
   if (activeKey) {
-    if (activeKey && !BOOKING_CAR_TYPES.includes(activeKey) && !selectedCar) {
+    const car = selectedCar || cars.find((c) => c.id === activeKey);
+    if (!car) {
       return (
         <AdminCarDetail
           car={null}
+          allCars={cars}
           draft={null}
           busy={false}
           lang={lang}
@@ -445,13 +495,13 @@ export default function AdminCars() {
       );
     }
 
-    const car = selectedCar || cars.find((c) => c.id === activeKey);
     const draft = getDraft(car);
     return (
       <AdminCarDetail
         car={car}
+        allCars={cars}
         draft={draft}
-        busy={savingId === car?.id}
+        busy={savingId === car.id}
         lang={lang}
         t={t}
         setField={setField}
@@ -468,14 +518,26 @@ export default function AdminCars() {
   }
 
   return (
-    <AdminCarsIndex
-      cars={cars}
-      seeding={seeding}
-      onSeed={handleSeed}
-      lang={lang}
-      t={t}
-      basePath={basePath}
-      isCategories={isCategories}
-    />
+    <>
+      <AdminCarsIndex
+        cars={cars}
+        seeding={seeding}
+        onSeed={handleSeed}
+        onAdd={() => setAddOpen(true)}
+        lang={lang}
+        t={t}
+        basePath={basePath}
+        isCategories={isCategories}
+      />
+      <AddCarModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onSave={handleAddCar}
+        saving={adding}
+        cars={cars}
+        lang={lang}
+        t={t}
+      />
+    </>
   );
 }

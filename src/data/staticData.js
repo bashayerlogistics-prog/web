@@ -369,6 +369,7 @@ export function getDefaultCarCatalog() {
     vip: id === 'yukon',
     sortOrder: index,
     active: true,
+    forms: { booking: true, instantPrice: true, religiousTours: true },
   }));
 }
 
@@ -392,6 +393,7 @@ export function setLiveCarCatalog(cars = []) {
       vip: Boolean(car.vip ?? id === 'yukon'),
       sortOrder: Number.isFinite(Number(car.sortOrder)) ? Number(car.sortOrder) : 0,
       active: car.active !== false,
+      forms: car.forms || { booking: true, instantPrice: true, religiousTours: true },
       updatedAt: car.updatedAt || null,
     };
   });

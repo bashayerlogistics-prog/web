@@ -5,7 +5,6 @@ import {
   MapPin,
   Search,
   ArrowLeftRight,
-  ChevronDown,
   Calendar,
   CalendarClock,
   Tag,
@@ -17,8 +16,6 @@ import {
   Clock,
 } from 'lucide-react';
 import {
-  CITIES,
-  ONE_WAY_CITIES,
   TIME_SLOTS,
   BOOKING_PASSENGER_OPTIONS,
   BOOKING_CAR_TYPES,
@@ -27,12 +24,8 @@ import {
   DEFAULT_BOOKING_FROM,
   DEFAULT_BOOKING_TO,
   DEFAULT_ROUND_TRIP_ROUTE,
-  getRoundTripStation,
-  getRoundTripPickupOptions,
-  getRoundTripDropoffOptions,
   getCarDisplayName,
 } from '../../data/staticData';
-import { HOURLY_BASE_CITIES } from '../../data/hourlyPricing';
 import { getBetweenCitiesDestinations } from '../../data/betweenCitiesPricing';
 import { createPriceRequest } from '../../firebase/bookings';
 import {
@@ -44,8 +37,12 @@ import {
 import { useToast } from '../../context/ToastContext';
 import { useSiteContent } from '../../context/SiteContentContext';
 import { usePublicTripTypes } from '../../hooks/usePublicTripTypes';
+import { useBookingLocations } from '../../hooks/useBookingLocations';
 import { consumePendingTripType } from '../../data/bookingTripTypes';
 import BookingTripDetails from './BookingTripDetails';
+import CustomSelect from '../ui/CustomSelect';
+import { getCarTypesForForm } from '../../utils/carCatalogHelpers';
+import { prefetchRoute } from '../../utils/prefetchRoutes';
 
 const today = () => new Date().toISOString().split('T')[0];
 const tomorrow = () => {
@@ -54,22 +51,30 @@ const tomorrow = () => {
   return d.toISOString().split('T')[0];
 };
 
-const HOURLY_CITIES = HOURLY_BASE_CITIES.map((c) => ({ id: c.id, ar: c.ar, en: c.en }));
 const PASSENGER_OPTIONS = BOOKING_PASSENGER_OPTIONS;
-
-const fieldClass =
-  'booking-form-input booking-form-select w-full bg-white border border-gray-200 rounded-xl py-2.5 sm:py-3 ps-10 pe-9 text-sm sm:text-[0.9375rem] text-brand focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all appearance-none font-semibold touch-target';
 
 export default function BookingForm({ overlapHero = true }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { carCatalog, fleetRoutes } = useSiteContent();
+  const {
+    betweenCities: betweenCityOptions,
+    hourlyCities: hourlyCityOptions,
+    pickupOptions,
+    dropoffOptions,
+    findRoute,
+    cityName: resolveCityName,
+  } = useBookingLocations();
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
   const { tripTypes: TRIP_TYPES, tripType, setTripType, formFields } = usePublicTripTypes('booking', lang);
 
   const fieldLabel = (key, fallbackKey) =>
     formFields?.[key]?.label || t(fallbackKey);
+
+  useEffect(() => {
+    prefetchRoute('/booking/search');
+  }, []);
 
   useEffect(() => {
     const pending = consumePendingTripType();
@@ -98,15 +103,10 @@ export default function BookingForm({ overlapHero = true }) {
   const [suggestedPrice, setSuggestedPrice] = useState('');
   const [tripDetails, setTripDetails] = useState('');
 
-  const carTypes = useMemo(() => {
-    const live = (carCatalog || [])
-      .filter((c) => c?.active !== false && c?.id)
-      .map((c) => String(c.id));
-    if (!live.length) return BOOKING_CAR_TYPES;
-    const ordered = BOOKING_CAR_TYPES.filter((id) => live.includes(id));
-    const extras = live.filter((id) => !BOOKING_CAR_TYPES.includes(id));
-    return ordered.length ? [...ordered, ...extras] : BOOKING_CAR_TYPES;
-  }, [carCatalog]);
+  const carTypes = useMemo(
+    () => getCarTypesForForm(carCatalog, 'booking'),
+    [carCatalog],
+  );
 
   const hourOptions = useMemo(
     () => getHourlyDurationsForCity(from, fleetRoutes),
@@ -118,9 +118,6 @@ export default function BookingForm({ overlapHero = true }) {
     setFrom(to);
     setTo(from);
   };
-
-  const rtPickupOptions = useMemo(() => getRoundTripPickupOptions(lang), [lang]);
-  const rtDropoffOptions = useMemo(() => getRoundTripDropoffOptions(lang), [lang]);
 
   const setRoundTripRoute = (routeId) => {
     setRtRoute(routeId);
@@ -155,7 +152,7 @@ export default function BookingForm({ overlapHero = true }) {
 
     if (tripType === 'round_trip' || tripType === 'one_way') {
       if (!rtRoute) return;
-      const station = getRoundTripStation(rtRoute);
+      const station = findRoute(rtRoute);
       const params = new URLSearchParams({
         trip_type: tripType,
         from: station?.cityFrom || '',
@@ -236,49 +233,70 @@ export default function BookingForm({ overlapHero = true }) {
   const isHourly = tripType === 'hourly';
   const isOneWay = tripType === 'one_way';
   const isBetweenCities = tripType === 'between_cities';
-  const cityOptions = isHourly ? HOURLY_CITIES : isBetweenCities ? ONE_WAY_CITIES : CITIES;
+  const cityOptions = isHourly ? hourlyCityOptions : betweenCityOptions;
+
+  const rtPickupOptions = useMemo(
+    () => pickupOptions(lang, isOneWay ? 'oneWay' : 'roundTrip'),
+    [pickupOptions, lang, isOneWay],
+  );
+  const rtDropoffOptions = useMemo(
+    () => dropoffOptions(lang, 'roundTrip'),
+    [dropoffOptions, lang],
+  );
 
   const betweenCitiesToOptions = useMemo(() => {
     if (!isBetweenCities || !from) return cityOptions;
-    const valid = new Set(getBetweenCitiesDestinations(from));
+    const valid = new Set(getBetweenCitiesDestinations(from, betweenCityOptions));
     return cityOptions.filter((c) => valid.has(c.id));
-  }, [isBetweenCities, from, cityOptions]);
+  }, [isBetweenCities, from, cityOptions, betweenCityOptions]);
+
+  const timeSlotOptions = useMemo(
+    () => TIME_SLOTS.map((slot) => ({ value: slot, label: slot })),
+    [],
+  );
+
+  const passengerSelectOptions = useMemo(
+    () => PASSENGER_OPTIONS.map((n) => ({ value: n, label: String(n) })),
+    [],
+  );
+
+  const carSelectOptions = useMemo(
+    () => carTypes.map((key) => ({
+      value: key,
+      label: getCarDisplayName(key, lang),
+    })),
+    [carTypes, lang],
+  );
 
   useEffect(() => {
     if (!isBetweenCities || !from) return;
-    const valid = getBetweenCitiesDestinations(from);
+    const valid = getBetweenCitiesDestinations(from, betweenCityOptions);
     if (valid.length && !valid.includes(String(to))) {
       setTo(valid[0]);
     }
-  }, [isBetweenCities, from, to]);
+  }, [isBetweenCities, from, to, betweenCityOptions]);
 
   useEffect(() => {
     if (!isHourly) return;
-    if (!HOURLY_CITIES.some((c) => c.id === from)) {
-      setFrom(HOURLY_CITIES[0]?.id || DEFAULT_BOOKING_FROM);
+    if (!hourlyCityOptions.some((c) => c.id === from)) {
+      setFrom(hourlyCityOptions[0]?.id || DEFAULT_BOOKING_FROM);
     }
-  }, [isHourly, from]);
+  }, [isHourly, from, hourlyCityOptions]);
 
   const showField = (key) => formFields?.[key]?.show !== false;
 
-  const cityName = (id) => {
-    const list = [...CITIES, ...ONE_WAY_CITIES, ...HOURLY_CITIES];
-    const city = list.find((c) => c.id === id);
-    return city ? (city[lang] || city.ar || city.en) : '';
-  };
+  const cityName = (id) => resolveCityName(id, lang);
 
   const tripDetailRows = useMemo(() => {
     if (isCustom) return [];
     const stationLabel = (isRound || isOneWay)
-      ? (getRoundTripPickupOptions(lang).find((s) => s.id === rtRoute)?.label || '')
+      ? (rtPickupOptions.find((s) => s.id === rtRoute)?.label || '')
       : '';
-    const locationLabel = hourlyDestOptions.find((d) => d.key === hourlyDest)?.label || '';
-
     const fromValue = isRound || isOneWay
       ? stationLabel
       : cityName(from);
     const toValue = isRound
-      ? (getRoundTripDropoffOptions(lang).find((s) => s.id === rtRoute)?.label || stationLabel)
+      ? (rtDropoffOptions.find((s) => s.id === rtRoute)?.label || stationLabel)
       : isOneWay
         ? ''
         : isHourly
@@ -297,12 +315,6 @@ export default function BookingForm({ overlapHero = true }) {
         show: showField('to') && !isHourly && !isOneWay,
         label: fieldLabel('to', 'booking.to'),
         value: toValue,
-      },
-      {
-        key: 'location',
-        show: showField('location') && isHourly,
-        label: fieldLabel('location', 'booking.destination'),
-        value: `${cityName(from)}${locationLabel ? ` — ${locationLabel}` : ''}`,
       },
       {
         key: 'pickupTime',
@@ -334,7 +346,7 @@ export default function BookingForm({ overlapHero = true }) {
     ];
   }, [
     isCustom, isRound, isOneWay, isHourly, from, to, rtRoute, date, time, hours,
-    passengers, carType, hourlyDest, hourlyDestOptions, formFields, lang, t,
+    passengers, carType, formFields, lang, t,
   ]);
 
   return (
@@ -346,7 +358,7 @@ export default function BookingForm({ overlapHero = true }) {
       data-aos="fade-up"
       data-aos-delay="100"
     >
-      <div id="booking-form" className="booking-form-card">
+      <div id="booking-form" className="booking-form-card" data-dropdown-scope>
         <div className="booking-form-card__inner">
           <div className="flex items-center gap-3 px-3.5 sm:px-4 md:px-5 pt-3.5 sm:pt-4 pb-2.5 sm:pb-3 border-b border-gray-100">
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-gold to-gold-dark flex items-center justify-center shadow-md shadow-gold/30 shrink-0">
@@ -432,20 +444,19 @@ export default function BookingForm({ overlapHero = true }) {
                           {t('booking.pickupArrival')}
                         </label>
                         <div className="relative">
-                          <MapPin className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gold pointer-events-none" />
-                          <select
+                          <CustomSelect
+                            variant="light"
                             value={rtRoute}
-                            onChange={(e) => setRoundTripRoute(e.target.value)}
+                            onChange={setRoundTripRoute}
                             required
-                            className={fieldClass}
-                          >
-                            {rtPickupOptions.map((s) => (
-                              <option key={`pickup-${s.id}`} value={s.id}>
-                                {s.label}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                            icon={MapPin}
+                            iconSide="start"
+                            aria-label={t('booking.pickupArrival')}
+                            options={rtPickupOptions.map((s) => ({
+                              value: s.id,
+                              label: s.label,
+                            }))}
+                          />
                         </div>
                       </div>
 
@@ -463,20 +474,19 @@ export default function BookingForm({ overlapHero = true }) {
                           {t('booking.dropoffDeparture')}
                         </label>
                         <div className="relative">
-                          <MapPin className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gold pointer-events-none" />
-                          <select
+                          <CustomSelect
+                            variant="light"
                             value={rtRoute}
-                            onChange={(e) => setRoundTripRoute(e.target.value)}
+                            onChange={setRoundTripRoute}
                             required
-                            className={fieldClass}
-                          >
-                            {rtDropoffOptions.map((s) => (
-                              <option key={`dropoff-${s.id}`} value={s.id}>
-                                {s.label}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                            icon={MapPin}
+                            iconSide="start"
+                            aria-label={t('booking.dropoffDeparture')}
+                            options={rtDropoffOptions.map((s) => ({
+                              value: s.id,
+                              label: s.label,
+                            }))}
+                          />
                         </div>
                       </div>
                     </>
@@ -486,20 +496,19 @@ export default function BookingForm({ overlapHero = true }) {
                         {t('booking.pickupArrival')}
                       </label>
                       <div className="relative">
-                        <MapPin className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gold pointer-events-none" />
-                        <select
+                        <CustomSelect
+                          variant="light"
                           value={rtRoute}
-                          onChange={(e) => setRoundTripRoute(e.target.value)}
+                          onChange={setRoundTripRoute}
                           required
-                          className={fieldClass}
-                        >
-                          {rtPickupOptions.map((s) => (
-                            <option key={`one-way-pickup-${s.id}`} value={s.id}>
-                              {s.label}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                          icon={MapPin}
+                          iconSide="start"
+                          aria-label={t('booking.pickupArrival')}
+                          options={rtPickupOptions.map((s) => ({
+                            value: s.id,
+                            label: s.label,
+                          }))}
+                        />
                       </div>
                     </div>
                   ) : (
@@ -510,21 +519,22 @@ export default function BookingForm({ overlapHero = true }) {
                             {fieldLabel('from', 'booking.from')}
                           </label>
                           <div className="relative">
-                            <MapPin className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gold pointer-events-none" />
-                            <select
+                            <CustomSelect
+                              variant="light"
                               value={from}
-                              onChange={(e) => setFrom(e.target.value)}
+                              onChange={setFrom}
                               required
-                              className={fieldClass}
-                            >
-                              <option value="">{fieldLabel('from', 'booking.from')}</option>
-                              {cityOptions.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c[lang] || c.ar}
-                                </option>
-                              ))}
-                            </select>
-                            <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                              icon={MapPin}
+                              iconSide="start"
+                              aria-label={fieldLabel('from', 'booking.from')}
+                              options={[
+                                { value: '', label: fieldLabel('from', 'booking.from') },
+                                ...cityOptions.map((c) => ({
+                                  value: c.id,
+                                  label: c[lang] || c.ar,
+                                })),
+                              ]}
+                            />
                           </div>
                         </div>
                       )}
@@ -549,21 +559,22 @@ export default function BookingForm({ overlapHero = true }) {
                               {fieldLabel('to', 'booking.to')}
                             </label>
                             <div className="relative">
-                              <MapPin className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gold pointer-events-none" />
-                              <select
+                              <CustomSelect
+                                variant="light"
                                 value={to}
-                                onChange={(e) => setTo(e.target.value)}
+                                onChange={setTo}
                                 required
-                                className={fieldClass}
-                              >
-                                <option value="">{fieldLabel('to', 'booking.to')}</option>
-                                {(isBetweenCities ? betweenCitiesToOptions : cityOptions).map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c[lang] || c.ar}
-                                  </option>
-                                ))}
-                              </select>
-                              <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                                icon={MapPin}
+                                iconSide="start"
+                                aria-label={fieldLabel('to', 'booking.to')}
+                                options={[
+                                  { value: '', label: fieldLabel('to', 'booking.to') },
+                                  ...(isBetweenCities ? betweenCitiesToOptions : cityOptions).map((c) => ({
+                                    value: c.id,
+                                    label: c[lang] || c.ar,
+                                  })),
+                                ]}
+                              />
                             </div>
                           </div>
                         </>
@@ -571,8 +582,26 @@ export default function BookingForm({ overlapHero = true }) {
                     </>
                   )}
 
+                  {isHourly && showField('hours') && (
+                    <div className="booking-form-field sm:col-span-2 lg:col-span-2 relative">
+                      <label className="block text-xs sm:text-sm font-semibold text-gray-600 mb-1 sm:mb-1.5">
+                        {fieldLabel('hours', 'booking.hours')}
+                      </label>
+                      <CustomSelect
+                        variant="light"
+                        value={hours}
+                        onChange={setHours}
+                        aria-label={fieldLabel('hours', 'booking.hours')}
+                        options={hourOptions.map((h) => ({
+                          value: String(h),
+                          label: `${h} ${h === 1 ? t('booking.hour') : t('booking.hours_plural')}`,
+                        }))}
+                      />
+                    </div>
+                  )}
+
                   {showField('pickupTime') && (
-                    <div className={`sm:col-span-2 ${isRound || isOneWay ? 'lg:col-span-12' : isHourly ? 'lg:col-span-8' : 'lg:col-span-5'}`}>
+                    <div className={`sm:col-span-2 ${isRound || isOneWay ? 'lg:col-span-12' : isHourly ? 'lg:col-span-7' : 'lg:col-span-5'}`}>
                       <label className="block text-xs sm:text-sm font-semibold text-gray-600 mb-1 sm:mb-1.5">
                         {fieldLabel('pickupTime', 'booking.pickupTime')}
                       </label>
@@ -589,18 +618,13 @@ export default function BookingForm({ overlapHero = true }) {
                           <Calendar className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gold pointer-events-none z-[1]" />
                         </div>
                         <div className="relative">
-                          <select
+                          <CustomSelect
+                            variant="light"
                             value={time}
-                            onChange={(e) => setTime(e.target.value)}
-                            className="booking-form-input booking-form-select w-full bg-white border border-gray-200 rounded-xl py-2.5 sm:py-3 ps-3 pe-9 text-sm sm:text-[0.9375rem] text-brand focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all appearance-none font-semibold"
-                          >
-                            {TIME_SLOTS.map((slot) => (
-                              <option key={slot} value={slot}>
-                                {slot}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                            onChange={setTime}
+                            aria-label={fieldLabel('pickupTime', 'booking.pickupTime')}
+                            options={timeSlotOptions}
+                          />
                         </div>
                       </div>
                     </div>
@@ -614,18 +638,13 @@ export default function BookingForm({ overlapHero = true }) {
                         {fieldLabel('passengers', 'booking.passengers')}
                       </label>
                       <div className="relative">
-                        <select
+                        <CustomSelect
+                          variant="light"
                           value={passengers}
-                          onChange={(e) => setPassengers(Number(e.target.value))}
-                          className="booking-form-input booking-form-select w-full bg-white border border-gray-200 rounded-xl py-2.5 sm:py-3 ps-3 pe-9 text-sm sm:text-[0.9375rem] text-brand focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all appearance-none font-semibold touch-target"
-                        >
-                          {PASSENGER_OPTIONS.map((n) => (
-                            <option key={n} value={n}>
-                              {n}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                          onChange={(v) => setPassengers(Number(v))}
+                          aria-label={fieldLabel('passengers', 'booking.passengers')}
+                          options={passengerSelectOptions}
+                        />
                       </div>
                     </div>
                   )}
@@ -636,18 +655,13 @@ export default function BookingForm({ overlapHero = true }) {
                         {fieldLabel('car', 'booking.cars')}
                       </label>
                       <div className="relative">
-                        <select
+                        <CustomSelect
+                          variant="light"
                           value={carType}
-                          onChange={(e) => setCarType(e.target.value)}
-                          className="booking-form-input booking-form-select w-full bg-white border border-gray-200 rounded-xl py-2.5 sm:py-3 ps-3 pe-9 text-sm sm:text-[0.9375rem] text-brand focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all appearance-none font-semibold touch-target"
-                        >
-                          {carTypes.map((key) => (
-                            <option key={`${key}-${carCatalog?.find((c) => c.id === key)?.updatedAt || carCatalog?.find((c) => c.id === key)?.nameEn || ''}`} value={key}>
-                              {getCarDisplayName(key, lang)}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                          onChange={setCarType}
+                          aria-label={fieldLabel('car', 'booking.cars')}
+                          options={carSelectOptions}
+                        />
                       </div>
                     </div>
                   )}
@@ -669,72 +683,22 @@ export default function BookingForm({ overlapHero = true }) {
                           <Calendar className="absolute end-2 md:end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gold pointer-events-none z-[1]" />
                         </div>
                         <div className="relative">
-                          <select
+                          <CustomSelect
+                            variant="light"
                             value={returnTime}
-                            onChange={(e) => setReturnTime(e.target.value)}
-                            className="booking-form-input booking-form-select w-full bg-white border border-gray-200 rounded-xl py-2.5 sm:py-3 ps-2 sm:ps-3 pe-8 text-sm sm:text-[0.9375rem] text-brand focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all appearance-none font-semibold"
-                          >
-                            {TIME_SLOTS.map((slot) => (
-                              <option key={slot} value={slot}>
-                                {slot}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute end-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                            onChange={setReturnTime}
+                            aria-label={t('booking.returnTime')}
+                            options={timeSlotOptions}
+                          />
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {isHourly && showField('hours') && (
-                    <div className="booking-form-field lg:col-span-2">
-                      <label className="block text-xs sm:text-sm font-semibold text-gray-600 mb-1 sm:mb-1.5">
-                        {fieldLabel('hours', 'booking.hours')}
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={hours}
-                          onChange={(e) => setHours(e.target.value)}
-                          className="booking-form-input booking-form-select w-full bg-white border border-gray-200 rounded-xl py-2.5 sm:py-3 ps-3 pe-9 text-sm sm:text-[0.9375rem] text-brand focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all appearance-none font-semibold"
-                        >
-                          {hourOptions.map((h) => (
-                            <option key={h} value={h}>
-                              {h} {h === 1 ? t('booking.hour') : t('booking.hours_plural')}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
-                  )}
-
-                  {isHourly && showField('location') && (
-                    <div className="booking-form-field col-span-2 lg:col-span-4">
-                      <label className="block text-xs sm:text-sm font-semibold text-gray-600 mb-1 sm:mb-1.5">
-                        {fieldLabel('location', 'booking.destination')}
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={hourlyDest}
-                          onChange={(e) => setHourlyDest(e.target.value)}
-                          disabled={!from || !hourlyDestOptions.length}
-                          title={hourlyDestOptions.find((d) => d.key === hourlyDest)?.label || ''}
-                          className="booking-form-input booking-form-select w-full bg-white border border-gray-200 rounded-xl py-2.5 sm:py-3 ps-3 pe-9 text-sm sm:text-[0.9375rem] text-brand focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all appearance-none font-semibold disabled:opacity-50"
-                        >
-                          {hourlyDestOptions.map((d) => (
-                            <option key={d.key} value={d.key}>
-                              {d.label}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute end-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
-                  )}
-
                   {!isRound && !isOneWay && !isHourly && <div className="hidden lg:block lg:col-span-3" aria-hidden />}
+                  {isHourly && <div className="hidden lg:block lg:col-span-4" aria-hidden />}
 
-                  <div className={`booking-form-actions booking-form-actions--inline hidden lg:block ${isHourly ? 'lg:col-span-2' : 'lg:col-span-4'}`}>
+                  <div className="booking-form-actions booking-form-actions--inline hidden lg:block lg:col-span-4">
                     <label className="block text-xs sm:text-sm font-semibold text-gray-600 mb-1 sm:mb-1.5 opacity-0 select-none pointer-events-none">
                       {t('booking.search')}
                     </label>

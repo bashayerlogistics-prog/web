@@ -31,8 +31,8 @@ import { subscribeToPendingOrders } from '../../utils/offlineOrderQueue';
 import StatusBadge from '../../components/ui/StatusBadge';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
-const PAYMENT_FILTERS = ['all', 'pending', 'proof_submitted', 'paid', 'rejected', 'refunded'];
-const METHOD_FILTERS = ['all', 'whatsapp', 'bank_transfer', 'online_gateway', 'cash'];
+const PAYMENT_FILTERS = ['all', 'pending', 'proof_submitted', 'paid', 'failed', 'cancelled', 'rejected', 'refunded'];
+const METHOD_FILTERS = ['all', 'whatsapp', 'bank_transfer', 'online_gateway', 'moyasar', 'cash'];
 const SOURCE_FILTERS = ['all', 'website', 'whatsapp', 'manual'];
 const SORT_OPTIONS = ['newest', 'oldest', 'amount_high', 'amount_low'];
 const PAGE_SIZES = [10, 20, 50, 100];
@@ -49,6 +49,8 @@ const PAYMENT_BADGE = {
   pending: 'bg-amber-100 text-amber-800 border-amber-200',
   proof_submitted: 'bg-blue-100 text-blue-800 border-blue-200',
   paid: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  failed: 'bg-red-100 text-red-800 border-red-200',
+  cancelled: 'bg-gray-100 text-gray-700 border-gray-200',
   rejected: 'bg-red-100 text-red-800 border-red-200',
   refunded: 'bg-violet-100 text-violet-800 border-violet-200',
 };
@@ -200,7 +202,9 @@ export default function AdminOrders() {
         || paymentFilter === 'all'
         || b.paymentStatus === paymentFilter;
       const method = b.paymentMethod || '';
-      const matchMethod = methodFilter === 'all' || method === methodFilter;
+      const matchMethod = methodFilter === 'all'
+        || method === methodFilter
+        || (methodFilter === 'online_gateway' && (method === 'moyasar' || method === 'online_gateway'));
       const source = b.orderSource || (b.paymentMethod === 'whatsapp' ? 'whatsapp' : 'website');
       const matchSource = sourceFilter === 'all' || source === sourceFilter;
       const user = usersMap[b.userId];

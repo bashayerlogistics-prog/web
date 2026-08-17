@@ -37,10 +37,24 @@ export function AuthProvider({ children }) {
       } else {
         setUser(firebaseUser);
       }
-      if (clerkLoaded && !isSignedIn) setLoading(false);
+      if (firebaseUser && !isAdminAccount(firebaseUser)) {
+        setLoading(false);
+      } else if (clerkLoaded && !isSignedIn) {
+        setLoading(false);
+      }
     });
     return () => unsubscribe();
   }, [clerkLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (!loading && clerkLoaded) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      console.warn('Auth loading timed out — releasing UI');
+      syncingRef.current = false;
+      setLoading(false);
+    }, 12000);
+    return () => window.clearTimeout(timeoutId);
+  }, [loading, clerkLoaded]);
 
   const syncFirebaseSession = useCallback(async (profile = {}) => {
     if (!isSignedIn) return null;
@@ -86,9 +100,24 @@ export function AuthProvider({ children }) {
     }
 
     const clerkId = clerkUser?.id || '';
-    if (!clerkId || lastClerkIdRef.current === clerkId || syncingRef.current) {
-      if (auth.currentUser) setLoading(false);
+    if (!clerkId) {
+      setLoading(false);
       return undefined;
+    }
+
+    if (syncingRef.current) {
+      return undefined;
+    }
+
+    const hasFirebaseUser = Boolean(auth.currentUser);
+
+    if (lastClerkIdRef.current === clerkId && hasFirebaseUser) {
+      setLoading(false);
+      return undefined;
+    }
+
+    if (lastClerkIdRef.current === clerkId && !hasFirebaseUser) {
+      lastClerkIdRef.current = '';
     }
 
     let cancelled = false;

@@ -45,6 +45,7 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **New re
 | `VITE_RESEND_WEBHOOK_URL` |
 | `VITE_EMAIL_WEBHOOK_SECRET` |
 | `VITE_RESEND_FROM_EMAIL` |
+| `VITE_MOYASAR_PUBLISHABLE_KEY` |
 
 **Email PHP on Hostinger**
 

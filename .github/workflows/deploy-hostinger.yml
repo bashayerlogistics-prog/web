@@ -44,6 +44,7 @@ jobs:
           VITE_RESEND_WEBHOOK_URL: ${{ secrets.VITE_RESEND_WEBHOOK_URL }}
           VITE_EMAIL_WEBHOOK_SECRET: ${{ secrets.VITE_EMAIL_WEBHOOK_SECRET }}
           VITE_RESEND_FROM_EMAIL: ${{ secrets.VITE_RESEND_FROM_EMAIL }}
+          VITE_MOYASAR_PUBLISHABLE_KEY: ${{ secrets.VITE_MOYASAR_PUBLISHABLE_KEY }}
         run: npm run build
 
       - name: Prepare Hostinger package

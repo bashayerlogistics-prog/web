@@ -36,8 +36,6 @@ import MiniBarChart from '../../components/ui/MiniBarChart';
 
 import StatusDonut from '../../components/ui/StatusDonut';
 
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
-
 
 
 const PANEL_THEMES = {
@@ -174,7 +172,7 @@ export default function AdminOverview() {
 
   const lang = i18n.language;
 
-  const { stats, usersMap, bookings, loading, refresh, lastRefresh } = useAdminData();
+  const { stats, usersMap, bookings, loading, refreshing, refresh, lastRefresh } = useAdminData();
 
   const orderNumberMap = useMemo(() => buildOrderNumberMap(bookings), [bookings]);
 
@@ -268,7 +266,7 @@ export default function AdminOverview() {
 
         >
 
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${loading || refreshing ? 'animate-spin' : ''}`} />
 
           {t('admin.refresh')}
 
@@ -288,13 +286,7 @@ export default function AdminOverview() {
 
 
 
-      {loading ? (
-
-        <LoadingSpinner text={t('common.loading')} />
-
-      ) : (
-
-        <>
+      <div className={loading || refreshing ? 'opacity-90 transition-opacity' : ''}>
 
           {/* Stats grid */}
 
@@ -591,9 +583,7 @@ export default function AdminOverview() {
 
           </section>
 
-        </>
-
-      )}
+      </div>
 
     </div>
 

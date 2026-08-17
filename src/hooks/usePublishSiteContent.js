@@ -9,13 +9,13 @@ import {
 /**
  * Publish site content after SuperAdmin edits.
  * - Always bumps siteSettings/contentRevision (1 write) so live + local clients refresh.
- * - publishSite() / 'full' → clear cache + reload CMS docs
- * - publishSite('soft') → clear cache only (fleet tabs already live via onSnapshot)
+ * - publishSite() / default → bump revision + soft cache clear (fast)
+ * - publishSite('full') → clear cache + reload all CMS docs (~17 reads)
  */
 export function usePublishSiteContent() {
   const { refresh } = useSiteContent();
 
-  return useCallback(async (mode = 'full') => {
+  return useCallback(async (mode = 'soft') => {
     try {
       await bumpContentRevision();
     } catch (err) {

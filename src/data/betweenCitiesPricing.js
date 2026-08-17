@@ -45,11 +45,8 @@ export function parseBetweenCitiesRouteId(routeId) {
 }
 
 export function resolveBetweenCitiesRouteId(fromId, toId) {
-  const key = `${fromId}-${toId}`;
-  if (BETWEEN_CITIES_PRICE_MATRIX[key]) {
-    return buildBetweenCitiesRouteId(fromId, toId);
-  }
-  return 'ow-2-1';
+  if (!fromId || !toId) return 'ow-2-1';
+  return buildBetweenCitiesRouteId(fromId, toId);
 }
 
 /** True when sheet has a directed price for this city pair */
@@ -58,8 +55,13 @@ export function hasBetweenCitiesRoute(fromId, toId) {
   return Boolean(BETWEEN_CITIES_PRICE_MATRIX[`${fromId}-${toId}`]);
 }
 
-/** Valid "To" cities for a given "From" (one-way) */
-export function getBetweenCitiesDestinations(fromId) {
+/** Valid "To" cities for a given "From" (one-way). Live SuperAdmin cities overlay the sheet. */
+export function getBetweenCitiesDestinations(fromId, liveCities = null) {
+  if (Array.isArray(liveCities) && liveCities.length) {
+    return liveCities
+      .map((city) => String(city.id ?? city))
+      .filter((toId) => toId && toId !== String(fromId));
+  }
   return BETWEEN_CITY_IDS.filter((toId) => hasBetweenCitiesRoute(fromId, toId));
 }
 

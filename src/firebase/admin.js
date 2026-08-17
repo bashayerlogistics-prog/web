@@ -21,7 +21,7 @@ import { db } from './db';
 import { getHomeSections as fetchHomeSections } from './content';
 import { mergeHomeSections } from '../data/homeSections';
 import { getDefaultProducts, getDefaultServices, getDefaultBlogs } from '../data/contentSeeds';
-import { getDefaultCarCatalog, isPlaceholderSocialUrl } from '../data/staticData';
+import { getDefaultCarCatalog, isPlaceholderSocialUrl, BOOKING_CAR_TYPES } from '../data/staticData';
 
 export async function upsertUserDocument(userId, data) {
   await setDoc(doc(db, 'users', userId), { ...data, updatedAt: serverTimestamp() }, { merge: true });
@@ -119,7 +119,7 @@ async function countWithBackoff(countFn, retries = 2) {
 /**
  * Chip / overview counts via aggregation queries.
  * Billing: ~1 read per 1000 matched index entries — far cheaper than scanning docs.
- * Sequential to avoid 429 when quota is tight.
+ * Status counts run in parallel; payment counts parallel when requested.
  * @param {{ includePayment?: boolean }} opts
  */
 export async function getBookingStatsCounts({ includePayment = true } = {}) {
@@ -132,11 +132,13 @@ export async function getBookingStatsCounts({ includePayment = true } = {}) {
       return snap.data().count;
     });
 
-  const all = await countOf();
-  const pending = await countOf([where('status', '==', 'pending')]);
-  const confirmed = await countOf([where('status', '==', 'confirmed')]);
-  const completed = await countOf([where('status', '==', 'completed')]);
-  const cancelled = await countOf([where('status', '==', 'cancelled')]);
+  const [all, pending, confirmed, completed, cancelled] = await Promise.all([
+    countOf(),
+    countOf([where('status', '==', 'pending')]),
+    countOf([where('status', '==', 'confirmed')]),
+    countOf([where('status', '==', 'completed')]),
+    countOf([where('status', '==', 'cancelled')]),
+  ]);
 
   let payPending = 0;
   let proofSubmitted = 0;
@@ -144,11 +146,13 @@ export async function getBookingStatsCounts({ includePayment = true } = {}) {
   let rejected = 0;
   let refunded = 0;
   if (includePayment) {
-    payPending = await countOf([where('paymentStatus', '==', 'pending')]);
-    proofSubmitted = await countOf([where('paymentStatus', '==', 'proof_submitted')]);
-    paid = await countOf([where('paymentStatus', '==', 'paid')]);
-    rejected = await countOf([where('paymentStatus', '==', 'rejected')]);
-    refunded = await countOf([where('paymentStatus', '==', 'refunded')]);
+    [payPending, proofSubmitted, paid, rejected, refunded] = await Promise.all([
+      countOf([where('paymentStatus', '==', 'pending')]),
+      countOf([where('paymentStatus', '==', 'proof_submitted')]),
+      countOf([where('paymentStatus', '==', 'paid')]),
+      countOf([where('paymentStatus', '==', 'rejected')]),
+      countOf([where('paymentStatus', '==', 'refunded')]),
+    ]);
   }
 
   return {
@@ -255,6 +259,29 @@ export async function addBookingTimelineEntry(bookingId, entry) {
   });
 }
 
+/** In-memory cache — fleet tabs share reads within a short TTL */
+const PRODUCTS_CACHE_TTL_MS = 5 * 60_000;
+const productsByTripTypeCache = new Map();
+
+function readProductsCache(tripType) {
+  const key = tripType || '__all__';
+  const hit = productsByTripTypeCache.get(key);
+  if (hit && Date.now() - hit.at < PRODUCTS_CACHE_TTL_MS) return hit.data;
+  return null;
+}
+
+function writeProductsCache(tripType, data) {
+  productsByTripTypeCache.set(tripType || '__all__', { at: Date.now(), data });
+}
+
+export function invalidateProductsCache(tripType) {
+  if (tripType) {
+    productsByTripTypeCache.delete(tripType);
+    return;
+  }
+  productsByTripTypeCache.clear();
+}
+
 // Products / Packages
 export async function getAllProducts(maxItems = 300) {
   const size = Math.max(1, Math.min(500, Number(maxItems) || 300));
@@ -270,28 +297,38 @@ export async function getAllProducts(maxItems = 300) {
 
 /** Faster admin loads — filter by tripType at query time when possible */
 export async function getProductsByTripType(tripType) {
-  if (!tripType) return getAllProducts();
-  try {
-    const q = query(
-      collection(db, 'packages'),
-      where('tripType', '==', tripType),
-      orderBy('sortOrder', 'asc'),
-      limit(300),
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch {
-    const all = await getAllProducts(300);
-    return all.filter((p) => {
-      if (p.tripType === tripType) return true;
-      const rid = String(p.routeId || '');
-      if (tripType === 'round_trip') return rid.startsWith('rt-');
-      if (tripType === 'hourly') return rid.startsWith('hr-');
-      // one_way: only ow-* routes (avoid legacy ids like "jeddah-makkah")
-      if (tripType === 'one_way') return rid.startsWith('ow-');
-      return false;
-    });
+  const cached = readProductsCache(tripType);
+  if (cached) return cached;
+
+  let result;
+  if (!tripType) {
+    result = await getAllProducts();
+  } else {
+    try {
+      const q = query(
+        collection(db, 'packages'),
+        where('tripType', '==', tripType),
+        orderBy('sortOrder', 'asc'),
+        limit(300),
+      );
+      const snapshot = await getDocs(q);
+      result = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch {
+      const all = await getAllProducts(300);
+      result = all.filter((p) => {
+        if (p.tripType === tripType) return true;
+        const rid = String(p.routeId || '');
+        if (tripType === 'round_trip') return rid.startsWith('rt-');
+        if (tripType === 'hourly') return rid.startsWith('hr-');
+        // one_way: only ow-* routes (avoid legacy ids like "jeddah-makkah")
+        if (tripType === 'one_way') return rid.startsWith('ow-');
+        return false;
+      });
+    }
   }
+
+  writeProductsCache(tripType, result);
+  return result;
 }
 
 export async function createProduct(data) {
@@ -301,17 +338,20 @@ export async function createProduct(data) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  invalidateProductsCache();
   await logActivity('product_created', { productId: ref.id });
   return ref.id;
 }
 
 export async function updateProduct(productId, data) {
   await updateDoc(doc(db, 'packages', productId), { ...data, updatedAt: serverTimestamp() });
+  invalidateProductsCache();
   await logActivity('product_updated', { productId });
 }
 
 export async function deleteProduct(productId) {
   await deleteDoc(doc(db, 'packages', productId));
+  invalidateProductsCache();
   await logActivity('product_deleted', { productId });
 }
 
@@ -1003,6 +1043,27 @@ export async function updateBookingTripTypesSettings(data) {
   await logActivity('booking_trip_types_updated', { count: options.length });
 }
 
+export async function getBookingLocationsSettings() {
+  try {
+    const snap = await getDoc(doc(db, 'siteSettings', 'bookingLocations'));
+    if (!snap.exists()) return null;
+    return snap.data();
+  } catch {
+    return null;
+  }
+}
+
+export async function updateBookingLocationsSettings(data) {
+  const cities = Array.isArray(data?.cities) ? data.cities : [];
+  const routes = Array.isArray(data?.routes) ? data.routes : [];
+  await setDoc(doc(db, 'siteSettings', 'bookingLocations'), {
+    cities,
+    routes,
+    updatedAt: serverTimestamp(),
+  }, { merge: false });
+  await logActivity('booking_locations_updated', { cities: cities.length, routes: routes.length });
+}
+
 export async function getReligiousToursSettings() {
   try {
     const snap = await getDoc(doc(db, 'siteSettings', 'religiousTours'));
@@ -1145,8 +1206,8 @@ function replaceCarNamePrefix(fullName, oldName, newName) {
   return full.split(prev).join(next);
 }
 
-export async function getAllCars(maxItems = 20) {
-  const size = Math.max(1, Math.min(50, Number(maxItems) || 20));
+export async function getAllCars(maxItems = 50) {
+  const size = Math.max(1, Math.min(100, Number(maxItems) || 50));
   try {
     const q = query(collection(db, 'vehicles'), orderBy('sortOrder', 'asc'), limit(size));
     const snapshot = await getDocs(q);
@@ -1196,6 +1257,7 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}) {
     vip: Boolean(data.vip),
     sortOrder: Number(data.sortOrder) || 0,
     active: data.active !== false,
+    forms: data.forms || { booking: true, instantPrice: true, religiousTours: true },
   });
 
   const products = await getAllProducts();
@@ -1230,6 +1292,94 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}) {
 
   await logActivity('car_synced_packages', { carId: id, count: matching.length });
   return matching.length;
+}
+
+/**
+ * Create a new car + clone all route packages from a reference car (same SAR prices).
+ */
+export async function createCarWithPackages(data) {
+  const id = String(data.carId || '').trim().toLowerCase();
+  if (!id || !/^[a-z0-9-]+$/.test(id)) {
+    throw new Error('Car ID must be lowercase letters, numbers, and hyphens only.');
+  }
+
+  const existing = await getDoc(doc(db, 'vehicles', id));
+  if (existing.exists()) {
+    throw new Error('A car with this ID already exists.');
+  }
+
+  const nameEn = String(data.nameEn || '').trim();
+  const nameAr = String(data.nameAr || '').trim();
+  const imageUrl = String(data.imageUrl || '').trim();
+  if (!nameEn || !nameAr) throw new Error('English and Arabic names are required.');
+  if (!imageUrl) throw new Error('Car image is required.');
+
+  const priceFromCarId = String(data.priceFromCarId || 'camry').trim();
+  const refEn = String(data.refNameEn || '').trim();
+  const refAr = String(data.refNameAr || '').trim();
+  const allProducts = await getAllProducts(600);
+  const templates = allProducts.filter(
+    (p) => String(p.vehicleKey || '').split('-')[0] === priceFromCarId,
+  );
+  if (!templates.length) {
+    throw new Error(`No route prices found for "${priceFromCarId}". Import default cars first.`);
+  }
+
+  const forms = data.forms || { booking: true, instantPrice: true, religiousTours: true };
+  const maxSort = allProducts.length
+    ? Math.max(...(await getAllCars()).map((c) => Number(c.sortOrder) || 0), 0)
+    : BOOKING_CAR_TYPES.length;
+
+  await upsertCar(id, {
+    nameEn,
+    nameAr,
+    modelEn: data.modelEn || nameEn,
+    modelAr: data.modelAr || nameAr,
+    imageUrl,
+    passengers: Number(data.passengers) || 4,
+    vip: Boolean(data.vip),
+    sortOrder: Number(data.sortOrder) ?? maxSort + 1,
+    active: true,
+    forms,
+    custom: true,
+  });
+
+  let created = 0;
+  const existingKeys = new Set(
+    allProducts.map((p) => `${p.routeId}::${p.vehicleKey}`),
+  );
+
+  for (const p of templates) {
+    const oldKey = String(p.vehicleKey || priceFromCarId);
+    const dash = oldKey.indexOf('-');
+    const suffix = dash >= 0 ? oldKey.slice(dash) : '';
+    const newVehicleKey = `${id}${suffix}`;
+    const dedupeKey = `${p.routeId}::${newVehicleKey}`;
+    if (existingKeys.has(dedupeKey)) continue;
+
+    const { id: _drop, createdAt, updatedAt, ...rest } = p;
+    await createProduct({
+      ...rest,
+      vehicleKey: newVehicleKey,
+      carModelEn: nameEn,
+      carModelAr: nameAr,
+      imageUrl,
+      passengers: Number(data.passengers) || p.passengers || 4,
+      vip: Boolean(data.vip),
+      nameEn: refEn
+        ? replaceCarNamePrefix(p.nameEn, refEn, nameEn)
+        : (p.nameEn || nameEn),
+      nameAr: refAr
+        ? replaceCarNamePrefix(p.nameAr, refAr, nameAr)
+        : (p.nameAr || nameAr),
+      active: p.active !== false,
+    });
+    existingKeys.add(dedupeKey);
+    created += 1;
+  }
+
+  await logActivity('car_created', { carId: id, packages: created, priceFrom: priceFromCarId });
+  return { id, packagesCreated: created };
 }
 
 export async function seedDefaultCars(defaults = getDefaultCarCatalog()) {

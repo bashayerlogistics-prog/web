@@ -1,15 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   MapPin,
   Calendar,
-  ChevronDown,
   Search,
   Sparkles,
   MessageCircle,
-  ArrowLeft,
-  Loader2,
   Landmark,
   CheckCircle2,
   X,
@@ -17,7 +14,6 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import {
-  CITIES,
   CONTACT,
   getCarDisplayName,
   BOOKING_PASSENGER_OPTIONS,
@@ -27,12 +23,20 @@ import {
 } from '../../data/staticData';
 import { DEFAULT_RELIGIOUS_TOURS } from '../../data/religiousTours';
 import { resolveHourlyRouteId, getHourlyDurationsForCity } from '../../utils/bookingHelpers';
-import { filterVehiclesByCarType } from '../../utils/fleetHelpers';
+import { getDefaultBookingCities } from '../../data/bookingLocations';
+import {
+  getBookingPreviewVehicle,
+  resolveBookingSearchRouteId,
+} from '../../utils/bookingSearchNav';
+import { prefetchRoute } from '../../utils/prefetchRoutes';
+import { getCarTypesForForm } from '../../utils/carCatalogHelpers';
 import { useSiteContent } from '../../context/SiteContentContext';
 import { useToast } from '../../context/ToastContext';
 import { usePublicTripTypes } from '../../hooks/usePublicTripTypes';
+import { useBookingLocations } from '../../hooks/useBookingLocations';
 import { stashPendingTripType } from '../../data/bookingTripTypes';
 import BookingTripDetails from './BookingTripDetails';
+import CustomSelect from '../ui/CustomSelect';
 
 function shortVehicleName(vehicle, lang) {
   const key = String(vehicle?.id || '').split('-')[0];
@@ -61,9 +65,6 @@ function pick(cms, key, lang) {
 }
 
 const today = () => new Date().toISOString().split('T')[0];
-
-const TOUR_CITY_IDS = ['1', '5', '2', '4'];
-const TOUR_CITIES = TOUR_CITY_IDS.map((id) => CITIES.find((city) => city.id === id)).filter(Boolean);
 
 const labelClass =
   'block text-[11px] sm:text-xs font-bold tracking-[0.12em] uppercase text-brand/55 mb-1.5';
@@ -104,92 +105,17 @@ const CITY_VISUALS = [
   },
 ];
 
-/** Custom select that always opens downward (native select cannot force direction). */
-function DownSelect({
-  value,
-  onChange,
-  options,
-  icon: Icon,
-  iconSide = 'end',
-  required,
-  'aria-label': ariaLabel,
-}) {
-  const listId = useId();
-  const rootRef = useRef(null);
-  const [open, setOpen] = useState(false);
-
-  const selected = options.find((o) => String(o.value) === String(value)) || options[0];
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDoc = (e) => {
-      if (!rootRef.current?.contains(e.target)) setOpen(false);
-    };
-    const onKey = (e) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onDoc);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDoc);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  return (
-    <div className={`rt-select ${open ? 'rt-select--open' : ''}`} ref={rootRef}>
-      <button
-        type="button"
-        className={`rt-select__trigger ${iconSide === 'start' ? 'rt-select__trigger--icon-start' : ''}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-label={ariaLabel}
-        aria-required={required || undefined}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-        }}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="rt-select__value">{selected?.label ?? ''}</span>
-        {Icon ? (
-          <Icon className={`rt-select__icon rt-select__icon--${iconSide}`} aria-hidden />
-        ) : (
-          <ChevronDown className={`rt-select__icon rt-select__icon--${iconSide}`} aria-hidden />
-        )}
-      </button>
-
-      {open && (
-        <ul id={listId} role="listbox" className="rt-select__menu" tabIndex={-1}>
-          {options.map((opt) => {
-            const active = String(opt.value) === String(value);
-            return (
-              <li key={String(opt.value)} role="option" aria-selected={active}>
-                <button
-                  type="button"
-                  className={`rt-select__option ${active ? 'rt-select__option--active' : ''}`}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                >
-                  {opt.label}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export default function ReligiousToursSection() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { religiousTours: cmsRaw, carCatalog, fleetRoutes, fleet } = useSiteContent();
+  const { ziyaratCities: ziyaratCitiesRaw, cityName: resolveCityName } = useBookingLocations();
+  const ziyaratCities = ziyaratCitiesRaw.length
+    ? ziyaratCitiesRaw
+    : getDefaultBookingCities()
+      .filter((c) => c.forms?.ziyarat !== false)
+      .map((c) => ({ id: String(c.id), ar: c.ar, en: c.en, key: c.key }));
   const cms = cmsRaw || DEFAULT_RELIGIOUS_TOURS;
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
   const { tripTypes: TRIP_TYPES, tripType, setTripType, formFields } = usePublicTripTypes('religiousTours', lang);
@@ -199,13 +125,21 @@ export default function ReligiousToursSection() {
   const isHourlyTrip = tripType === 'hourly';
   const cityVisuals = useMemo(
     () =>
-      CITY_VISUALS.map((item) => {
+      ziyaratCities.map((city) => {
+        const base = CITY_VISUALS.find((item) => item.id === city.id) || {
+          id: city.id,
+          imageKey: city.key || 'makkah',
+          labelEn: city.en,
+          labelAr: city.ar,
+          descriptionEn: city.en,
+          descriptionAr: city.ar,
+        };
         const src =
-          cms?.cityImages?.[item.imageKey] ||
-          DEFAULT_RELIGIOUS_TOURS.cityImages[item.imageKey];
-        return { ...item, src, full: src };
+          cms?.cityImages?.[base.imageKey] ||
+          DEFAULT_RELIGIOUS_TOURS.cityImages[base.imageKey];
+        return { ...base, src, full: src };
       }),
-    [cms],
+    [cms, ziyaratCities],
   );
 
   const [from, setFrom] = useState('1');
@@ -213,16 +147,19 @@ export default function ReligiousToursSection() {
   const [date, setDate] = useState(today());
   const [passengers, setPassengers] = useState(DEFAULT_BOOKING_PASSENGERS);
   const [carType, setCarType] = useState(DEFAULT_BOOKING_CAR_TYPE);
-  const [searching, setSearching] = useState(false);
-  const [quoteReady, setQuoteReady] = useState(false);
-  const [quoteVehicles, setQuoteVehicles] = useState([]);
-  const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [lightboxIndex, setLightboxIndex] = useState(null);
 
   const lightboxOpen = lightboxIndex !== null;
   const selectedVisualIndex = Math.max(0, cityVisuals.findIndex((item) => item.id === from));
-  const selectedVisual = cityVisuals[selectedVisualIndex];
+  const selectedVisual = cityVisuals[selectedVisualIndex] || cityVisuals[0] || null;
   const activeVisual = lightboxOpen ? cityVisuals[lightboxIndex] : null;
+
+  useEffect(() => {
+    if (!ziyaratCities.length) return;
+    if (!ziyaratCities.some((c) => String(c.id) === String(from))) {
+      setFrom(String(ziyaratCities[0].id));
+    }
+  }, [ziyaratCities, from]);
 
   useEffect(() => {
     if (!lightboxOpen) return undefined;
@@ -265,46 +202,34 @@ export default function ReligiousToursSection() {
   );
 
   const cityOptions = useMemo(
-    () => TOUR_CITIES.map((c) => ({ value: c.id, label: c[lang] || c.ar })),
-    [lang],
+    () => ziyaratCities.map((c) => ({ value: c.id, label: c[lang] || c.ar || c.en })),
+    [ziyaratCities, lang],
   );
 
   const hourOptions = useMemo(
-    () => {
-      const availableHours = getHourlyDurationsForCity(from, fleetRoutes);
-      const durations = from === '4' && availableHours.length === 0 ? [4, 8, 12] : availableHours;
-      return durations.map((h) => ({
-        value: String(h),
-        label: `${h} ${h === 1 ? t('booking.hour') : t('booking.hours_plural')}`,
-      }));
-    },
+    () => getHourlyDurationsForCity(from, fleetRoutes).map((h) => ({
+      value: String(h),
+      label: `${h} ${h === 1 ? t('booking.hour') : t('booking.hours_plural')}`,
+    })),
     [from, fleetRoutes, t],
   );
 
   const passengerOptions = useMemo(
-    () => BOOKING_PASSENGER_OPTIONS.map((n) => ({ value: n, label: String(n) })),
+    () => BOOKING_PASSENGER_OPTIONS.map((n) => ({ value: String(n), label: String(n) })),
     [],
   );
 
-  const carTypes = useMemo(() => {
-    const live = (carCatalog || [])
-      .filter((c) => c?.active !== false && c?.id)
-      .map((c) => String(c.id));
-    if (!live.length) return BOOKING_CAR_TYPES;
-    const ordered = BOOKING_CAR_TYPES.filter((id) => live.includes(id));
-    const extras = live.filter((id) => !BOOKING_CAR_TYPES.includes(id));
-    return ordered.length ? [...ordered, ...extras] : BOOKING_CAR_TYPES;
-  }, [carCatalog]);
+  const carTypes = useMemo(
+    () => getCarTypesForForm(carCatalog, 'religiousTours'),
+    [carCatalog],
+  );
 
   const carOptions = useMemo(
-    () => [
-      { value: '', label: copy.carOption },
-      ...carTypes.map((key) => ({
-        value: key,
-        label: getCarDisplayName(key, lang),
-      })),
-    ],
-    [copy.carOption, lang, carTypes, carCatalog],
+    () => carTypes.map((key) => ({
+      value: key,
+      label: getCarDisplayName(key, lang),
+    })),
+    [lang, carTypes, carCatalog],
   );
 
   useEffect(() => {
@@ -319,25 +244,38 @@ export default function ReligiousToursSection() {
     }
   }, [carTypes, carType]);
 
-  const selectedVehicle =
-    quoteVehicles.find((v) => v.id === selectedVehicleId) || quoteVehicles[0] || null;
+  useEffect(() => {
+    prefetchRoute('/booking/search');
+  }, []);
 
-  const cityName = (id) => {
-    const c = CITIES.find((x) => x.id === id);
-    return c ? c[lang] || c.ar : id;
-  };
+  const previewRouteId = useMemo(
+    () => resolveBookingSearchRouteId({
+      tripType: 'hourly',
+      from,
+      hours,
+      hourlyDest: 'internal',
+    }),
+    [from, hours],
+  );
+
+  const previewVehicle = useMemo(
+    () => getBookingPreviewVehicle(fleet, previewRouteId, carType),
+    [fleet, previewRouteId, carType],
+  );
+
+  const cityName = (id) => resolveCityName(id, lang);
 
   const routeDisplay = useMemo(() => cityName(from), [from, lang]);
 
   const tripDetailRows = useMemo(() => {
     if (!isHourlyTrip) return [];
-    const priceValue = quoteReady && selectedVehicle
-      ? (selectedVehicle.hidePrice
+    const priceValue = previewVehicle
+      ? (previewVehicle.hidePrice
         ? t('booking.contactForPrice')
-        : formatPriceDisplay(selectedVehicle, t('booking.sar')))
+        : formatPriceDisplay(previewVehicle, t('booking.sar')))
       : '';
-    const carValue = selectedVehicle
-      ? shortVehicleName(selectedVehicle, lang)
+    const carValue = previewVehicle
+      ? shortVehicleName(previewVehicle, lang)
       : (carType ? shortVehicleName({ id: carType }, lang) : '');
 
     return [
@@ -384,18 +322,8 @@ export default function ReligiousToursSection() {
     ];
   }, [
     isHourlyTrip, from, date, hours, passengers, carType, routeDisplay,
-    quoteReady, selectedVehicle, formFields, copy, lang, t,
+    previewVehicle, formFields, copy, lang, t,
   ]);
-
-  const clearQuote = () => {
-    setQuoteReady(false);
-    setQuoteVehicles([]);
-    setSelectedVehicleId('');
-  };
-
-  useEffect(() => {
-    clearQuote();
-  }, [from, hours, date, passengers, carType]);
 
   const buildParams = (vehicleId) => {
     const routeId = resolveHourlyRouteId(from, 'internal', Number(hours));
@@ -418,41 +346,18 @@ export default function ReligiousToursSection() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (searching) return;
     if (!from) {
       toast.warning(t('instantPrice.needFrom'));
       return;
     }
-
-    setSearching(true);
-    toast.success(t('instantPrice.searchingPrices'), 1800);
-    window.setTimeout(() => {
-      if (from === '4') {
-        setQuoteVehicles([]);
-        setSelectedVehicleId('');
-        setQuoteReady(true);
-        setSearching(false);
-        return;
-      }
-      const routeId = resolveHourlyRouteId(from, 'internal', Number(hours));
-      const all = fleet?.getVehiclesForRoute?.(routeId) || [];
-      const vehicles = filterVehiclesByCarType(all, carType);
-      setQuoteVehicles(vehicles);
-      setSelectedVehicleId(vehicles[0]?.id || '');
-      setQuoteReady(true);
-      setSearching(false);
-    }, 450);
-  };
-
-  const handleContinueBooking = () => {
-    navigate(`/booking/search?${buildParams(selectedVehicle?.id || '').toString()}`);
+    navigate(`/booking/search?${buildParams(previewVehicle?.id || '').toString()}`);
   };
 
   const handleWhatsAppOrder = () => {
-    const priceText = selectedVehicle
-      ? formatPriceDisplay(selectedVehicle, t('booking.sar')) || t('booking.contactForPrice')
+    const priceText = previewVehicle
+      ? formatPriceDisplay(previewVehicle, t('booking.sar')) || t('booking.contactForPrice')
       : '—';
-    const car = selectedVehicle ? shortVehicleName(selectedVehicle, lang) : '—';
+    const car = previewVehicle ? shortVehicleName(previewVehicle, lang) : '—';
     const msg =
       lang === 'ar'
         ? `السلام عليكم، أرغب بحجز جولة مواقع دينية:\n${routeDisplay}\nالتاريخ: ${date}\nالمدة: ${hours} ساعات\nالركاب: ${passengers}\nالسيارة: ${car}\nالسعر التقريبي: ${priceText}`
@@ -471,7 +376,7 @@ export default function ReligiousToursSection() {
       <div className="section-container relative z-10 py-10 sm:py-12 md:py-16">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 xl:gap-10 items-stretch">
           <div className="lg:col-span-5 xl:col-span-5 order-1">
-            <div className="rt-card h-full">
+            <div className="rt-card h-full" data-dropdown-scope>
               <div className="flex items-center gap-3 mb-4 sm:mb-5">
                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-gold to-gold-dark flex items-center justify-center shrink-0">
                   <Landmark className="w-5 h-5 text-brand-dark" />
@@ -537,7 +442,8 @@ export default function ReligiousToursSection() {
                 {showField('location') && (
                 <div>
                   <label className={labelClass}>{fieldLabel('location', copy.locationLabel)}</label>
-                  <DownSelect
+                  <CustomSelect
+                    variant="light"
                     value={from}
                     onChange={setFrom}
                     options={cityOptions}
@@ -569,7 +475,8 @@ export default function ReligiousToursSection() {
                 {showField('hours') && (
                 <div>
                   <label className={labelClass}>{fieldLabel('hours', t('booking.hours'))}</label>
-                  <DownSelect
+                  <CustomSelect
+                    variant="light"
                     value={hours}
                     onChange={setHours}
                     options={hourOptions}
@@ -583,7 +490,8 @@ export default function ReligiousToursSection() {
                   {showField('passengers') && (
                   <div>
                     <label className={labelClass}>{fieldLabel('passengers', copy.passengersLabel)}</label>
-                    <DownSelect
+                    <CustomSelect
+                      variant="light"
                       value={passengers}
                       onChange={(v) => setPassengers(Number(v))}
                       options={passengerOptions}
@@ -595,7 +503,8 @@ export default function ReligiousToursSection() {
                   {showField('car') && (
                   <div>
                     <label className={labelClass}>{fieldLabel('car', copy.carLabel)}</label>
-                    <DownSelect
+                    <CustomSelect
+                      variant="light"
                       value={carType}
                       onChange={setCarType}
                       options={carOptions}
@@ -608,95 +517,26 @@ export default function ReligiousToursSection() {
 
                 <BookingTripDetails rows={tripDetailRows} className="mt-1" />
 
-                <button type="submit" disabled={searching} className="rt-cta group">
-                  {searching ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Search className="w-4 h-4 transition-transform group-hover:scale-110" />
-                  )}
-                  <span>{searching ? t('instantPrice.searching') : copy.cta}</span>
+                <button type="submit" className="rt-cta group">
+                  <Search className="w-4 h-4 transition-transform group-hover:scale-110" />
+                  <span>{copy.cta}</span>
                 </button>
 
-                {quoteReady && (
-                  <div className="rt-quote" role="region" aria-live="polite">
-                    {quoteVehicles.length === 0 ? (
-                      <p className="text-sm text-brand/65 text-center py-2 mb-2">
-                        {t('instantPrice.noVehicles')}
-                      </p>
-                    ) : (
-                      <>
-                        {showField('price') && (
-                        <div className="rt-quote__estimate">
-                          <p className="rt-quote__label">{fieldLabel('price', t('instantPrice.estimatedPrice'))}</p>
-                          <p className="rt-quote__amount" dir="ltr">
-                            {selectedVehicle?.hidePrice
-                              ? t('booking.contactForPrice')
-                              : formatPriceDisplay(selectedVehicle, t('booking.sar'))}
-                          </p>
-                        </div>
-                        )}
-
-                        <div className="rt-quote__cars">
-                          {quoteVehicles.map((vehicle, index) => {
-                            const active = vehicle.id === selectedVehicle?.id;
-                            const badge =
-                              index === 0 ? t('instantPrice.bestPrice') : t('instantPrice.comfortOption');
-                            return (
-                              <button
-                                key={vehicle.id}
-                                type="button"
-                                onClick={() => setSelectedVehicleId(vehicle.id)}
-                                className={`rt-quote__car ${active ? 'rt-quote__car--active' : ''}`}
-                              >
-                                <span className="rt-quote__car-badge">{badge}</span>
-                                <span className="rt-quote__car-name">
-                                  {shortVehicleName(vehicle, lang)}
-                                </span>
-                                <span className="rt-quote__car-price" dir="ltr">
-                                  {vehicle.hidePrice
-                                    ? t('booking.contactForPrice')
-                                    : formatPriceDisplay(vehicle, t('booking.sar'))}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-
-                    <div
-                      className={`rt-quote__actions ${
-                        quoteVehicles.length === 0 ? 'rt-quote__actions--single' : ''
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={handleWhatsAppOrder}
-                        className="rt-quote__btn rt-quote__btn--whatsapp"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                        {t('instantPrice.bookWhatsApp')}
-                      </button>
-                      {quoteVehicles.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleContinueBooking}
-                          className="rt-quote__btn rt-quote__btn--booking"
-                        >
-                          {t('instantPrice.continueBooking')}
-                          <ArrowLeft className="w-4 h-4 ltr:rotate-180" />
-                        </button>
-                      )}
-                    </div>
-                    <p className="rt-quote__note">{t('religiousTours.priceNote')}</p>
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={handleWhatsAppOrder}
+                  className="rt-quote__btn rt-quote__btn--whatsapp w-full mt-2"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  {t('instantPrice.bookWhatsApp')}
+                </button>
               </form>
               )}
             </div>
           </div>
 
           <div className="lg:col-span-7 xl:col-span-7 order-2 flex flex-col gap-4 sm:gap-5">
+            {selectedVisual && (
             <div className="rt-city-gallery">
               <figure className="rt-city-gallery__featured">
                 <button
@@ -749,6 +589,7 @@ export default function ReligiousToursSection() {
                 })}
               </div>
             </div>
+            )}
 
             <div className="rt-copy">
               <p className="rt-copy__eyebrow">

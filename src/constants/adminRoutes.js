@@ -20,6 +20,8 @@ export const ADMIN_CHILD_ROUTES = new Set([
   'sections',
   'hero',
   'trip-types',
+  'booking-locations',
+  'booking-forms',
   'backgrounds',
   'banners',
   'gallery',

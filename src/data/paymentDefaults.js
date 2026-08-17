@@ -1,11 +1,14 @@
 import { CONTACT, BRAND } from './staticData';
 
+export const DEFAULT_CURRENCY = 'SAR';
+
 export const createEmptySaudiBank = () => ({
   id: `bank-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   bankName: { ar: '', en: '' },
   accountHolder: { ar: '', en: '' },
   iban: '',
   accountNumber: '',
+  swiftBic: '',
   isDefault: false,
   active: true,
 });
@@ -45,8 +48,16 @@ export const DEFAULT_PAYMENT_SETTINGS = {
     webhookUrl: '',
   },
   gateway: {
-    provider: '',
+    provider: 'moyasar',
     publishableKey: '',
+  },
+  moyasar: {
+    enabled: false,
+    visa: true,
+    mastercard: true,
+    mada: true,
+    applePay: true,
+    stcPay: true,
   },
 };
 
@@ -54,12 +65,15 @@ export const PAYMENT_METHODS = {
   WHATSAPP: 'whatsapp',
   BANK_TRANSFER: 'bank_transfer',
   ONLINE_GATEWAY: 'online_gateway',
+  MOYASAR: 'moyasar',
 };
 
 export const PAYMENT_STATUSES = {
   PENDING: 'pending',
   PROOF_SUBMITTED: 'proof_submitted',
   PAID: 'paid',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
   REJECTED: 'rejected',
   REFUNDED: 'refunded',
 };

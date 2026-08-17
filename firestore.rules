@@ -96,21 +96,133 @@ service cloud.firestore {
         && request.resource.data.last == resource.data.get('last', 0) + 1;
     }
 
+    // Order emails: signed-in users may only queue mail to their own address.
+    // payment_confirmed / admin blasts stay admin-only.
     function isValidEmailQueueCreate() {
       return isSignedIn()
+        && request.auth.token.email is string
+        && request.resource.data.keys()
+          .hasOnly([
+            'to', 'subject', 'html', 'text', 'from', 'fromName', 'replyTo',
+            'type', 'bookingId', 'orderNumber', 'status', 'createdAt'
+          ])
         && request.resource.data.status == 'queued'
         && request.resource.data.to is string
         && request.resource.data.to.size() > 3
         && request.resource.data.to.size() < 200
+        && request.resource.data.to.lower() == request.auth.token.email.lower()
         && request.resource.data.subject is string
         && request.resource.data.subject.size() > 0
         && request.resource.data.subject.size() < 300
         && request.resource.data.html is string
         && request.resource.data.html.size() > 0
         && request.resource.data.html.size() < 100000
+        && request.resource.data.type in ['order_placed', 'payment_pending']
+        && (
+          !('from' in request.resource.data)
+          || request.resource.data.from == null
+          || (
+            request.resource.data.from is string
+            && request.resource.data.from.size() < 200
+          )
+        )
+        && (
+          !('fromName' in request.resource.data)
+          || request.resource.data.fromName == null
+          || (
+            request.resource.data.fromName is string
+            && request.resource.data.fromName.size() < 120
+          )
+        )
+        && (
+          !('replyTo' in request.resource.data)
+          || request.resource.data.replyTo == null
+          || (
+            request.resource.data.replyTo is string
+            && request.resource.data.replyTo.size() < 200
+          )
+        )
+        && (
+          !('bookingId' in request.resource.data)
+          || request.resource.data.bookingId == null
+          || (
+            request.resource.data.bookingId is string
+            && request.resource.data.bookingId.size() < 128
+          )
+        );
+    }
+
+    function isValidUserActivityCreate() {
+      return isSignedIn()
+        && request.resource.data.keys().hasOnly(['type', 'data', 'createdAt'])
+        && request.resource.data.type in [
+          'booking_created',
+          'price_request_created',
+          'payment_proof_submitted'
+        ];
+    }
+
+    function isValidSelfNotificationCreate() {
+      return isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.read == false
         && request.resource.data.type is string
-        && request.resource.data.type.size() > 0
-        && request.resource.data.type.size() < 80;
+        && request.resource.data.type in ['payment_update', 'order_update', 'general']
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() < 200
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() < 2000
+        && (
+          !('titleAr' in request.resource.data)
+          || (
+            request.resource.data.titleAr is string
+            && request.resource.data.titleAr.size() < 200
+          )
+        )
+        && (
+          !('messageAr' in request.resource.data)
+          || (
+            request.resource.data.messageAr is string
+            && request.resource.data.messageAr.size() < 2000
+          )
+        )
+        && (
+          !('bookingId' in request.resource.data)
+          || request.resource.data.bookingId == null
+          || (
+            request.resource.data.bookingId is string
+            && request.resource.data.bookingId.size() < 128
+          )
+        );
+    }
+
+    function isValidGuestChatCreate() {
+      return request.resource.data.keys()
+          .hasOnly([
+            'conversationId', 'senderId', 'senderName', 'senderRole',
+            'message', 'read', 'createdAt'
+          ])
+        && request.resource.data.senderRole in ['user', 'guest']
+        && request.resource.data.read == false
+        && request.resource.data.conversationId is string
+        && request.resource.data.conversationId.size() > 8
+        && request.resource.data.conversationId.size() < 128
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() < 2000
+        && request.resource.data.senderName is string
+        && request.resource.data.senderName.size() > 0
+        && request.resource.data.senderName.size() < 80
+        && (
+          !('senderId' in request.resource.data)
+          || request.resource.data.senderId == null
+          || (
+            request.resource.data.senderId is string
+            && request.resource.data.senderId.size() < 128
+          )
+        );
     }
 
     // ── Users (Google/email signup writes own profile) ─────
@@ -145,7 +257,7 @@ service cloud.firestore {
 
       allow get: if isAdmin() || isBookingOwner();
 
-      // Admin: paginated/live queries (limit ≤ 100). Users: only own rows via where userId.
+      // Admin: paginated/live queries. Users: only own rows via where userId.
       allow list: if isAdmin()
         || (
           isSignedIn()
@@ -234,11 +346,7 @@ service cloud.firestore {
       allow list: if isAdmin()
         || (isSignedIn() && resource.data.userId == request.auth.uid && boundedList(50));
 
-      allow create: if isAdmin()
-        || (
-          isSignedIn()
-          && request.resource.data.userId == request.auth.uid
-        );
+      allow create: if isAdmin() || isValidSelfNotificationCreate();
 
       allow update: if isAdmin()
         || (
@@ -250,11 +358,9 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ── Activity log (no public dumps; create only while signed in) ──
+    // ── Activity log ──────────────────────────────────────
     match /activityLog/{logId} {
-      allow create: if isSignedIn()
-        && request.resource.data.type is string
-        && request.resource.data.type.size() < 80;
+      allow create: if isAdmin() || isValidUserActivityCreate();
       allow get, list: if isAdmin();
       allow update, delete: if isAdmin();
     }
@@ -269,26 +375,18 @@ service cloud.firestore {
 
     // ── Chat (guest widget + admin replies)
     // Guest widget queries by conversationId without auth — keep bounded list open
-    // (Firestore rules cannot require a where filter). Mark-read is admin-only.
+    // (Firestore rules cannot require a where filter). Create is tightly validated.
     match /chatMessages/{messageId} {
       allow get: if true;
       allow list: if isAdmin() || boundedList(100);
-      allow create: if isAdmin()
-        || (
-          request.resource.data.senderRole in ['user', 'guest']
-          && request.resource.data.conversationId is string
-          && request.resource.data.conversationId.size() > 8
-          && request.resource.data.conversationId.size() < 128
-          && request.resource.data.message is string
-          && request.resource.data.message.size() > 0
-          && request.resource.data.message.size() < 2000
-        );
+      allow create: if isAdmin() || isValidGuestChatCreate();
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isAdmin();
     }
 
     // ── Email queue ───────────────────────────────────────
+    // Admin (payment confirmed etc.) OR signed-in user emailing only themselves.
     match /emailQueue/{emailId} {
       allow create: if isAdmin() || isValidEmailQueueCreate();
       allow read, update, delete: if isAdmin();

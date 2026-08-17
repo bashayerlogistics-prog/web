@@ -60,6 +60,11 @@ function normalizePaymentSettings(data = {}) {
     accountHolder: defaultBank.accountHolder,
     iban: defaultBank.iban,
     accountNumber: defaultBank.accountNumber,
+    moyasar: {
+      ...DEFAULT_PAYMENT_SETTINGS.moyasar,
+      ...(data.moyasar || {}),
+      enabled: data.methods?.onlineGateway ?? DEFAULT_PAYMENT_SETTINGS.methods.onlineGateway,
+    },
   };
 }
 

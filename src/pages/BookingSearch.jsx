@@ -43,12 +43,13 @@ export default function BookingSearch() {
     let list = fleet.getVehiclesForRoute(routeId);
     if (vehicleKeyFromUrl) {
       const exact = list.filter((v) => v.id === vehicleKeyFromUrl);
-      if (exact.length) return exact.slice(0, 1);
+      if (exact.length) return exact;
     }
     if (carTypeFromUrl) {
-      return filterVehiclesByCarType(list, carTypeFromUrl);
+      const filtered = filterVehiclesByCarType(list, carTypeFromUrl);
+      if (filtered.length) return filtered;
     }
-    return list.slice(0, 1);
+    return list;
   }, [fleet, routeId, carTypeFromUrl, vehicleKeyFromUrl]);
 
   const preferredVehicleKey = useMemo(() => {
@@ -216,6 +217,11 @@ export default function BookingSearch() {
           {/* Vehicle grid */}
           <div className="lg:col-span-2 order-1 lg:order-2">
             <h2 className="text-base sm:text-lg font-black text-brand mb-4">{t('booking.chooseVehicle')}</h2>
+            {vehicles.length === 0 ? (
+              <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-gray-500 text-sm">
+                {t('instantPrice.noVehicles')}
+              </div>
+            ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
               {vehicles.map((vehicle) => {
                 const selected = selectedVehicleKey === vehicle.id;
@@ -266,6 +272,7 @@ export default function BookingSearch() {
                 );
               })}
             </div>
+            )}
           </div>
         </div>
       </div>

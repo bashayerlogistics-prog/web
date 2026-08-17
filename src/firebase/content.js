@@ -42,6 +42,10 @@ import {
   buildBookingTripTypesFromFirestore,
 } from '../data/bookingTripTypes';
 import {
+  DEFAULT_BOOKING_LOCATIONS,
+  buildBookingLocationsFromFirestore,
+} from '../data/bookingLocations';
+import {
   DEFAULT_TRAVEL_RESERVATIONS,
   buildTravelReservationsFromFirestore,
 } from '../data/travelReservations';
@@ -481,6 +485,7 @@ export const DEFAULT_INSTANT_PRICE = {
 };
 
 export { DEFAULT_BOOKING_TRIP_TYPES, buildBookingTripTypesFromFirestore };
+export { DEFAULT_BOOKING_LOCATIONS, buildBookingLocationsFromFirestore };
 
 export async function getBookingTripTypesContent() {
   try {
@@ -497,6 +502,25 @@ export function subscribeBookingTripTypesContent(onData, onError) {
     'bookingTripTypes',
     DEFAULT_BOOKING_TRIP_TYPES,
     (data) => onData(buildBookingTripTypesFromFirestore(data)),
+    onError,
+  );
+}
+
+export async function getBookingLocationsContent() {
+  try {
+    const snap = await getDoc(doc(db, 'siteSettings', 'bookingLocations'));
+    if (!snap.exists()) return buildBookingLocationsFromFirestore(null);
+    return buildBookingLocationsFromFirestore(snap.data());
+  } catch {
+    return buildBookingLocationsFromFirestore(null);
+  }
+}
+
+export function subscribeBookingLocationsContent(onData, onError) {
+  return subscribeSiteSettingDoc(
+    'bookingLocations',
+    DEFAULT_BOOKING_LOCATIONS,
+    (data) => onData(buildBookingLocationsFromFirestore(data)),
     onError,
   );
 }
