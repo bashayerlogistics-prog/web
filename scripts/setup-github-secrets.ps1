@@ -1,14 +1,20 @@
 # One-time: push local .env values into GitHub Actions secrets.
 # Requires: GitHub CLI logged in (`gh auth login`)
-# Does NOT set Hostinger FTP secrets — you add those once in GitHub UI.
+# Does NOT set Hostinger FTP secrets - those are already in GitHub UI.
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-  Write-Host "Install GitHub CLI first: winget install GitHub.cli"
-  exit 1
+$gh = Get-Command gh -ErrorAction SilentlyContinue
+if (-not $gh) {
+  $ghPath = "C:\Program Files\GitHub CLI\gh.exe"
+  if (Test-Path $ghPath) {
+    Set-Alias -Name gh -Value $ghPath -Scope Script
+  } else {
+    Write-Host "Install GitHub CLI first: winget install GitHub.cli"
+    exit 1
+  }
 }
 
 gh auth status | Out-Null
@@ -56,36 +62,34 @@ foreach ($k in $keys) {
   Write-Host "SET  $k"
 }
 
-# Firebase CI token
-Write-Host "Creating FIREBASE_TOKEN..."
-$token = npx --yes firebase-tools@latest login:ci --no-localhost 2>&1
-# login:ci is interactive — prefer existing token file if present
 if ($env:FIREBASE_TOKEN) {
   $env:FIREBASE_TOKEN | gh secret set FIREBASE_TOKEN
   Write-Host "SET  FIREBASE_TOKEN"
 } else {
-  Write-Host "SKIP FIREBASE_TOKEN — run: npx firebase login:ci"
+  Write-Host "SKIP FIREBASE_TOKEN - later run: npx firebase login:ci"
   Write-Host "Then: gh secret set FIREBASE_TOKEN"
 }
 
-# Optional Resend from functions/.env or prompt
 $resend = $env:RESEND_API_KEY
-if (-not $resend -and (Test-Path (Join-Path $root "functions\.env"))) {
-  Get-Content (Join-Path $root "functions\.env") | ForEach-Object {
-    if ($_ -match '^RESEND_API_KEY=(.+)$') { $resend = $Matches[1].Trim().Trim('"') }
+$functionsEnv = Join-Path $root "functions\.env"
+if (-not $resend -and (Test-Path $functionsEnv)) {
+  Get-Content $functionsEnv | ForEach-Object {
+    if ($_ -match '^RESEND_API_KEY=(.+)$') {
+      $resend = $Matches[1].Trim().Trim('"')
+    }
   }
 }
 if ($resend) {
   $resend | gh secret set RESEND_API_KEY
   Write-Host "SET  RESEND_API_KEY"
 } else {
-  Write-Host "SKIP RESEND_API_KEY — set manually or `$env:RESEND_API_KEY='re_...' then re-run"
+  Write-Host "SKIP RESEND_API_KEY - set later if order emails fail"
 }
 
 Write-Host ""
 Write-Host "Done with .env secrets."
-Write-Host "STILL ADD IN GITHUB UI (Hostinger FTP):"
+Write-Host "FTP secrets should already exist:"
 Write-Host "  HOSTINGER_FTP_HOST"
 Write-Host "  HOSTINGER_FTP_USER"
 Write-Host "  HOSTINGER_FTP_PASSWORD"
-Write-Host "  HOSTINGER_FTP_PATH = public_html/"
+Write-Host "  HOSTINGER_FTP_PATH"
