@@ -13,20 +13,36 @@ import {
 import { HOURLY_FLEET_ROUTES } from '../data/hourlyPricing';
 import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
 import { DEFAULT_HOME_SECTIONS, mergeHomeSections } from '../data/homeSections';
+import { DEFAULT_BOOKING_TRIP_TYPES, buildBookingTripTypesFromFirestore } from '../data/bookingTripTypes';
+import {
+  DEFAULT_TRAVEL_RESERVATIONS,
+  buildTravelReservationsFromFirestore,
+} from '../data/travelReservations';
 import {
   buildHeroFromFirestore,
   buildInstantPriceFromFirestore,
   buildReligiousToursFromFirestore,
   buildGalleryHeroFromFirestore,
+  buildFooterCreditFromFirestore,
   DEFAULT_HERO,
   DEFAULT_INSTANT_PRICE,
   DEFAULT_GALLERY_HERO,
+  DEFAULT_FOOTER_CREDIT,
 } from '../firebase/content';
 
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v16';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v25';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
+  'bashayer-site-content-v24',
+  'bashayer-site-content-v23',
+  'bashayer-site-content-v22',
+  'bashayer-site-content-v21',
+  'bashayer-site-content-v20',
+  'bashayer-site-content-v19',
+  'bashayer-site-content-v18',
+  'bashayer-site-content-v17',
+  'bashayer-site-content-v16',
   'bashayer-site-content-v15',
   'bashayer-site-content-v14',
   'bashayer-site-content-v13',
@@ -47,6 +63,17 @@ function pickNonEmptyArray(value, fallback) {
   return Array.isArray(value) && value.length > 0 ? value : fallback;
 }
 
+/** Keep service-guide blog card images in sync with static defaults. */
+function mergeBlogImagesFromDefaults(blogs) {
+  const byService = new Map(BLOG_POSTS.map((post) => [post.serviceId, post]));
+  return (Array.isArray(blogs) ? blogs : []).map((blog) => {
+    const def = blog?.serviceId ? byService.get(blog.serviceId) : null;
+    if (!def?.image) return blog;
+    if (blog.image === def.image) return blog;
+    return { ...blog, image: def.image };
+  });
+}
+
 /**
  * Repair cached snapshots so empty arrays / partial sections never blank the homepage.
  */
@@ -56,17 +83,22 @@ export function sanitizeSiteContentCache(data) {
   return {
     fleetRoutes: pickNonEmptyArray(data.fleetRoutes, STATIC_FLEET),
     services: pickNonEmptyArray(data.services, SERVICES),
-    blogs: pickNonEmptyArray(data.blogs, BLOG_POSTS),
+    blogs: mergeBlogImagesFromDefaults(pickNonEmptyArray(data.blogs, BLOG_POSTS)),
     routeCards: pickNonEmptyArray(data.routeCards, ROUTE_CARDS),
     faqItems: pickNonEmptyArray(data.faqItems, FAQ_ITEMS),
     socialLinks: mergeSocialLinks(pickNonEmptyArray(data.socialLinks, SOCIAL_LINKS)),
     galleryItems: pickNonEmptyArray(data.galleryItems, DEFAULT_GALLERY_ITEMS),
+    travelReservations: buildTravelReservationsFromFirestore(
+      pickNonEmptyArray(data.travelReservations, DEFAULT_TRAVEL_RESERVATIONS),
+    ),
     carCatalog: pickNonEmptyArray(data.carCatalog, getDefaultCarCatalog()),
     sections: mergeHomeSections(data.sections || {}),
     hero: buildHeroFromFirestore(data.hero ?? null),
     instantPrice: buildInstantPriceFromFirestore(data.instantPrice ?? null),
     religiousTours: buildReligiousToursFromFirestore(data.religiousTours ?? null),
     galleryHero: buildGalleryHeroFromFirestore(data.galleryHero ?? null),
+    bookingTripTypes: buildBookingTripTypesFromFirestore(data.bookingTripTypes ?? null),
+    footerCredit: buildFooterCreditFromFirestore(data.footerCredit ?? null),
   };
 }
 
@@ -80,12 +112,15 @@ export function defaultSiteContentSnapshot() {
     faqItems: FAQ_ITEMS,
     socialLinks: SOCIAL_LINKS,
     galleryItems: DEFAULT_GALLERY_ITEMS,
+    travelReservations: DEFAULT_TRAVEL_RESERVATIONS,
     carCatalog: getDefaultCarCatalog(),
     sections: DEFAULT_HOME_SECTIONS,
     hero: DEFAULT_HERO,
     instantPrice: DEFAULT_INSTANT_PRICE,
     religiousTours: DEFAULT_RELIGIOUS_TOURS,
     galleryHero: DEFAULT_GALLERY_HERO,
+    bookingTripTypes: DEFAULT_BOOKING_TRIP_TYPES,
+    footerCredit: DEFAULT_FOOTER_CREDIT,
   });
 }
 

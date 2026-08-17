@@ -80,7 +80,8 @@
     "routePlaceholder": "e.g. Jeddah Airport to Makkah...",
     "passengersLabel": "Passengers:",
     "dateTimeLabel": "Date & Time:",
-    "oneWay": "Moving Between Cities",
+    "betweenCities": "Moving Between Cities",
+    "oneWay": "One Way",
     "roundTrip": "Round Trip",
     "roundTripRoute": "Airport / train station route",
     "hourly": "Hourly",
@@ -300,6 +301,7 @@
     "copyright": "© 2026 Bashayer Al-Ataa Land Transport Company. All rights reserved",
     "privacy": "Privacy Policy",
     "terms": "Terms & Conditions",
+    "designedBy": "Design by",
     "developedBy": "Developed by",
     "license": "License Number",
     "knownNumber": "Known Number",
@@ -340,8 +342,10 @@
     "backToLogin": "Back to Login",
     "logout": "Logout",
     "rememberMe": "Remember me",
-    "loginSubtitle": "Sign in to manage your bookings — use the same method you registered with",
-    "registerSubtitle": "Create your account in seconds — or use Google (no password)",
+    "loginSubtitle": "Sign in with a secure code sent to your email — no password",
+    "registerSubtitle": "Create your account with your name, mobile and verified email",
+    "otpSentHint": "We will email a branded OTP to your inbox. Check Primary/Inbox, not Spam or Promotions.",
+    "otpExpireHint": "OTP is valid for 5 minutes. You can request a new code after the timer.",
     "resetSubtitle": "We'll send you a reset link (email/password accounts only)",
     "resetGoogleHint": "Signed up with Google? You have no site password — go to Login and use Continue with Google.",
     "orContinueWith": "or continue with email",
@@ -382,6 +386,18 @@
     "charts": {
       "activity": "Booking Activity",
       "status": "Status Overview"
+    },
+    "accountActivity": {
+      "title": "Account activity",
+      "subtitle": "Recent logins — device, location, and time.",
+      "empty": "No login sessions yet. Sign out and sign in again to start the log.",
+      "loadError": "Could not load login activity. Try again later.",
+      "latest": "Latest",
+      "loginTime": "Login time",
+      "mobile": "Mobile",
+      "desktop": "Desktop",
+      "tablet": "Tablet",
+      "unknownLocation": "Unknown location"
     }
   },
   "checkout": {
@@ -419,7 +435,7 @@
     "manualTo": "To / Destination",
     "settings": {
       "title": "Payment Settings",
-      "subtitle": "Saudi banking details, payment methods & email branding",
+      "subtitle": "Saudi bank details & payment methods.",
       "saved": "Payment settings saved",
       "save": "Save Payment Settings",
       "methodsTitle": "Enabled Payment Methods",
@@ -453,8 +469,8 @@
       "brandNameAr": "Brand name (Arabic)",
       "fromEmail": "From email address",
       "replyTo": "Reply-to email",
-      "webhookUrl": "Email webhook URL (optional — Zapier, Make, Cloud Function)",
-      "emailHint": "Emails are queued in Firestore and sent via webhook when configured. Install Firebase Trigger Email extension for production.",
+      "webhookUrl": "Resend webhook URL (Hostinger resend-send.php)",
+      "emailHint": "Order emails go through Resend via Hostinger PHP (free, no Blaze). See hostinger/README.md. Login OTP stays on Clerk.",
       "gatewayTitle": "Online Payment Gateway (Future)",
       "gatewayNone": "Not configured",
       "publishableKey": "Publishable / public API key",
@@ -550,7 +566,7 @@
   },
   "admin": {
     "title": "Super Admin",
-    "overviewSubtitle": "Manage orders, users, and platform activity",
+    "overviewSubtitle": "Dashboard — orders, users & revenue at a glance.",
     "nav": {
       "groupMain": "Main",
       "groupCategories": "Categories",
@@ -574,7 +590,7 @@
       "carHiace": "Hiace",
       "products": "One Way",
       "oneWay": "Moving Between Cities — Routes & Prices",
-      "cityToCity": "City to City",
+      "cityToCity": "Moving Between Cities",
       "airport": "Airport",
       "train": "Train stations",
       "withinCity": "Within the city",
@@ -589,28 +605,31 @@
       "hero": "Hero banner",
       "backgrounds": "Background images",
       "instantPrice": "Instant price form",
+      "tripTypes": "Booking trip options",
       "religiousTours": "Ziyarat form texts",
       "banners": "Banners",
       "gallery": "Gallery",
       "social": "Social media",
+      "travelReservations": "Journey cards (WhatsApp)",
+      "footer": "Footer / Copyright",
       "notifications": "Notifications",
       "chat": "Live chat",
       "activity": "Activity log",
       "paymentSettings": "Payment Settings",
       "settings": "Settings",
-      "backup": "Backup & Restore"
+      "backup": "Backup & Migration"
     },
     "categories": {
-      "hubSubtitle": "Home page category cards + category pages — name, image & passengers",
-      "detailSubtitle": "Edit category {{id}} — updates home cards, category hero & booking",
+      "hubSubtitle": "Edit category cards shown on the homepage.",
+      "detailSubtitle": "Edit this category name, image & passengers.",
       "openPage": "Open category →",
       "backToList": "All categories",
       "notFound": "Category not found"
     },
     "cars": {
-      "subtitle": "Edit the 5 shared cars — name, model & image update products, services and booking instantly",
-      "hubSubtitle": "Open a car page to edit name, model & image — each car has its own SuperAdmin page",
-      "detailSubtitle": "Edit {{id}} — name, model & image sync to products, services and booking",
+      "subtitle": "Edit fleet car name, model & image for the whole site.",
+      "hubSubtitle": "Open a car to edit name, model & image.",
+      "detailSubtitle": "Edit this car — syncs to products & booking.",
       "openPage": "Open car page →",
       "backToList": "All cars",
       "notFound": "Car not found",
@@ -655,27 +674,27 @@
       "allCars": "All cars",
       "editCms": "Edit section text",
       "cityToCity": {
-        "subtitle": "Page 1/6 · City ↔ city one-way · real sheet prices · 5 cars · default car: Taurus · search + route filter · 10 rows/page",
+        "subtitle": "Add / edit / delete city↔city routes & SAR prices.",
         "searchPlaceholder": "Search city routes, car name, or price…"
       },
       "airport": {
-        "subtitle": "Page 2/6 · Airport pickup & drop-off · real prices · 5 cars · default car: Taurus · search + route filter · 10 rows/page",
+        "subtitle": "Add / edit / delete airport pickup & drop-off prices.",
         "searchPlaceholder": "Search airport routes, car name, or price…"
       },
       "train": {
-        "subtitle": "Page 3/6 · Haramain train stations · real prices · 5 cars · default car: Taurus · search + route filter · 10 rows/page",
+        "subtitle": "Add / edit / delete Haramain train station prices.",
         "searchPlaceholder": "Search train routes, car name, or price…"
       },
       "withinCity": {
-        "subtitle": "Page 4/6 · Within city (internal) · 4/8/12 hours · 5 cars · default car: Taurus · search + route + hours · 10 rows/page",
+        "subtitle": "Add / edit within-city hourly packages (4 / 8 / 12 hrs).",
         "searchPlaceholder": "Search within-city city, hours, or price…"
       },
       "hourly": {
-        "subtitle": "Page 5/6 · Hourly between cities · 4/8/12 hours · 5 cars · default car: Taurus · search + route + hours · 10 rows/page",
+        "subtitle": "Add / edit hourly between-cities packages & prices.",
         "searchPlaceholder": "Search hourly route, hours, or price…"
       },
       "ziyarat": {
-        "subtitle": "Page 6/6 · Ziyarat Makkah & Madinah · same real within-city hourly prices · 5 cars · default car: Taurus · 10 rows/page",
+        "subtitle": "Add / edit Ziyarat (Makkah & Madinah) hourly prices.",
         "searchPlaceholder": "Search Ziyarat city, hours, or price…",
         "docsHint": "Ziyarat uses Makkah/Madinah within-city hourly rates. Edit section CMS text separately."
       }
@@ -760,14 +779,14 @@
     "sendToAll": "All Users",
     "notifSent": "Notification sent",
     "notifSentAll": "Notification sent to all users",
-    "notificationsSubtitle": "Send alerts and view sent notifications",
+    "notificationsSubtitle": "Send alerts to users.",
     "sentNotifications": "Sent Notifications",
     "noNotifications": "No notifications sent yet",
     "imageUploaded": "Image uploaded successfully",
     "uploadImage": "Upload Image",
     "edit": "Edit",
     "confirmDelete": "Are you sure you want to delete this?",
-    "productsSubtitle": "One way routes — 5 cars — location + price together",
+    "productsSubtitle": "Edit route prices for 5 cars.",
     "addProduct": "Add Product",
     "editProduct": "Edit Product",
     "productCreated": "Product created",
@@ -775,7 +794,7 @@
     "productDeleted": "Product deleted",
     "docsTitle": "Pricing docs (locations + prices)",
     "oneWay": {
-      "subtitle": "Moving between cities — 5 cars — route location and price on the same row",
+      "subtitle": "Add / edit / delete city↔city routes & prices.",
       "docsHint": "Full city-to-city price tables (EN + AR). Import defaults after sheet updates.",
       "importDefaults": "Import between-cities defaults",
       "add": "Add between-cities route",
@@ -799,10 +818,10 @@
       "noDuplicates": "No duplicate products found"
     },
     "yourPrice": {
-      "subtitle": "{{count}} client quote requests — customer sets their own price (Your Price)"
+      "subtitle": "Customer “Your Price” quote requests — reply & track."
     },
     "roundTrip": {
-      "subtitle": "Airport + train station pickup & drop-off — 5 cars — round trip pricing",
+      "subtitle": "Edit airport & train pickup / drop-off prices.",
       "docsHint": "Airport and train pickup/drop-off tables (EN + AR). Filter by Airports or Train stations above.",
       "importDefaults": "Import round trip defaults",
       "add": "Add round trip car",
@@ -825,7 +844,7 @@
       "noData": "No round trip prices yet — import default data"
     },
     "hourly": {
-      "subtitle": "Car rental with driver — 4, 8, or 12 hours — all cities and cars",
+      "subtitle": "Edit hourly packages (4 / 8 / 12 hrs) & prices.",
       "docsHint": "Hourly packages + within-city Internal totals (EN + AR). City chips filter by base city.",
       "importDefaults": "Import hourly defaults",
       "add": "Add hourly package",
@@ -853,9 +872,9 @@
     "serviceCreated": "Service created",
     "serviceUpdated": "Service updated",
     "serviceDeleted": "Service deleted",
-    "servicesSubtitle": "Manage homepage services — image, content, active/inactive",
-    "routesSubtitle": "Manage Featured Routes — same 6 services as SuperAdmin (Airport · Train · Cities · Within City · Hourly · Ziyarat), 5 cars",
-    "faqSubtitle": "Manage FAQ & Transport Guide — questions, images, categories, featured",
+    "servicesSubtitle": "Edit homepage service cards (image & text).",
+    "routesSubtitle": "Edit featured destination cards on the site.",
+    "faqSubtitle": "Add / edit FAQ questions & answers.",
     "addRoute": "Add Destination",
     "editRoute": "Edit Destination",
     "routeCreated": "Destination created",
@@ -888,19 +907,48 @@
     "blogCreated": "Blog created",
     "blogUpdated": "Blog updated",
     "blogDeleted": "Blog deleted",
-    "blogsSubtitle": "6 service guides on homepage — City to City, Airport, Train, Within City, Hourly, Ziyarat",
-    "sectionsSubtitle": "Turn homepage sections on or off — changes apply instantly",
-    "bannersSubtitle": "Manage homepage banners",
+    "blogsSubtitle": "Edit homepage service blog / guide posts.",
+    "sectionsSubtitle": "Show or hide homepage sections.",
+    "bannersSubtitle": "Add / edit homepage banners.",
     "addBanner": "Add Banner",
     "bannerCreated": "Banner created",
     "bannerUpdated": "Banner updated",
     "bannerDeleted": "Banner deleted",
-    "socialSubtitle": "Add any social network from Superadmin — pick the platform, paste the profile URL, and it appears on Follow Us with official icon colors.",
+    "socialSubtitle": "Add / edit social media links (Follow Us).",
     "addSocial": "Add Social Link",
     "socialCreated": "Social link created",
     "socialUpdated": "Social link updated",
     "socialDeleted": "Social link deleted",
     "searchSocial": "Search social links...",
+    "travelReservations": {
+      "subtitle": "Edit homepage WhatsApp cards: Hotel, Flight, Train, Bus, Nusuk — change name, image, message, order.",
+      "add": "Add reservation card",
+      "search": "Search by name…",
+      "noItems": "No reservation cards yet — import defaults or add new ones.",
+      "image": "Image",
+      "name": "Name",
+      "titleEn": "Title EN",
+      "titleAr": "Title AR",
+      "hintEn": "Short hint EN",
+      "hintAr": "Short hint AR",
+      "messageEn": "WhatsApp message EN",
+      "messageAr": "WhatsApp message AR",
+      "accent": "Accent color",
+      "order": "Display order",
+      "itemCreated": "Reservation card created",
+      "itemUpdated": "Reservation card updated",
+      "itemDeleted": "Reservation card deleted",
+      "accents": {
+        "hotel": "Hotel gold",
+        "flight": "Flight purple",
+        "train": "Train green",
+        "gold": "Gold",
+        "brand": "Brand green",
+        "teal": "Teal",
+        "rose": "Rose",
+        "blue": "Blue"
+      }
+    },
     "social": {
       "icon": "Icon",
       "name": "Name",
@@ -915,7 +963,7 @@
       "noLinks": "No social links yet"
     },
     "hero": {
-      "subtitle": "Manage homepage hero — image, video, text. Changes go live instantly.",
+      "subtitle": "Edit homepage top banner image, video & text.",
       "content": "Hero Content",
       "media": "Hero Media",
       "desktopImage": "Desktop Image",
@@ -926,8 +974,79 @@
       "saveLive": "Save & Publish Live",
       "applyLive": "Apply & Publish Live"
     },
+    "footer": {
+      "subtitle": "Edit footer copyright and Design by credit.",
+      "copyrightSection": "Copyright text",
+      "designBySection": "Design by credit",
+      "showCredit": "Show Design by line",
+      "url": "Designer URL (opens on click)",
+      "urlHint": "Website, WhatsApp, or any link. Clicking the name/logo opens this URL.",
+      "logo": "Designer logo (optional)",
+      "logoHint": "Small logo shown next to the designer name in the footer.",
+      "saved": "Footer credit updated — live on site",
+      "applyLive": "Apply & Publish Live"
+    },
+    "tripTypes": {
+      "subtitle": "Show/hide trip tabs & form fields for all 3 booking forms.",
+      "add": "Add option",
+      "addHere": "Add to this form",
+      "delete": "Delete",
+      "addedForForm": "New option added for {{name}} — edit name then Save",
+      "saved": "Trip options updated — live on site",
+      "reset": "Reset to defaults",
+      "builtin": "Built-in",
+      "mode": "Form behavior",
+      "labelEn": "Name (EN)",
+      "labelAr": "Name (AR)",
+      "show": "Show",
+      "hide": "Hide",
+      "showOn": "Show on forms",
+      "howTitle": "How to use:",
+      "howDesc": "Homepage has 3 booking forms. Each section below is one form. Toggle trip tabs, and under Form fields control From / To / Pickup / Passengers / Car / Price / Location — then Save once.",
+      "howShow": "1. Show / Hide — toggle a tab on that form only",
+      "howEdit": "2. Edit — change EN/AR name or turn off everywhere",
+      "howAdd": "3. Add / Delete — create a tab for this form, or remove custom ones",
+      "fieldsTitle": "Form fields (below the form)",
+      "fieldsHint": "Show/hide and rename labels for From, To, Pickup Time, Passengers, Car, Location, Hours, Price. Live summary under each public form uses these.",
+      "fieldNames": {
+        "from": "From",
+        "to": "To",
+        "pickupTime": "Pickup Time",
+        "passengers": "Passengers",
+        "car": "Car",
+        "location": "Location",
+        "hours": "Hours",
+        "price": "Price"
+      },
+      "viewAll": "All 3 forms",
+      "formShort": "Form {{number}}",
+      "formLabel": "Form {{number}} — {{name}}",
+      "formDesc": {
+        "booking": "Hero booking / price calculator at the top of the homepage.",
+        "instantPrice": "Instant Price section form below the hero.",
+        "religiousTours": "Ziyarat booking form. Default: Hourly only. Non-hourly tabs open the hero booking form."
+      },
+      "visibleCount": "{{count}} visible",
+      "visibleOnForm": "Visible on {{name}}",
+      "hiddenOnForm": "Hidden on {{name}}",
+      "toggleHint": "Show or hide this tab on this form only",
+      "offEverywhere": "Off on all forms",
+      "enabledGlobal": "Enabled (can show on forms)",
+      "disabledGlobal": "Disabled everywhere",
+      "editHint": "Name changes apply to every form that shows this tab. Show/Hide above still controls each form separately.",
+      "activeOnForm": "{{count}} active tabs",
+      "optionCount": "{{count}} / {{max}} options",
+      "maxReached": "Maximum {{max}} trip options allowed",
+      "useBookingForm": "This trip type uses the main booking form above.",
+      "goToBooking": "Open booking form",
+      "forms": {
+        "booking": "Booking form",
+        "instantPrice": "Instant price",
+        "religiousTours": "Religious tours"
+      }
+    },
     "instantPrice": {
-      "subtitle": "Manage the Instant Price section after the hero — texts, labels, WhatsApp & phone.",
+      "subtitle": "Edit Instant Price section texts & contact numbers.",
       "formContent": "Form Card Content",
       "sideContent": "Side Marketing Content",
       "contact": "Contact Numbers",
@@ -941,7 +1060,7 @@
       "applyLive": "Apply & Publish Live"
     },
     "religiousTours": {
-      "subtitle": "Homepage Tours of Religious Sites — heading, background, packages & form copy.",
+      "subtitle": "Edit Ziyarat section texts, packages & images.",
       "background": "Background Image",
       "backgroundImage": "Section background (holy sites)",
       "sectionContent": "Heading & Form Copy",
@@ -958,8 +1077,11 @@
       "remove": "Remove",
       "pasteUrl": "Paste URL",
       "applyUrl": "Apply",
-      "maxSize": "Max file size: {{max}} MB",
-      "fileTooLarge": "File too large (max {{max}} MB). Your file: {{size}}",
+      "maxSize": "Auto-optimize before upload. Final size max {{max}} KB (source file up to {{sourceMax}} MB).",
+      "fileTooLarge": "Image is too large. Maximum allowed size is {{max}} KB. Your image: {{size}}",
+      "sourceTooLarge": "Source image is too large (max {{max}} MB). Your file: {{size}}",
+      "stillTooLarge": "Could not compress under {{max}} KB. Optimized size: {{size}}. Use a smaller/simpler image.",
+      "optimizing": "Optimizing & uploading…",
       "uploadFailed": "Upload failed: {{error}}",
       "uploadVideo": "Upload Video",
       "videoHint": "Paste a direct video URL (MP4/WebM). File upload uses ImgBB (images only).",
@@ -972,9 +1094,9 @@
       "paid": "Paid",
       "refunded": "Refunded"
     },
-    "ordersSubtitle": "{{count}} total orders",
-    "usersSubtitle": "{{count}} registered users",
-    "activitySubtitle": "{{count}} activity records",
+    "ordersSubtitle": "View and update customer bookings ({{count}}).",
+    "usersSubtitle": "View registered customers ({{count}}).",
+    "activitySubtitle": "Admin activity log ({{count}}).",
     "recentActivity": "Recent Activity",
     "viewAll": "View All",
     "noActivity": "No activity yet",
@@ -1055,7 +1177,7 @@
     },
     "settings": {
       "accountInfo": "Account Information",
-      "subtitle": "Branding, database status, and security",
+      "subtitle": "Branding colors, fonts, logo & security.",
       "branding": "Branding & Logo",
       "brandingDesc": "Platform identity shown across admin and user dashboards",
       "databaseStatus": "Database Status",
@@ -1114,7 +1236,9 @@
     },
     "backup": {
       "title": "Backup & Restore",
-      "subtitle": "Download or restore all SuperAdmin UI, Firebase data, and settings as JSON",
+      "subtitle": "All-in-One style: export or import database, images, content, and settings in one ZIP.",
+      "advancedTitle": "Advanced JSON modules",
+      "advancedDesc": "Optional selective JSON export/import for partial restores only.",
       "modulesTitle": "What to include",
       "modulesDesc": "Choose UI (site + branding/settings) and/or operational Firebase data.",
       "selectAll": "Select all",
@@ -1155,6 +1279,59 @@
       "wrongApp": "This JSON is not a Bashayer site backup",
       "emptyBackup": "Backup file has no collections or settings",
       "progress": "{{step}} · {{current}}/{{total}}",
+      "full": {
+        "title": "All-in-One Migration",
+        "recommended": "Recommended",
+        "description": "One ZIP like WordPress All-in-One Migration: database + content + settings + image/media URLs + Firebase Storage files.",
+        "liveDocs": "{{count}} documents currently live in Firestore",
+        "serverProcessed": "Securely processed by Cloud Functions",
+        "exportTitle": "Export everything",
+        "exportDescription": "Download one portable ZIP with the full site state.",
+        "downloadZip": "Export full site (.zip)",
+        "preparing": "Preparing full backup…",
+        "exportDone": "Full backup downloaded: {{docs}} documents and {{files}} storage files",
+        "exportFailed": "Full backup export failed. Deploy the latest Functions and Storage rules, then try again.",
+        "importTitle": "Import everything",
+        "importDescription": "Upload a full backup ZIP to restore the same site state.",
+        "chooseZip": "Choose full backup ZIP",
+        "chooseFirst": "Choose a full backup ZIP first",
+        "invalidArchive": "Choose a valid .zip backup archive",
+        "tooLarge": "The backup archive is larger than the 1 GB limit",
+        "mergeHint": "Add and update; keep other current data.",
+        "replaceHint": "Clear current site data and media first.",
+        "replaceWarning": "This permanently replaces current Firestore data and Storage media. Export the current site first.",
+        "importNow": "Import full site",
+        "importing": "Importing full backup…",
+        "importDone": "Full site restored: {{docs}} documents and {{files}} storage files",
+        "importFailed": "Full backup import failed. No success was reported; review the deployed Function logs.",
+        "includes": "Included: all Firestore data (orders, users, cars, products, blogs, gallery, chat, branding, hero, payment settings, and more), image/media URLs, and any Firebase Storage files.",
+        "exclusions": "Not included for security: Firebase Authentication passwords/login secrets, Cloud Function secrets, and deployed source code. Uploaded images stay on ImgBB via saved URLs after restore.",
+        "coverage": {
+          "database": {
+            "title": "Database",
+            "hint": "All Firestore collections and nested docs"
+          },
+          "content": {
+            "title": "Content",
+            "hint": "Cars, products, blogs, gallery, FAQ, routes"
+          },
+          "settings": {
+            "title": "Settings",
+            "hint": "Branding, hero, sections, payment, footer"
+          },
+          "images": {
+            "title": "Images",
+            "hint": "Media URLs + Firebase Storage files"
+          }
+        },
+        "phases": {
+          "creating": "Collecting database, content, settings, and media",
+          "downloading": "Downloading archive",
+          "uploading": "Uploading archive",
+          "restoring": "Restoring database, content, settings, and media",
+          "done": "Complete"
+        }
+      },
       "modules": {
         "ui": "UI + site settings",
         "bookings": "Bookings",
@@ -1176,7 +1353,7 @@
     },
     "chat": {
       "title": "Live Chat",
-      "subtitle": "{{count}} unread messages",
+      "subtitle": "Live chat with website visitors ({{count}} unread).",
       "conversations": "Conversations",
       "noMessages": "No messages yet",
       "selectConversation": "Select a conversation to view messages",
@@ -1318,7 +1495,7 @@
       "deleted": "Banner deleted"
     },
     "gallery": {
-      "subtitle": "Manage city, airport, market & fleet gallery media",
+      "subtitle": "Upload city, airport & fleet gallery photos.",
       "tabItems": "Gallery items",
       "tabHero": "Hero video",
       "addItem": "Add media",

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import i18n from '../i18n';
-import { subscribeBrandingSettings } from '../firebase/branding';
+import { getBrandingSettings, subscribeBrandingSettings } from '../firebase/branding';
 import { DEFAULT_BRANDING, getFontFamily, resolveUserFont } from '../data/brandingDefaults';
 import { buildBrandingCssVars } from '../utils/colorUtils';
 import { loadGoogleFont } from '../utils/fontUtils';
@@ -71,10 +71,12 @@ export function BrandingProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!USE_BRANDING_REALTIME) {
+    // Admin panel uses local edits + debounced saves; skip live listener unless env flag set.
+    if (isAdminRoute && !USE_BRANDING_REALTIME) {
       setLoading(false);
       return undefined;
     }
+
     const isMobile = window.matchMedia('(max-width: 767px)').matches;
     let unsubscribe = () => {};
 
@@ -98,7 +100,7 @@ export function BrandingProvider({ children }) {
       window.clearTimeout(timeout);
       unsubscribe();
     };
-  }, []);
+  }, [isAdminRoute]);
 
   useEffect(() => {
     applyBrandingToDom(branding, isAdminRoute);
@@ -126,8 +128,14 @@ export function BrandingProvider({ children }) {
   }, [isAdminRoute]);
 
   const refresh = useCallback(async () => {
-    // Kept for API compatibility; realtime listener handles updates.
-    setLoading(false);
+    try {
+      const data = await getBrandingSettings();
+      setBranding(data);
+    } catch {
+      // keep cached branding
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   return (

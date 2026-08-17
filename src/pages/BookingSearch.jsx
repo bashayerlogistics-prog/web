@@ -84,7 +84,7 @@ export default function BookingSearch() {
   };
 
   const routeLabel = useMemo(() => {
-    if (isRoundTrip) {
+    if (isRoundTrip || String(routeId).startsWith('rt-')) {
       return fleet.getRouteLabel(routeId, lang);
     }
     if (isHourly && from) {
@@ -123,6 +123,7 @@ export default function BookingSearch() {
   }
 
   const tripTypeLabel = {
+    between_cities: t('booking.betweenCities'),
     one_way: t('booking.oneWay'),
     round_trip: t('booking.roundTrip'),
     hourly: t('booking.hourly'),

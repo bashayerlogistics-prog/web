@@ -6,10 +6,14 @@ import {
   BOOKING_CAR_TYPES,
   getCarDisplayName,
   getCarImage,
+  getCategoryCircleFocus,
   getLiveCarCatalog,
 } from '../../data/staticData';
 import { useSiteContent } from '../../context/SiteContentContext';
+import { optimizedImageUrl } from '../../utils/mediaPerf';
 import VehicleImage from '../ui/VehicleImage';
+
+const CARD_IMAGE_WIDTH = 640;
 
 export default function CarCategoriesSection() {
   const { t, i18n } = useTranslation();
@@ -51,7 +55,7 @@ export default function CarCategoriesSection() {
         </div>
 
         <div
-          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 md:gap-5"
+          className="car-category-cards"
           data-aos="fade-up"
           data-aos-delay="80"
         >
@@ -59,41 +63,41 @@ export default function CarCategoriesSection() {
             const name = lang === 'ar'
               ? car.nameAr || getCarDisplayName(car.id, 'ar')
               : car.nameEn || getCarDisplayName(car.id, 'en');
-            const image = car.imageUrl || getCarImage(car.id);
+            const image = getCarImage(car.id);
+            const focus = getCategoryCircleFocus(car.id, image);
 
             return (
               <Link
                 key={car.id}
                 to={`/cars/${car.id}`}
-                className="premium-card fleet-card fleet-card--dark gpu-smooth group flex flex-col h-full"
+                className="car-category-card group"
+                style={{
+                  '--car-focus-x': String(focus.x),
+                  '--car-focus-y': String(focus.y),
+                  '--car-zoom': String(focus.zoom),
+                  '--car-photo': `url("${optimizedImageUrl(image, CARD_IMAGE_WIDTH, 70)}")`,
+                }}
               >
-                <div className="fleet-card__ring" aria-hidden="true" />
-                <div className="fleet-card__media">
+                <div className="car-category-card__visual">
                   <VehicleImage
                     src={image}
                     alt={name}
-                    className="fleet-card__image w-full"
-                    hoverZoom
+                    className="car-category-card__image"
+                    imgClassName="car-category-card__photo"
+                    width={CARD_IMAGE_WIDTH}
                   />
-                  <div className="fleet-card__media-gradient" aria-hidden="true" />
-                  <span className="fleet-card__passengers">
-                    <Users className="w-2.5 h-2.5 text-gold shrink-0" />
+                  <span className="car-category-card__shade" aria-hidden="true" />
+                  <span className="car-category-card__passengers">
+                    <Users className="w-3 h-3 shrink-0" />
                     {car.passengers}
                   </span>
-                </div>
-                <div className="fleet-card__body flex-1 flex flex-col">
-                  <span className="fleet-card__category">
-                    {t('carCategories.categoryLabel')}
-                  </span>
-                  <h3 className="fleet-card__title">{name}</h3>
-                  <p className="fleet-card__route line-clamp-2">
-                    {t('carCategories.cardHint')}
-                  </p>
-                  <span className="mt-auto inline-flex items-center gap-1 text-xs font-bold text-white/85 group-hover:text-gold transition-colors pt-2">
+                  <span className="car-category-card__hover">
                     {t('carCategories.viewAll')}
-                    <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                    <ArrowUpRight className="w-4 h-4 shrink-0 rtl:rotate-[-90deg]" />
                   </span>
                 </div>
+                <h3 className="car-category-card__title">{name}</h3>
+                <span className="car-category-card__hint">{t('carCategories.cardHint')}</span>
               </Link>
             );
           })}

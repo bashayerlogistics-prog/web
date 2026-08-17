@@ -90,6 +90,10 @@ function toRgbChannels(hex) {
 export function buildBrandingCssVars(primaryColor, secondaryColor) {
   const primary = generateColorScale(primaryColor);
   const secondary = generateColorScale(secondaryColor);
+  const adminAction = ensureContrast(primaryColor, '#ffffff', 4.5);
+  const adminActionDark = darken(adminAction, 14);
+  const adminAccent = ensureContrast(secondaryColor, '#180b2a', 4.5);
+  const adminAccentSoft = ensureContrast(lighten(adminAccent, 18), '#180b2a', 4.5);
   const vars = {};
 
   vars['--color-brand'] = primaryColor;
@@ -105,6 +109,14 @@ export function buildBrandingCssVars(primaryColor, secondaryColor) {
   vars['--color-gold-rgb'] = toRgbChannels(secondaryColor);
   vars['--color-gold-dark-rgb'] = toRgbChannels(secondary[700]);
   vars['--color-gold-light-rgb'] = toRgbChannels(secondary[400]);
+  vars['--color-admin-action'] = adminAction;
+  vars['--color-admin-action-dark'] = adminActionDark;
+  vars['--color-admin-action-rgb'] = toRgbChannels(adminAction);
+  vars['--color-admin-action-dark-rgb'] = toRgbChannels(adminActionDark);
+  vars['--color-admin-dark-accent'] = adminAccent;
+  vars['--color-admin-dark-accent-soft'] = adminAccentSoft;
+  vars['--color-admin-dark-accent-rgb'] = toRgbChannels(adminAccent);
+  vars['--color-admin-dark-accent-soft-rgb'] = toRgbChannels(adminAccentSoft);
 
   for (const [shade, val] of Object.entries(primary)) {
     vars[`--color-primary-${shade}`] = val;

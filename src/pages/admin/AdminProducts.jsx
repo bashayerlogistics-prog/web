@@ -18,6 +18,7 @@ import {
   BOOKING_CAR_TYPES,
   SHORT_NAMES,
   getCarDisplayName,
+  resolveCarThumb,
 } from '../../data/staticData';
 import { dedupeProducts, productDedupeKey } from '../../utils/productDedupe';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
@@ -463,9 +464,14 @@ export default function AdminProducts() {
                       <AdminSnoCell n={idx + 1} />
                       <AdminTableCell>
                         <div className="flex items-center gap-2">
-                          {p.imageUrl && (
-                            <img src={p.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                          )}
+                          <img
+                            src={resolveCarThumb(carKey, p.imageUrl)}
+                            alt=""
+                            className="w-10 h-10 rounded-lg object-cover shrink-0 bg-gray-100 dark:bg-white/10"
+                            onError={(e) => {
+                              e.currentTarget.src = resolveCarThumb(carKey, '');
+                            }}
+                          />
                           <div>
                             <span className="font-bold block">{carLabel(carKey, lang)}</span>
                             <span className="text-xs text-gray-500 line-clamp-1">{lang === 'ar' ? p.nameAr : p.nameEn}</span>
@@ -479,15 +485,15 @@ export default function AdminProducts() {
                         <span className="font-black text-brand">{p.price} {t('booking.sar')}</span>
                       </AdminTableCell>
                       <AdminTableCell>
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${p.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                          {p.active ? t('admin.products.active') : t('admin.products.inactive')}
+                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${p.active !== false ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-100' : 'bg-gray-200 text-gray-700 dark:bg-gray-600/60 dark:text-gray-100'}`}>
+                          {p.active !== false ? t('admin.products.active') : t('admin.products.inactive')}
                         </span>
                       </AdminTableCell>
                       <AdminTableCell>
                         <button
                           type="button"
                           onClick={() => toggleHidePrice(p)}
-                          className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${p.hidePrice ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
+                          className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${p.hidePrice ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-100'}`}
                         >
                           {p.hidePrice ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                           {p.hidePrice ? t('admin.oneWay.hidden') : t('admin.oneWay.visible')}

@@ -150,6 +150,18 @@ export async function getUserProfile(userId) {
   return { id: snap.id, ...snap.data() };
 }
 
+/** Recent account login events (device / location / time). */
+export async function getUserLoginActivity(userId, size = 20) {
+  if (!userId) return [];
+  const q = query(
+    collection(db, 'users', userId, 'loginActivity'),
+    orderBy('createdAt', 'desc'),
+    limit(Math.min(Math.max(size, 1), 50)),
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
 /** Create or merge user document on signup / Google sign-in */
 export async function upsertUserDocument(userId, data) {
   const ref = doc(db, 'users', userId);

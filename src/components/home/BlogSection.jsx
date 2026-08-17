@@ -41,6 +41,7 @@ function BlogCard({ post, lang, t }) {
             className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
             loading="lazy"
             decoding="async"
+            referrerPolicy="no-referrer"
             sizes="(max-width: 767px) 90vw, 380px"
           />
         ) : (

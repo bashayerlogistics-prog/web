@@ -24,6 +24,7 @@ import {
   buildPaymentConfirmedEmail,
 } from '../utils/emailTemplates';
 import { formatOrderNumber } from '../utils/orderHelpers';
+import { sendOrderEmailWithResend } from '../utils/resendEmail';
 
 const PAYMENT_DOC = doc(db, 'siteSettings', 'payment');
 
@@ -109,32 +110,26 @@ async function queueEmail({ to, subject, html, type, bookingId, orderNumber }, s
 
 async function dispatchEmail(payload, settings) {
   await queueEmail(payload, settings);
-  const webhook = settings?.email?.webhookUrl?.trim();
-  if (!webhook) return;
   try {
-    await fetch(webhook, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: payload.to,
-        subject: payload.subject,
-        html: payload.html,
-        from: settings.email?.fromEmail,
-        fromName: settings.email?.fromName?.ar || settings.email?.fromName?.en || settings.email?.brandName?.ar || settings.email?.brandName?.en,
-        replyTo: settings.email?.replyTo || settings.email?.fromEmail,
-      }),
-    });
+    const result = await sendOrderEmailWithResend(payload, settings);
+    if (!result.ok) {
+      console.warn('Order email not sent:', result.reason);
+    }
   } catch (err) {
-    console.warn('Email webhook failed:', err.message);
+    console.warn('Resend email failed:', err.message);
   }
 }
 
 async function notifyOrderEmails(type, booking, orderNumber, settings) {
   const orderDisplayId = formatOrderNumber(orderNumber);
-  const email = booking.customerEmail;
-  if (!email) return;
+  const email = String(booking.customerEmail || '').trim().toLowerCase();
+  if (!email) {
+    console.warn('Order email skipped — missing customerEmail', { type, bookingId: booking.id, orderNumber });
+    return;
+  }
 
-  const langs = ['ar', 'en'];
+  const preferred = booking.language === 'en' ? 'en' : 'ar';
+  const langs = preferred === 'en' ? ['en', 'ar'] : ['ar', 'en'];
   for (const lang of langs) {
     let template;
     if (type === 'order_placed') {
@@ -153,7 +148,7 @@ async function notifyOrderEmails(type, booking, orderNumber, settings) {
       type,
       bookingId: booking.id,
       orderNumber,
-    });
+    }, settings);
   }
 }
 

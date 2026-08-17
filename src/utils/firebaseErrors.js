@@ -40,14 +40,14 @@ const REST_REASON_CODES = {
 const GENERIC_MESSAGES = {
   ar: {
     register: 'تعذر إنشاء الحساب. تحقق من البيانات وحاول مجدداً.',
-    login: 'تعذر تسجيل الدخول. تحقق من البريد وكلمة المرور وحاول مجدداً.',
+    login: 'تعذر تسجيل الدخول. تحقق من البريد ورمز التحقق وحاول مجدداً.',
     'google-login': 'تعذر تسجيل الدخول عبر Google. حاول مجدداً.',
     'reset-password': 'تعذر إرسال رابط إعادة التعيين. حاول مجدداً.',
     auth: 'تعذر إكمال العملية. حاول مجدداً.',
   },
   en: {
     register: 'We could not create your account. Check your details and try again.',
-    login: 'We could not sign you in. Check your email and password and try again.',
+    login: 'We could not sign you in. Check your email and verification code.',
     'google-login': 'Google sign-in could not be completed. Please try again.',
     'reset-password': 'We could not send the reset link. Please try again.',
     auth: 'Something went wrong. Please try again.',
@@ -97,6 +97,15 @@ const ERROR_MESSAGES = {
     'auth/google-only-account': 'هذا الحساب مرتبط بـ Google. استخدم خيار «المتابعة عبر Google» في صفحة الدخول.',
     'auth/admin-account': 'هذا الحساب مخصص للوحة الإدارة فقط. سجّل الدخول من /admin/login.',
     'auth/account-exists-with-different-credential': 'هذا البريد مسجل بطريقة أخرى. سجّل الدخول بالبريد وكلمة المرور، أو استخدم نفس طريقة التسجيل السابقة.',
+    'functions/not-found': 'لم نعثر على حساب بهذا البريد. أنشئ حساباً أولاً.',
+    'functions/already-exists': 'هذا البريد الإلكتروني مسجل بالفعل. سجّل الدخول مباشرة.',
+    'functions/invalid-argument': 'تحقق من البيانات أو أدخل رمز التحقق المكوّن من 6 أرقام.',
+    'functions/permission-denied': 'رمز التحقق غير صحيح أو هذا الحساب غير مسموح له بالدخول.',
+    'functions/resource-exhausted': 'تم تجاوز عدد المحاولات. اطلب رمزاً جديداً أو حاول لاحقاً.',
+    'functions/failed-precondition': 'انتظر حتى ينتهي المؤقت، أو اطلب رمز تحقق جديداً.',
+    'functions/deadline-exceeded': 'انتهت صلاحية رمز التحقق. اطلب رمزاً جديداً.',
+    'functions/unavailable': 'تعذر إرسال البريد حالياً. حاول مجدداً بعد قليل.',
+    'functions/internal': 'تعذر إكمال التحقق حالياً. حاول مجدداً.',
   },
   en: {
     'auth/email-already-in-use': 'This email is already registered. Go to Login.',
@@ -140,6 +149,15 @@ const ERROR_MESSAGES = {
     'auth/google-only-account': 'This account uses Google sign-in. No site password to reset — use Continue with Google on the Login page.',
     'auth/admin-account': 'This account is for the admin panel only. Sign in at /admin/login.',
     'auth/account-exists-with-different-credential': 'This email is already registered with another method. Sign in with email/password or the original method.',
+    'functions/not-found': 'No account was found for this email. Please register first.',
+    'functions/already-exists': 'This email is already registered. Please sign in.',
+    'functions/invalid-argument': 'Check your details or enter the 6-digit verification code.',
+    'functions/permission-denied': 'The verification code is incorrect or this account cannot sign in here.',
+    'functions/resource-exhausted': 'Too many attempts. Request a new code or try again later.',
+    'functions/failed-precondition': 'Wait for the timer or request a new verification code.',
+    'functions/deadline-exceeded': 'The verification code expired. Request a new code.',
+    'functions/unavailable': 'The email could not be sent right now. Try again shortly.',
+    'functions/internal': 'Verification could not be completed. Please try again.',
   },
 };
 

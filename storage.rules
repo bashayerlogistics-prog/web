@@ -12,6 +12,12 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    // Temporary full-site migration archives. The path is scoped to the
+    // authenticated SuperAdmin and is never publicly readable.
+    match /system-backups/{adminUid}/{fileName} {
+      allow read, write: if isAdmin() && request.auth.uid == adminUid;
+    }
+
     // Public CMS assets — anyone may read; only SuperAdmin may write
     match /products/{allPaths=**} {
       allow read: if true;

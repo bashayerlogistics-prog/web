@@ -6,6 +6,9 @@ import {
   where,
   doc,
   getDoc,
+  setDoc,
+  increment,
+  serverTimestamp,
   onSnapshot,
   limit,
 } from 'firebase/firestore';
@@ -34,7 +37,17 @@ import {
   DEFAULT_RELIGIOUS_TOURS,
   buildReligiousToursFromFirestore,
 } from '../data/religiousTours';
+import {
+  DEFAULT_BOOKING_TRIP_TYPES,
+  buildBookingTripTypesFromFirestore,
+} from '../data/bookingTripTypes';
+import {
+  DEFAULT_TRAVEL_RESERVATIONS,
+  buildTravelReservationsFromFirestore,
+} from '../data/travelReservations';
 import { dedupeFleetProducts } from '../utils/productDedupe';
+
+export { buildTravelReservationsFromFirestore, DEFAULT_TRAVEL_RESERVATIONS };
 
 async function fetchActive(collectionName, maxItems = 100) {
   const size = Math.max(1, Math.min(300, Number(maxItems) || 100));
@@ -316,6 +329,7 @@ export function buildBlogsFromFirestore(activeBlogs) {
   const byService = new Map(
     activeBlogs.filter((b) => b.serviceId).map((b) => [b.serviceId, b]),
   );
+  const defaultByService = new Map(BLOG_POSTS.map((def) => [def.serviceId, def]));
   const hasAllGuides = BLOG_POSTS.every((def) => byService.has(def.serviceId));
 
   // Canonical 6 service-guide headings (same order as SuperAdmin)
@@ -335,7 +349,7 @@ export function buildBlogsFromFirestore(activeBlogs) {
           ar: b.excerptAr || def.excerpt.ar,
           en: b.excerptEn || def.excerpt.en,
         },
-        image: b.imageUrl || def.image,
+        image: def.image || b.imageUrl || '',
         content: {
           ar: b.contentAr || def.content.ar,
           en: b.contentEn || def.content.en,
@@ -344,19 +358,28 @@ export function buildBlogsFromFirestore(activeBlogs) {
     });
   }
 
-  return activeBlogs.map((b) => ({
-    id: b.id,
-    serviceId: b.serviceId || '',
-    badge: {
-      ar: b.badgeAr || '',
-      en: b.badgeEn || '',
-    },
-    date: { ar: b.dateAr || '', en: b.dateEn || '' },
-    title: { ar: b.titleAr, en: b.titleEn },
-    excerpt: { ar: b.excerptAr || b.contentAr || '', en: b.excerptEn || b.contentEn || '' },
-    image: b.imageUrl || '',
-    content: { ar: b.contentAr || '', en: b.contentEn || '' },
-  }));
+  return activeBlogs.map((b) => {
+    const def = b.serviceId ? defaultByService.get(b.serviceId) : null;
+    return {
+      id: b.id,
+      serviceId: b.serviceId || '',
+      badge: {
+        ar: b.badgeAr || def?.badge?.ar || '',
+        en: b.badgeEn || def?.badge?.en || '',
+      },
+      date: { ar: b.dateAr || def?.date?.ar || '', en: b.dateEn || def?.date?.en || '' },
+      title: { ar: b.titleAr || def?.title?.ar || '', en: b.titleEn || def?.title?.en || '' },
+      excerpt: {
+        ar: b.excerptAr || b.contentAr || def?.excerpt?.ar || '',
+        en: b.excerptEn || b.contentEn || def?.excerpt?.en || '',
+      },
+      image: def?.image || b.imageUrl || '',
+      content: {
+        ar: b.contentAr || def?.content?.ar || '',
+        en: b.contentEn || def?.content?.en || '',
+      },
+    };
+  });
 }
 
 import {
@@ -380,6 +403,40 @@ export const DEFAULT_HERO = {
   gradientUrl: HERO_GRADIENT,
   showVideo: false,
 };
+
+/** Footer copyright + “Design by” credit (logo + clickable URL). */
+export const DEFAULT_FOOTER_CREDIT = {
+  copyrightEn: '© 2026 Bashayer Al-Ataa Land Transport Company. All rights reserved',
+  copyrightAr: '© 2026 شركة بشاير العطاء للنقل البري. جميع الحقوق محفوظة',
+  designedByEn: 'Design by',
+  designedByAr: 'تصميم بواسطة',
+  designerNameEn: 'Suleman',
+  designerNameAr: 'متجر ترند للخدمات الرقمية',
+  designerUrl: 'https://wa.me/966577469103',
+  designerLogoUrl: '/images/designer-trend-logo.png',
+  showCredit: true,
+};
+
+export function buildFooterCreditFromFirestore(data) {
+  if (!data || typeof data !== 'object') return { ...DEFAULT_FOOTER_CREDIT };
+  const designerUrl = typeof data.designerUrl === 'string' ? data.designerUrl.trim() : '';
+  const designerLogoUrl = typeof data.designerLogoUrl === 'string' ? data.designerLogoUrl.trim() : '';
+  const nameEn = typeof data.designerNameEn === 'string' ? data.designerNameEn.trim() : '';
+  const nameAr = typeof data.designerNameAr === 'string' ? data.designerNameAr.trim() : '';
+  // Migrate legacy default credit (Fahad) to current designer defaults.
+  const isLegacyFahad = /^fahad$/i.test(nameEn) && /^fahad$/i.test(nameAr || nameEn);
+  return {
+    ...DEFAULT_FOOTER_CREDIT,
+    ...data,
+    showCredit: data.showCredit !== false,
+    designerNameEn: isLegacyFahad ? DEFAULT_FOOTER_CREDIT.designerNameEn : (nameEn || DEFAULT_FOOTER_CREDIT.designerNameEn),
+    designerNameAr: isLegacyFahad ? DEFAULT_FOOTER_CREDIT.designerNameAr : (nameAr || DEFAULT_FOOTER_CREDIT.designerNameAr),
+    designerUrl: isLegacyFahad
+      ? DEFAULT_FOOTER_CREDIT.designerUrl
+      : (designerUrl || DEFAULT_FOOTER_CREDIT.designerUrl),
+    designerLogoUrl: designerLogoUrl || DEFAULT_FOOTER_CREDIT.designerLogoUrl,
+  };
+}
 
 export const DEFAULT_INSTANT_PRICE = {
   formTitleEn: 'Your instant price',
@@ -423,6 +480,27 @@ export const DEFAULT_INSTANT_PRICE = {
   backgroundImageUrl: '/images/instant-price-bg.webp',
 };
 
+export { DEFAULT_BOOKING_TRIP_TYPES, buildBookingTripTypesFromFirestore };
+
+export async function getBookingTripTypesContent() {
+  try {
+    const snap = await getDoc(doc(db, 'siteSettings', 'bookingTripTypes'));
+    if (!snap.exists()) return buildBookingTripTypesFromFirestore(null);
+    return buildBookingTripTypesFromFirestore(snap.data());
+  } catch {
+    return buildBookingTripTypesFromFirestore(null);
+  }
+}
+
+export function subscribeBookingTripTypesContent(onData, onError) {
+  return subscribeSiteSettingDoc(
+    'bookingTripTypes',
+    DEFAULT_BOOKING_TRIP_TYPES,
+    (data) => onData(buildBookingTripTypesFromFirestore(data)),
+    onError,
+  );
+}
+
 export async function getHeroContent() {
   try {
     const snap = await getDoc(doc(db, 'siteSettings', 'hero'));
@@ -464,6 +542,110 @@ export async function getGalleryHeroContent() {
     return { ...DEFAULT_GALLERY_HERO, ...snap.data() };
   } catch {
     return { ...DEFAULT_GALLERY_HERO };
+  }
+}
+
+export async function getFooterCreditContent() {
+  try {
+    const snap = await getDoc(doc(db, 'siteSettings', 'footerCredit'));
+    if (!snap.exists()) return { ...DEFAULT_FOOTER_CREDIT };
+    return buildFooterCreditFromFirestore(snap.data());
+  } catch {
+    return { ...DEFAULT_FOOTER_CREDIT };
+  }
+}
+
+/** Single-doc listeners for hero/background settings — cheap instant sync on public pages. */
+function subscribeSiteSettingDoc(docId, defaults, onData, onError) {
+  try {
+    return onSnapshot(
+      doc(db, 'siteSettings', docId),
+      (snap) => {
+        onData(snap.exists() ? { ...defaults, ...snap.data() } : { ...defaults });
+      },
+      (err) => {
+        onError?.(err);
+        onData({ ...defaults });
+      },
+    );
+  } catch {
+    onData({ ...defaults });
+    return () => {};
+  }
+}
+
+export function subscribeHeroContent(onData, onError) {
+  return subscribeSiteSettingDoc('hero', DEFAULT_HERO, onData, onError);
+}
+
+export function subscribeInstantPriceContent(onData, onError) {
+  return subscribeSiteSettingDoc('instantPrice', DEFAULT_INSTANT_PRICE, onData, onError);
+}
+
+export function subscribeFooterCreditContent(onData, onError) {
+  return subscribeSiteSettingDoc(
+    'footerCredit',
+    DEFAULT_FOOTER_CREDIT,
+    (data) => onData(buildFooterCreditFromFirestore(data)),
+    onError,
+  );
+}
+
+export function subscribeGalleryHeroContent(onData, onError) {
+  return subscribeSiteSettingDoc('galleryHero', DEFAULT_GALLERY_HERO, onData, onError);
+}
+
+/** Single cheap sync signal: public clients refresh only when this doc changes. */
+export const CONTENT_REVISION_DOC_ID = 'contentRevision';
+export const CONTENT_REVISION_STORAGE_KEY = 'bashayer-content-rev';
+
+export function readStoredContentRevision() {
+  try {
+    if (typeof localStorage === 'undefined') return 0;
+    const n = Number(localStorage.getItem(CONTENT_REVISION_STORAGE_KEY));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function writeStoredContentRevision(rev) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(CONTENT_REVISION_STORAGE_KEY, String(rev || 0));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Admin publish bump — 1 write. Live + local browsers listening to this doc
+ * then run a one-shot content refresh (not continuous collection listeners).
+ */
+export async function bumpContentRevision() {
+  await setDoc(
+    doc(db, 'siteSettings', CONTENT_REVISION_DOC_ID),
+    { rev: increment(1), updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+}
+
+/** Listen for CMS publish signal (~1 read on attach + 1 per publish). */
+export function subscribeContentRevision(onRev, onError) {
+  try {
+    return onSnapshot(
+      doc(db, 'siteSettings', CONTENT_REVISION_DOC_ID),
+      (snap) => {
+        const rev = snap.exists() ? Number(snap.data()?.rev) || 0 : 0;
+        onRev(rev);
+      },
+      (err) => {
+        onError?.(err);
+      },
+    );
+  } catch (err) {
+    onError?.(err);
+    return () => {};
   }
 }
 

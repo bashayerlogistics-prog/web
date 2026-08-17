@@ -23,6 +23,24 @@ import {
 
   getReligiousToursContent,
 
+  getBookingTripTypesContent,
+
+  getFooterCreditContent,
+
+  subscribeHeroContent,
+
+  subscribeInstantPriceContent,
+
+  subscribeGalleryHeroContent,
+
+  subscribeBookingTripTypesContent,
+
+  subscribeContentRevision,
+
+  readStoredContentRevision,
+
+  writeStoredContentRevision,
+
   buildFleetRoutesFromProducts,
 
   buildServicesFromFirestore,
@@ -37,6 +55,8 @@ import {
 
   buildGalleryHeroFromFirestore,
 
+  buildFooterCreditFromFirestore,
+
   buildGalleryItemsFromFirestore,
 
   buildRouteCardsFromFirestore,
@@ -46,6 +66,10 @@ import {
   buildSocialLinksFromFirestore,
 
   buildServiceCatalogFromServices,
+
+  buildBookingTripTypesFromFirestore,
+
+  buildTravelReservationsFromFirestore,
 
   subscribeToActiveCollection,
 
@@ -60,6 +84,8 @@ import { FLEET_ROUTES, ROUND_TRIP_FLEET_ROUTES, SERVICES, BLOG_POSTS, ROUTE_CARD
 import { HOURLY_FLEET_ROUTES } from '../data/hourlyPricing';
 
 import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
+
+import { DEFAULT_TRAVEL_RESERVATIONS } from '../data/travelReservations';
 
 import { DEFAULT_HOME_SECTIONS, isSectionActive } from '../data/homeSections';
 
@@ -117,7 +143,9 @@ function loadCachedContent() {
 
   return {
     snapshot: sanitizeSiteContentCache(raw) || defaultSiteContentSnapshot(),
-    isFresh: Boolean(fresh),
+    // Dev must always re-read Firestore, otherwise CMS edits made on the live
+    // site stay invisible locally until the cache window expires.
+    isFresh: import.meta.env.DEV ? false : Boolean(fresh),
   };
 
 }
@@ -164,7 +192,19 @@ export function SiteContentProvider({ children }) {
 
   const [galleryHero, setGalleryHero] = useState(initialSnapshot.galleryHero);
 
+  const [bookingTripTypes, setBookingTripTypes] = useState(
+    () => initialSnapshot.bookingTripTypes || buildBookingTripTypesFromFirestore(null),
+  );
+
+  const [footerCredit, setFooterCredit] = useState(
+    () => initialSnapshot.footerCredit || buildFooterCreditFromFirestore(null),
+  );
+
   const [galleryItems, setGalleryItems] = useState(initialSnapshot.galleryItems);
+
+  const [travelReservations, setTravelReservations] = useState(
+    initialSnapshot.travelReservations || DEFAULT_TRAVEL_RESERVATIONS,
+  );
 
   const [carCatalog, setCarCatalog] = useState(() => {
     const cached = initialSnapshot.carCatalog;
@@ -211,6 +251,9 @@ export function SiteContentProvider({ children }) {
         instantPriceData,
         religiousToursData,
         galleryHeroData,
+        bookingTripTypesData,
+        footerCreditData,
+        activeTravelReservations,
       ] = await Promise.all([
         getActiveProducts(),
         getCarCatalog(),
@@ -225,6 +268,9 @@ export function SiteContentProvider({ children }) {
         getInstantPriceContent(),
         getReligiousToursContent(),
         getGalleryHeroContent(),
+        getBookingTripTypesContent(),
+        getFooterCreditContent(),
+        getActiveContentCollection('travelReservations'),
       ]);
 
       const nextFleetRoutes = buildFleetRoutesFromProducts(activeProducts);
@@ -235,6 +281,7 @@ export function SiteContentProvider({ children }) {
       const nextSocialLinks = buildSocialLinksFromFirestore(activeSocialLinks);
       const nextBlogs = buildBlogsFromFirestore(activeBlogs);
       const nextGalleryItems = buildGalleryItemsFromFirestore(activeGallery);
+      const nextTravelReservations = buildTravelReservationsFromFirestore(activeTravelReservations);
 
       const nextSections = homeSections;
 
@@ -245,6 +292,10 @@ export function SiteContentProvider({ children }) {
       const nextReligiousTours = buildReligiousToursFromFirestore(religiousToursData);
 
       const nextGalleryHero = buildGalleryHeroFromFirestore(galleryHeroData);
+
+      const nextBookingTripTypes = buildBookingTripTypesFromFirestore(bookingTripTypesData);
+
+      const nextFooterCredit = buildFooterCreditFromFirestore(footerCreditData);
 
 
 
@@ -257,6 +308,11 @@ export function SiteContentProvider({ children }) {
       setSocialLinks(nextSocialLinks.length ? nextSocialLinks : cacheRef.current.socialLinks);
       setBlogs(nextBlogs.length ? nextBlogs : cacheRef.current.blogs);
       setGalleryItems(nextGalleryItems.length ? nextGalleryItems : cacheRef.current.galleryItems);
+      setTravelReservations(
+        nextTravelReservations.length
+          ? nextTravelReservations
+          : (cacheRef.current.travelReservations || DEFAULT_TRAVEL_RESERVATIONS),
+      );
 
       setSections(nextSections);
 
@@ -267,6 +323,10 @@ export function SiteContentProvider({ children }) {
       setReligiousTours(nextReligiousTours);
 
       setGalleryHero(nextGalleryHero);
+
+      setBookingTripTypes(nextBookingTripTypes);
+
+      setFooterCredit(nextFooterCredit);
 
 
 
@@ -288,6 +348,10 @@ export function SiteContentProvider({ children }) {
 
         galleryItems: nextGalleryItems.length ? nextGalleryItems : cacheRef.current.galleryItems,
 
+        travelReservations: nextTravelReservations.length
+          ? nextTravelReservations
+          : (cacheRef.current.travelReservations || DEFAULT_TRAVEL_RESERVATIONS),
+
         sections: nextSections,
 
         hero: nextHero,
@@ -297,6 +361,10 @@ export function SiteContentProvider({ children }) {
         religiousTours: nextReligiousTours,
 
         galleryHero: nextGalleryHero,
+
+        bookingTripTypes: nextBookingTripTypes,
+
+        footerCredit: nextFooterCredit,
 
       });
 
@@ -481,6 +549,26 @@ export function SiteContentProvider({ children }) {
 
         ),
 
+        subscribeToActiveCollection(
+
+          'travelReservations',
+
+          (activeItems) => {
+
+            const next = buildTravelReservationsFromFirestore(activeItems);
+
+            const items = next.length ? next : DEFAULT_TRAVEL_RESERVATIONS;
+
+            setTravelReservations(items);
+
+            persistCache({ travelReservations: items });
+
+          },
+
+          (err) => console.warn('Travel reservations listener failed:', err),
+
+        ),
+
       );
 
     };
@@ -549,6 +637,87 @@ export function SiteContentProvider({ children }) {
 
 
 
+  // Lightweight single-doc listeners for hero/background images on public pages.
+  // Cached CMS stays for fleet/products; only visual settings sync live (~2 reads on load).
+  useEffect(() => {
+
+    if (!needsLivePublicContent) return undefined;
+
+    const isHome = pathname === '/';
+    const isGallery = pathname === '/gallery';
+    if (!isHome && !isGallery) return undefined;
+
+    let cancelled = false;
+    const unsubs = [];
+
+    const start = () => {
+      if (cancelled) return;
+
+      if (isHome) {
+        unsubs.push(
+          subscribeHeroContent(
+            (data) => {
+              const nextHero = buildHeroFromFirestore(data);
+              setHero(nextHero);
+              persistCache({ hero: nextHero });
+            },
+            (err) => console.warn('Hero settings listener failed:', err.code || err.message),
+          ),
+          subscribeInstantPriceContent(
+            (data) => {
+              const nextInstantPrice = buildInstantPriceFromFirestore(data);
+              setInstantPrice(nextInstantPrice);
+              persistCache({ instantPrice: nextInstantPrice });
+            },
+            (err) => console.warn('Instant price settings listener failed:', err.code || err.message),
+          ),
+          subscribeBookingTripTypesContent(
+            (data) => {
+              const nextBookingTripTypes = buildBookingTripTypesFromFirestore(data);
+              setBookingTripTypes(nextBookingTripTypes);
+              persistCache({ bookingTripTypes: nextBookingTripTypes });
+            },
+            (err) => console.warn('Booking trip types listener failed:', err.code || err.message),
+          ),
+        );
+      }
+
+      if (isGallery) {
+        unsubs.push(
+          subscribeGalleryHeroContent(
+            (data) => {
+              const nextGalleryHero = buildGalleryHeroFromFirestore(data);
+              setGalleryHero(nextGalleryHero);
+              persistCache({ galleryHero: nextGalleryHero });
+            },
+            (err) => console.warn('Gallery hero listener failed:', err.code || err.message),
+          ),
+        );
+      }
+    };
+
+    const isMobile = window.matchMedia('(max-width: 767px)').matches;
+    let idleId;
+    if (isMobile && 'requestIdleCallback' in window) {
+      idleId = window.requestIdleCallback(start, { timeout: 2000 });
+    } else {
+      idleId = window.setTimeout(start, isMobile ? 150 : 50);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof window !== 'undefined' && 'cancelIdleCallback' in window && typeof idleId === 'number') {
+        window.cancelIdleCallback(idleId);
+      } else {
+        window.clearTimeout(idleId);
+      }
+      unsubs.forEach((unsub) => unsub && unsub());
+    };
+
+  }, [needsLivePublicContent, pathname, persistCache]);
+
+
+
   useEffect(() => {
 
     if (typeof BroadcastChannel === 'undefined') return undefined;
@@ -571,6 +740,39 @@ export function SiteContentProvider({ children }) {
     return () => channel.close();
 
   }, [refresh]);
+
+  // One-doc publish signal: when SuperAdmin saves on live (or any browser),
+  // local / other tabs refresh once. Avoids continuous multi-collection listeners.
+  useEffect(() => {
+    if (!needsLivePublicContent) return undefined;
+
+    const lastRevRef = { current: readStoredContentRevision() };
+    let refreshTimer = null;
+    let cancelled = false;
+
+    const unsub = subscribeContentRevision(
+      (rev) => {
+        if (cancelled || !rev) return;
+        if (rev === lastRevRef.current) return;
+
+        lastRevRef.current = rev;
+        writeStoredContentRevision(rev);
+        hasFreshCacheRef.current = false;
+
+        if (refreshTimer) window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(() => {
+          if (!cancelled) refresh();
+        }, import.meta.env.DEV ? 150 : 400);
+      },
+      (err) => console.warn('Content revision listener failed:', err?.code || err?.message),
+    );
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      unsub?.();
+    };
+  }, [needsLivePublicContent, refresh]);
 
 
 
@@ -600,9 +802,10 @@ export function SiteContentProvider({ children }) {
 
         const car = byId[key];
 
-        if (!car?.imageUrl) return v;
+        const resolved = getCarImage(key) || car?.imageUrl;
+        if (!resolved) return v;
 
-        return { ...v, image: car.imageUrl };
+        return { ...v, image: resolved };
 
       }),
 
@@ -668,6 +871,12 @@ export function SiteContentProvider({ children }) {
 
     galleryItems,
 
+    travelReservations,
+
+    bookingTripTypes,
+
+    footerCredit,
+
     carCatalog,
 
     getCarImage,
@@ -707,6 +916,12 @@ export function SiteContentProvider({ children }) {
     galleryHero,
 
     galleryItems,
+
+    travelReservations,
+
+    bookingTripTypes,
+
+    footerCredit,
 
     carCatalog,
 
@@ -773,6 +988,12 @@ export function useSiteContent() {
       galleryHero: fallback.galleryHero,
 
       galleryItems: fallback.galleryItems,
+
+      travelReservations: fallback.travelReservations || DEFAULT_TRAVEL_RESERVATIONS,
+
+      bookingTripTypes: fallback.bookingTripTypes || buildBookingTripTypesFromFirestore(null),
+
+      footerCredit: fallback.footerCredit || buildFooterCreditFromFirestore(null),
 
       carCatalog: fallback.carCatalog || getDefaultCarCatalog(),
 

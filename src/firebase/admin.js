@@ -752,6 +752,85 @@ export async function seedDefaultBlogs(items) {
   return seedCollection('blogs', items, (data) => createBlog(data));
 }
 
+// Homepage “Plan Your Journey” WhatsApp reservation cards
+export async function getAllTravelReservations(maxItems = 40) {
+  const size = Math.max(1, Math.min(50, Number(maxItems) || 40));
+  try {
+    const q = query(collection(db, 'travelReservations'), orderBy('sortOrder', 'asc'), limit(size));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch {
+    const snapshot = await getDocs(query(collection(db, 'travelReservations'), limit(size)));
+    return snapshot.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }
+}
+
+export async function createTravelReservation(data) {
+  const ref = await addDoc(collection(db, 'travelReservations'), {
+    ...data,
+    active: data.active ?? true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  await logActivity('travel_reservation_created', { travelReservationId: ref.id });
+  return ref.id;
+}
+
+export async function updateTravelReservation(id, data) {
+  await updateDoc(doc(db, 'travelReservations', id), { ...data, updatedAt: serverTimestamp() });
+  await logActivity('travel_reservation_updated', { travelReservationId: id });
+}
+
+export async function deleteTravelReservation(id) {
+  await deleteDoc(doc(db, 'travelReservations', id));
+  await logActivity('travel_reservation_deleted', { travelReservationId: id });
+}
+
+export async function seedDefaultTravelReservations(items) {
+  const existing = await getDocs(collection(db, 'travelReservations'));
+  const canonical = items || [];
+
+  if (existing.size === 0) {
+    await Promise.all(canonical.map((item) => createTravelReservation(item)));
+    return { imported: canonical.length, alreadyExists: false };
+  }
+
+  const byTitle = new Map(
+    existing.docs.map((d) => [String(d.data().titleEn || '').trim().toLowerCase(), d]),
+  );
+
+  let imported = 0;
+  let updated = 0;
+
+  for (const item of canonical) {
+    const key = String(item.titleEn || '').trim().toLowerCase();
+    if (!key) continue;
+    const snap = byTitle.get(key);
+    if (!snap) {
+      await createTravelReservation(item);
+      imported += 1;
+      continue;
+    }
+    const data = snap.data();
+    const nextOrder = Number(item.sortOrder) || 0;
+    const nextImage = item.imageUrl || '';
+    const patch = {};
+    if ((data.sortOrder ?? 0) !== nextOrder) patch.sortOrder = nextOrder;
+    if (nextImage && data.imageUrl !== nextImage) patch.imageUrl = nextImage;
+    if (Object.keys(patch).length) {
+      await updateTravelReservation(snap.id, patch);
+      updated += 1;
+    }
+  }
+
+  if (imported === 0 && updated === 0) return { imported: 0, alreadyExists: true };
+
+  await logActivity('travel_reservations_seeded', { imported, updated });
+  return { imported: imported + updated, alreadyExists: false };
+}
+
 /** Replace entire blogs collection with SuperAdmin service defaults (6 posts). */
 export async function replaceDefaultBlogs(items) {
   const existing = await getAllBlogs();
@@ -830,7 +909,9 @@ export async function syncContentImagesFromDefaults() {
 
   await Promise.all(
     blogs.map(async (blog) => {
-      const defaults = findDefaultBySortOrTitle(defaultBlogs, blog);
+      const defaults =
+        defaultBlogs.find((entry) => entry.serviceId && entry.serviceId === blog.serviceId) ||
+        findDefaultBySortOrTitle(defaultBlogs, blog);
       if (!defaults?.imageUrl) return;
       if (!blog.imageUrl || blog.imageUrl !== defaults.imageUrl) {
         await updateBlog(blog.id, { imageUrl: defaults.imageUrl });
@@ -862,6 +943,24 @@ export async function updateHeroSettings(data) {
   await logActivity('hero_updated', {});
 }
 
+export async function getFooterCreditSettings() {
+  try {
+    const snap = await getDoc(doc(db, 'siteSettings', 'footerCredit'));
+    if (!snap.exists()) return null;
+    return snap.data();
+  } catch {
+    return null;
+  }
+}
+
+export async function updateFooterCreditSettings(data) {
+  await setDoc(doc(db, 'siteSettings', 'footerCredit'), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+  await logActivity('footer_credit_updated', {});
+}
+
 // Instant price section CMS
 export async function getInstantPriceSettings() {
   try {
@@ -879,6 +978,29 @@ export async function updateInstantPriceSettings(data) {
     updatedAt: serverTimestamp(),
   }, { merge: true });
   await logActivity('instant_price_updated', {});
+}
+
+export async function getBookingTripTypesSettings() {
+  try {
+    const snap = await getDoc(doc(db, 'siteSettings', 'bookingTripTypes'));
+    if (!snap.exists()) return null;
+    return snap.data();
+  } catch {
+    return null;
+  }
+}
+
+export async function updateBookingTripTypesSettings(data) {
+  const options = Array.isArray(data?.options) ? data.options : [];
+  const formFields = data?.formFields && typeof data.formFields === 'object'
+    ? data.formFields
+    : undefined;
+  await setDoc(doc(db, 'siteSettings', 'bookingTripTypes'), {
+    options,
+    ...(formFields ? { formFields } : {}),
+    updatedAt: serverTimestamp(),
+  }, { merge: false });
+  await logActivity('booking_trip_types_updated', { count: options.length });
 }
 
 export async function getReligiousToursSettings() {

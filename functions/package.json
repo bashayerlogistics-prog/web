@@ -1,0 +1,21 @@
+{
+  "name": "bashayer-functions",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "lint": "node --check index.js",
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "@clerk/backend": "^3.16.6",
+    "archiver": "^8.0.0",
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2",
+    "nodemailer": "^9.0.5",
+    "unzipper": "^0.12.5"
+  }
+}

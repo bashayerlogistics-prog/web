@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useSiteContent } from '../context/SiteContentContext';
+import { bumpContentRevision } from '../firebase/content';
 import {
   clearSiteContentCache,
   softInvalidateSiteContentCache,
@@ -7,13 +8,20 @@ import {
 
 /**
  * Publish site content after SuperAdmin edits.
- * - publishSite() or publishSite('full') → clear cache + reload CMS docs (hero, sections, …)
- * - publishSite('soft') → clear cache only (packages/fleet already live via onSnapshot) — instant
+ * - Always bumps siteSettings/contentRevision (1 write) so live + local clients refresh.
+ * - publishSite() / 'full' → clear cache + reload CMS docs
+ * - publishSite('soft') → clear cache only (fleet tabs already live via onSnapshot)
  */
 export function usePublishSiteContent() {
   const { refresh } = useSiteContent();
 
   return useCallback(async (mode = 'full') => {
+    try {
+      await bumpContentRevision();
+    } catch (err) {
+      console.warn('Content revision bump failed:', err?.code || err?.message || err);
+    }
+
     if (mode === 'soft') {
       softInvalidateSiteContentCache();
       return;

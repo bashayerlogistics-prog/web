@@ -158,19 +158,28 @@ const VEHICLE_DESC = {
   en: 'A modern air-conditioned vehicle for pilgrims ensuring your family privacy and maximum comfort throughout the trip.',
 };
 
+/** Bump when replacing bundled category photos so browsers drop stale cache. */
+const CATEGORY_IMAGE_VERSION = '20260817';
+
+function withCategoryImageVersion(path) {
+  const base = String(path || '').split('?')[0];
+  return `${base}?v=${CATEGORY_IMAGE_VERSION}`;
+}
+
+/** Local car thumbnails — reliable for admin + site (remote CDN URLs often break). */
 const VEHICLE_IMAGES = {
-  camry: 'https://cntqmlkfgwkbtnqfpczn.supabase.co/storage/v1/object/public/vehicles/vehicle-images/z90znslvxm_1783475265397.jpg',
-  staria: 'https://cntqmlkfgwkbtnqfpczn.supabase.co/storage/v1/object/public/vehicles/vehicle-images/dw1q26wbfo7_1783475308467.jpg',
-  taurus: 'https://cntqmlkfgwkbtnqfpczn.supabase.co/storage/v1/object/public/vehicles/vehicle-images/9bgk2wu14m_1783475317785.jpg',
-  yukon: 'https://cntqmlkfgwkbtnqfpczn.supabase.co/storage/v1/object/public/vehicles/vehicle-images/xh24vco8tl_1783640399560.png',
-  hiace: 'https://cntqmlkfgwkbtnqfpczn.supabase.co/storage/v1/object/public/vehicles/vehicle-images/gbjh3w70qkn_1784037284101.png',
-  h1: 'https://cntqmlkfgwkbtnqfpczn.supabase.co/storage/v1/object/public/vehicles/vehicle-images/dqvo2tiwn8_1783475327721.jpg',
+  camry: withCategoryImageVersion('/images/categories/camry.webp'),
+  staria: '/images/categories/staria.webp',
+  taurus: withCategoryImageVersion('/images/categories/taurus.webp'),
+  yukon: '/images/categories/yukon.webp',
+  hiace: '/images/categories/hiace.webp',
+  h1: '/images/categories/hiace.webp',
 };
 
 /** Wide environmental heroes for `/cars/:id` — car in scene, not fill-crop product shots. */
 export const CATEGORY_HERO_IMAGES = {
-  taurus: '/images/categories/taurus.webp',
-  camry: '/images/categories/camry.webp',
+  taurus: withCategoryImageVersion('/images/categories/taurus.webp'),
+  camry: withCategoryImageVersion('/images/categories/camry.webp'),
   staria: '/images/categories/staria.webp',
   yukon: '/images/categories/yukon.webp',
   hiace: '/images/categories/hiace.webp',
@@ -178,9 +187,65 @@ export const CATEGORY_HERO_IMAGES = {
 
 export { VEHICLE_IMAGES };
 
-export function getCategoryHeroImage(carKey) {
-  const key = String(carKey || '').toLowerCase();
-  return CATEGORY_HERO_IMAGES[key] || VEHICLE_IMAGES[key] || VEHICLE_IMAGES.camry;
+/**
+ * Circle framing for the bundled scene photos: `x`/`y` are the car centre inside
+ * the photo (0-1) and `zoom` is the photo width relative to the circle width.
+ */
+const CATEGORY_CIRCLE_FOCUS = {
+  taurus: { x: 0.5, y: 0.82, zoom: 2.05 },
+  camry: { x: 0.5, y: 0.58, zoom: 1.65 },
+  staria: { x: 0.3, y: 0.73, zoom: 2 },
+  yukon: { x: 0.43, y: 0.74, zoom: 1.95 },
+  hiace: { x: 0.4, y: 0.64, zoom: 2.3 },
+  h1: { x: 0.4, y: 0.64, zoom: 2.3 },
+};
+
+/** Plain centre crop — used for any image we have not measured (admin uploads). */
+const DEFAULT_CIRCLE_FOCUS = { x: 0.5, y: 0.5, zoom: 1.78 };
+
+function mediaPathOnly(url) {
+  return String(url || '').trim().split('?')[0];
+}
+
+function isFirebaseStorageUrl(url) {
+  return /firebasestorage\.googleapis\.com|storage\.googleapis\.com/i.test(String(url || ''));
+}
+
+/**
+ * Prefer bundled `/images/categories/*` art over stale third-party CMS links.
+ * Keep Firebase Storage / other local `/images/...` admin uploads.
+ */
+export function preferBundledCarImage(carKey, candidateUrl) {
+  const key = String(carKey || '').split('-')[0].toLowerCase();
+  const local = CATEGORY_HERO_IMAGES[key] || VEHICLE_IMAGES[key] || VEHICLE_IMAGES.camry;
+  const live = String(candidateUrl || '').trim();
+  if (!live) return local;
+  if (live.startsWith('/')) {
+    const livePath = mediaPathOnly(live);
+    const localPath = mediaPathOnly(local);
+    // Old CMS path without cache-bust → use versioned bundled file
+    if (livePath === localPath) return local;
+    return live;
+  }
+  if (isFirebaseStorageUrl(live)) return live;
+  return local;
+}
+
+export function getCategoryCircleFocus(carKey, imageUrl) {
+  const key = String(carKey || '').split('-')[0].toLowerCase();
+  const focus = CATEGORY_CIRCLE_FOCUS[key];
+  if (!focus) return DEFAULT_CIRCLE_FOCUS;
+  const bundled = CATEGORY_HERO_IMAGES[key] || VEHICLE_IMAGES[key];
+  const url = String(imageUrl || '').trim();
+  if (url && bundled && mediaPathOnly(url) !== mediaPathOnly(bundled)) {
+    return DEFAULT_CIRCLE_FOCUS;
+  }
+  return focus;
+}
+
+export function getCategoryHeroImage(carKey, candidateUrl = '') {
+  const key = String(carKey || '').split('-')[0].toLowerCase();
+  return preferBundledCarImage(key, candidateUrl);
 }
 
 export const SHORT_NAMES = {
@@ -318,8 +383,11 @@ export function setLiveCarCatalog(cars = []) {
       nameAr: car.nameAr || car.modelAr || SHORT_NAMES[id]?.ar || id,
       modelEn: car.modelEn || car.nameEn || SHORT_NAMES[id]?.en || id,
       modelAr: car.modelAr || car.nameAr || SHORT_NAMES[id]?.ar || id,
-      imageUrl: car.imageUrl || VEHICLE_IMAGES[id] || VEHICLE_IMAGES.camry,
-      categoryHeroImageUrl: String(car.categoryHeroImageUrl || '').trim(),
+      imageUrl: preferBundledCarImage(id, car.imageUrl),
+      categoryHeroImageUrl: preferBundledCarImage(
+        id,
+        car.categoryHeroImageUrl || car.imageUrl,
+      ),
       passengers: Number(car.passengers) || CAR_PASSENGERS[id] || 4,
       vip: Boolean(car.vip ?? id === 'yukon'),
       sortOrder: Number.isFinite(Number(car.sortOrder)) ? Number(car.sortOrder) : 0,
@@ -379,9 +447,29 @@ export function getCarDisplayName(carKey, lang = 'ar') {
   return SHORT_NAMES[key]?.[lang] || SHORT_NAMES[key]?.en || key;
 }
 
+function isUsableImageUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) return false;
+  // Prefer local + https; skip known-dead remote vehicle CDN paths when local exists.
+  if (value.startsWith('/')) return true;
+  if (value.includes('supabase.co/storage') && value.includes('vehicle-images')) return false;
+  return /^https?:\/\//i.test(value);
+}
+
 export function getCarImage(carKey) {
   const key = String(carKey || '').split('-')[0];
-  return LIVE_CAR_CATALOG[key]?.imageUrl || VEHICLE_IMAGES[key] || VEHICLE_IMAGES.camry;
+  const live = LIVE_CAR_CATALOG[key]?.imageUrl;
+  if (isUsableImageUrl(live)) return preferBundledCarImage(key, live);
+  return preferBundledCarImage(key, '');
+}
+
+/** Resolve product/car thumb with local fallback for admin tables. */
+export function resolveCarThumb(carKey, productImageUrl) {
+  const key = String(carKey || '').split('-')[0];
+  if (isUsableImageUrl(productImageUrl)) {
+    return preferBundledCarImage(key, productImageUrl);
+  }
+  return getCarImage(key);
 }
 
 /**
@@ -758,6 +846,7 @@ const BLOG_SERVICE_GUIDES = [
     badge: { ar: 'التنقل بين المدن', en: 'City to City' },
     title: { ar: 'التنقل بين المدن', en: 'City to City' },
     date: { ar: '١٣ أغسطس ٢٠٢٦', en: 'Aug 13, 2026' },
+    image: 'https://i.ibb.co/wFH4TqcQ/2026-08-17-T104137-138.jpg',
   },
   {
     serviceId: 'airport',
@@ -765,6 +854,7 @@ const BLOG_SERVICE_GUIDES = [
     badge: { ar: 'المطارات', en: 'Airport' },
     title: { ar: 'المطارات', en: 'Airport' },
     date: { ar: '١٢ أغسطس ٢٠٢٦', en: 'Aug 12, 2026' },
+    image: 'https://i.ibb.co/Xx747nYp/2026-08-17-T095138-387.jpg',
   },
   {
     serviceId: 'train',
@@ -772,6 +862,7 @@ const BLOG_SERVICE_GUIDES = [
     badge: { ar: 'محطات القطار', en: 'Train' },
     title: { ar: 'محطات القطار', en: 'Train' },
     date: { ar: '١١ أغسطس ٢٠٢٦', en: 'Aug 11, 2026' },
+    image: 'https://i.ibb.co/pjRz32r6/2026-08-17-T085037-319.jpg',
   },
   {
     serviceId: 'withinCity',
@@ -779,6 +870,7 @@ const BLOG_SERVICE_GUIDES = [
     badge: { ar: 'داخل المدينة', en: 'Within City' },
     title: { ar: 'داخل المدينة', en: 'Within City' },
     date: { ar: '١٠ أغسطس ٢٠٢٦', en: 'Aug 10, 2026' },
+    image: 'https://i.ibb.co/svNvpbDQ/2026-08-17-T115255-169.jpg',
   },
   {
     serviceId: 'hourly',
@@ -786,6 +878,7 @@ const BLOG_SERVICE_GUIDES = [
     badge: { ar: 'بالساعة', en: 'Hourly' },
     title: { ar: 'بالساعة', en: 'Hourly' },
     date: { ar: '٩ أغسطس ٢٠٢٦', en: 'Aug 9, 2026' },
+    image: 'https://i.ibb.co/sp2qjPkz/2026-08-17-T110153-915.jpg',
   },
   {
     serviceId: 'ziyarat',
@@ -793,6 +886,7 @@ const BLOG_SERVICE_GUIDES = [
     badge: { ar: 'الزيارات', en: 'Ziyarat' },
     title: { ar: 'الزيارات', en: 'Ziyarat' },
     date: { ar: '٨ أغسطس ٢٠٢٦', en: 'Aug 8, 2026' },
+    image: 'https://i.ibb.co/wr0nP8DT/2026-08-17-T115852-816.jpg',
   },
 ];
 
@@ -806,7 +900,7 @@ export const BLOG_POSTS = BLOG_SERVICE_GUIDES.map((guide) => {
     title: guide.title,
     excerpt: card.description,
     content: card.description,
-    image: card.image,
+    image: guide.image || card.image,
   };
 });
 

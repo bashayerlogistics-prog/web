@@ -3,14 +3,15 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  browserLocalPersistence,
+  setPersistence,
   EmailAuthProvider,
   reauthenticateWithCredential,
   updatePassword,
 } from 'firebase/auth';
 import { auth } from '../firebase/auth';
 import { logActivity } from '../firebase/admin';
-
-const ADMIN_SESSION_KEY = 'bashayer_admin_session';
+import { ADMIN_SESSION_KEY } from '../constants/adminSession';
 const DEFAULT_USERNAME = 'superadmin';
 const ADMIN_EMAIL = (import.meta.env.VITE_SUPERADMIN_EMAIL || 'sulemanmr551@gmail.com').trim().toLowerCase();
 const ADMIN_UID = import.meta.env.VITE_SUPERADMIN_UID || '';
@@ -74,6 +75,9 @@ export function AdminAuthProvider({ children }) {
     const email = resolveAdminEmail(trimmed);
 
     try {
+      // Keep the Firebase admin credential through browser restarts; only the
+      // explicit logout action below may remove it.
+      await setPersistence(auth, browserLocalPersistence);
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
       if (!isFirebaseAdmin(cred.user)) {

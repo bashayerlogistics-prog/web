@@ -83,7 +83,7 @@ export default function CarCategory() {
       <CategoryHero
         title={displayName}
         subtitle={heroSubtitle}
-        imageUrl={car.categoryHeroImageUrl || getCategoryHeroImage(key)}
+        imageUrl={getCategoryHeroImage(key, car.categoryHeroImageUrl || car.imageUrl)}
         scrollTarget="#category-packages"
       />
 

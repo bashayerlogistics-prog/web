@@ -52,6 +52,7 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.VITE_EMAIL_WEBHOOK_SECRET }}
         run: |
           cp hostinger/resend-send.php dist/resend-send.php
+          cp hostinger/.htaccess dist/.htaccess
           if [ -n "$RESEND_API_KEY" ]; then
             sed -i "s|__RESEND_API_KEY__|${RESEND_API_KEY}|g" dist/resend-send.php
           fi

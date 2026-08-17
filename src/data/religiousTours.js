@@ -120,8 +120,8 @@ export const DEFAULT_RELIGIOUS_TOURS = {
     'احجز المزارات في الطائف ومكة وجدة والمدينة كباقات ساعة داخل المدينة (4 / 8 / 12 ساعة). سائق خاص وتوقفات مرنة — أسعار مباشرة لـ 5 سيارات.',
   formTitleEn: 'Book your Ziyarat tour',
   formTitleAr: 'احجز جولة الزيارة',
-  formSubtitleEn: 'Set city, hours, date and car — then search our Internal hourly prices.',
-  formSubtitleAr: 'حدد المدينة والساعات والتاريخ والسيارة — ثم ابحث في أسعار داخل المدينة.',
+  formSubtitleEn: 'Set city, date and car — then search our Internal hourly prices.',
+  formSubtitleAr: 'حدد المدينة والتاريخ والسيارة — ثم ابحث في أسعار داخل المدينة.',
   ctaLabelEn: 'SHOW PRICE',
   ctaLabelAr: 'اعرض السعر',
   packagesLabelEn: 'Choose a tour package',
@@ -145,8 +145,28 @@ export const DEFAULT_RELIGIOUS_TOURS = {
   currencyOptionEn: 'Saudi Riyal (SAR)',
   currencyOptionAr: 'ريال سعودي (SAR)',
   backgroundImageUrl: ROUTE_IMAGES.makkahMadinah,
+  // Classic city photos for the Ziyarat booking gallery
+  cityImages: {
+    makkah: '/images/gallery/ziyarat-makkah.jpg',
+    madinah: '/images/gallery/ziyarat-madinah.jpg',
+    jeddah: '/images/gallery/ziyarat-jeddah.jpg',
+    riyadh: '/images/gallery/ziyarat-riyadh.jpg',
+  },
   packages: RELIGIOUS_TOUR_PACKAGES,
 };
+
+/** Prefer fresh bundled defaults over stale `/images/gallery/*` CMS paths; keep remote uploads. */
+function mergeCityImages(stored) {
+  const defaults = DEFAULT_RELIGIOUS_TOURS.cityImages;
+  if (!stored || typeof stored !== 'object') return { ...defaults };
+  const next = { ...defaults };
+  for (const key of Object.keys(defaults)) {
+    const url = String(stored[key] || '').trim();
+    if (!url) continue;
+    if (!url.startsWith('/images/gallery/')) next[key] = url;
+  }
+  return next;
+}
 
 export function buildReligiousToursFromFirestore(data) {
   if (!data) return { ...DEFAULT_RELIGIOUS_TOURS, packages: [...RELIGIOUS_TOUR_PACKAGES] };
@@ -156,6 +176,7 @@ export function buildReligiousToursFromFirestore(data) {
   return {
     ...DEFAULT_RELIGIOUS_TOURS,
     ...data,
+    cityImages: mergeCityImages(data.cityImages),
     packages,
   };
 }

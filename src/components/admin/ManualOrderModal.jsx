@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, X } from 'lucide-react';
-import { createManualOrder } from '../../firebase/payment';
+import { queueOrRunAdminWrite } from '../../firebase/offlineAdminSync';
 import { useToast } from '../../context/ToastContext';
 import AdminApplyButton from './AdminApplyButton';
 import AdminSelect from './AdminSelect';
@@ -22,7 +22,7 @@ const emptyForm = {
 };
 
 export default function ManualOrderModal({ open, onClose, onCreated }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
@@ -33,15 +33,22 @@ export default function ManualOrderModal({ open, onClose, onCreated }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = await createManualOrder({
+      const orderPayload = {
         ...form,
         totalPrice: Number(form.totalPrice) || 0,
         orderSource: 'manual',
         status: 'pending',
-      });
-      toast.success(t('payment.manualOrderCreated', { id: result.orderNumber }));
+      };
+      const { queued, result } = await queueOrRunAdminWrite('createManualOrder', { data: orderPayload });
       setForm(emptyForm);
-      onCreated?.(result);
+      if (queued) {
+        toast.info(i18n.language === 'ar'
+          ? 'تم حفظ الطلب محلياً وسيتم إرساله عند عودة الخدمة.'
+          : 'Order saved locally and will sync when service returns.');
+      } else {
+        toast.success(t('payment.manualOrderCreated', { id: result?.orderNumber || '' }));
+      }
+      onCreated?.({ queued, result });
       onClose?.();
     } catch {
       toast.error(t('common.error'));

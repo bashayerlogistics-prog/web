@@ -1,6 +1,7 @@
 const DB_NAME = 'bashayer-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'pendingOrders';
+const ADMIN_STORE_NAME = 'pendingAdminWrites';
 const CHANGE_EVENT = 'bashayer:pending-orders-changed';
 
 function openDatabase() {
@@ -15,6 +16,9 @@ function openDatabase() {
       const database = request.result;
       if (!database.objectStoreNames.contains(STORE_NAME)) {
         database.createObjectStore(STORE_NAME, { keyPath: 'bookingId' });
+      }
+      if (!database.objectStoreNames.contains(ADMIN_STORE_NAME)) {
+        database.createObjectStore(ADMIN_STORE_NAME, { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);

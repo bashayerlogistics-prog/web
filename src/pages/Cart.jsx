@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Link } from 'react-router-dom';
 
@@ -48,7 +48,7 @@ export default function Cart() {
 
   const lang = i18n.language;
 
-  const { user } = useAuth();
+  const { user, clerkUser } = useAuth();
 
   const { items, removeItem, clearCart, cartCount, cartTotal } = useCart();
 
@@ -56,13 +56,25 @@ export default function Cart() {
 
   const { settings: paymentSettings } = usePaymentSettings();
 
+  const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress
+    || clerkUser?.emailAddresses?.[0]?.emailAddress
+    || '';
+  const clerkName = [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(' ')
+    || clerkUser?.unsafeMetadata?.fullName
+    || '';
+  const clerkPhone = clerkUser?.unsafeMetadata?.phone || '';
 
+  const [name, setName] = useState(user?.displayName || clerkName || '');
 
-  const [name, setName] = useState(user?.displayName || '');
+  const [phone, setPhone] = useState(clerkPhone || '');
 
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState(user?.email || clerkEmail || '');
 
-  const [email, setEmail] = useState(user?.email || '');
+  useEffect(() => {
+    if (user?.email || clerkEmail) setEmail(user?.email || clerkEmail);
+    if (user?.displayName || clerkName) setName((current) => current || user?.displayName || clerkName);
+    if (clerkPhone) setPhone((current) => current || clerkPhone);
+  }, [user, clerkEmail, clerkName, clerkPhone]);
 
   const [notes, setNotes] = useState('');
 
@@ -155,6 +167,7 @@ export default function Cart() {
         customerPhone: phone.trim(),
 
         customerEmail: email.trim() || user?.email || '',
+        language: lang,
 
         notes: notes.trim(),
 

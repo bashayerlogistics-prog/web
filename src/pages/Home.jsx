@@ -4,6 +4,7 @@ import BookingForm from '../components/home/BookingForm';
 import { useSiteContent } from '../context/SiteContentContext';
 
 const CarCategoriesSection = lazy(() => import('../components/home/CarCategoriesSection'));
+const TravelReservationsSection = lazy(() => import('../components/home/TravelReservationsSection'));
 const InstantPriceSection = lazy(() => import('../components/home/InstantPriceSection'));
 const ReligiousToursSection = lazy(() => import('../components/home/ReligiousToursSection'));
 const FleetSection = lazy(() => import('../components/home/FleetSection'));
@@ -81,6 +82,9 @@ export default function Home() {
           <BookingForm overlapHero={heroActive} />
         </div>
       )}
+      <LazySection rootMargin="720px 0px">
+        <TravelReservationsSection />
+      </LazySection>
       <LazySection when={isSectionActive('fleet')} rootMargin="640px 0px">
         <CarCategoriesSection />
       </LazySection>

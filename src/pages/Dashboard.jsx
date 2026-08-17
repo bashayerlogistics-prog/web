@@ -20,6 +20,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import AlertBanner from '../components/ui/AlertBanner';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import UserNotificationBell from '../components/ui/UserNotificationBell';
+import AccountActivity from '../components/ui/AccountActivity';
 
 export default function Dashboard() {
   const { t, i18n } = useTranslation();
@@ -242,6 +243,9 @@ export default function Dashboard() {
             )}
           </GlassCard>
         )}
+
+        <AccountActivity />
+
         {bookings.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <GlassCard className="lg:col-span-2">

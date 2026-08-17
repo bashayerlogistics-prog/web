@@ -10,6 +10,7 @@ import {
   DEFAULT_GALLERY_ITEMS,
 } from './staticData';
 import { HOURLY_FLEET_ROUTES } from './hourlyPricing';
+import { DEFAULT_TRAVEL_RESERVATIONS } from './travelReservations';
 
 export function getDefaultProducts() {
   const products = [];
@@ -201,5 +202,20 @@ export function getDefaultGalleryItems() {
     ...item,
     sortOrder: item.sortOrder ?? index,
     active: item.active ?? true,
+  }));
+}
+
+export function getDefaultTravelReservations() {
+  return DEFAULT_TRAVEL_RESERVATIONS.map(({ id: _id, image, title, hint, message, accent, sortOrder, active }, index) => ({
+    titleEn: title?.en || '',
+    titleAr: title?.ar || '',
+    hintEn: hint?.en || '',
+    hintAr: hint?.ar || '',
+    messageEn: message?.en || '',
+    messageAr: message?.ar || '',
+    imageUrl: image || '',
+    accent: accent || 'gold',
+    sortOrder: sortOrder ?? index,
+    active: active ?? true,
   }));
 }

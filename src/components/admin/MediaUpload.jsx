@@ -1,8 +1,12 @@
 import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Image as ImageIcon, Upload, Eye, X, AlertCircle } from 'lucide-react';
-import { uploadMedia, isVideoFile, VIDEO_MAX_MB } from '../../firebase/storage';
-import { IMGBB_MAX_IMAGE_MB } from '../../firebase/imgbb';
+import {
+  uploadMedia,
+  isVideoFile,
+  DEFAULT_IMAGE_MAX_KB,
+  SOURCE_IMAGE_MAX_MB,
+} from '../../firebase/storage';
 
 function formatFileSize(bytes) {
   if (!bytes) return '0 B';
@@ -20,7 +24,7 @@ export default function MediaUpload({
   onChange,
   accept = 'image/*',
   folder = 'uploads',
-  maxSizeMB,
+  maxSizeKB = DEFAULT_IMAGE_MAX_KB,
   allowUrl = false,
   urlPlaceholder = 'https://...',
   label,
@@ -36,9 +40,7 @@ export default function MediaUpload({
   const [showUrlInput, setShowUrlInput] = useState(videoMode);
   const [fileInfo, setFileInfo] = useState(null);
 
-  const defaultMax = videoMode ? VIDEO_MAX_MB : IMGBB_MAX_IMAGE_MB;
-  const limitMB = maxSizeMB ?? defaultMax;
-  const maxBytes = limitMB * 1024 * 1024;
+  const sourceMaxBytes = SOURCE_IMAGE_MAX_MB * 1024 * 1024;
   const isVideo = isVideoUrl(value);
 
   const handleFile = async (e) => {
@@ -57,8 +59,13 @@ export default function MediaUpload({
       return;
     }
 
-    if (file.size > maxBytes) {
-      window.alert(t('admin.media.fileTooLarge', { max: limitMB, size: formatFileSize(file.size) }));
+    if (file.size > sourceMaxBytes) {
+      window.alert(
+        t('admin.media.sourceTooLarge', {
+          max: SOURCE_IMAGE_MAX_MB,
+          size: formatFileSize(file.size),
+        }),
+      );
       e.target.value = '';
       return;
     }
@@ -66,11 +73,30 @@ export default function MediaUpload({
     setFileInfo({ name: file.name, size: file.size, type: file.type });
     setUploading(true);
     try {
-      const url = await uploadMedia(file, folder);
+      const url = await uploadMedia(file, folder, { maxSizeKB });
       onChange(url);
     } catch (err) {
-      const message = err.message || t('common.error');
-      window.alert(t('admin.media.uploadFailed', { error: message }));
+      if (err?.code === 'STILL_TOO_LARGE' || String(err?.message || '').startsWith('STILL_TOO_LARGE')) {
+        const optimized = err.optimizedBytes
+          || Number(String(err.message).split(':')[2])
+          || 0;
+        window.alert(
+          t('admin.media.stillTooLarge', {
+            max: maxSizeKB,
+            size: formatFileSize(optimized || file.size),
+          }),
+        );
+      } else if (err?.code === 'SOURCE_TOO_LARGE' || String(err?.message || '').startsWith('SOURCE_TOO_LARGE')) {
+        window.alert(
+          t('admin.media.sourceTooLarge', {
+            max: SOURCE_IMAGE_MAX_MB,
+            size: formatFileSize(file.size),
+          }),
+        );
+      } else {
+        const message = err.message || t('common.error');
+        window.alert(t('admin.media.uploadFailed', { error: message }));
+      }
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -90,7 +116,7 @@ export default function MediaUpload({
     setFileInfo(null);
   };
 
-  const uploadLabel = uploading ? t('common.loading') : t('admin.uploadImage');
+  const uploadLabel = uploading ? t('admin.media.optimizing') : t('admin.uploadImage');
 
   return (
     <div className={`space-y-3 ${className}`}>
@@ -159,10 +185,14 @@ export default function MediaUpload({
         </div>
       )}
 
-      <p className="text-xs text-gray-400 dark:text-gold-light/80 flex items-center gap-1">
-        <AlertCircle className="w-3.5 h-3.5" />
-        {videoMode ? t('admin.media.videoUrlOnly') : t('admin.media.maxSize', { max: limitMB })}
-        {fileInfo && ` · ${fileInfo.name} (${formatFileSize(fileInfo.size)})`}
+      <p className="text-xs text-amber-700 dark:text-gold-light flex items-start gap-1.5 leading-relaxed">
+        <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+        <span>
+          {videoMode
+            ? t('admin.media.videoUrlOnly')
+            : t('admin.media.maxSize', { max: maxSizeKB, sourceMax: SOURCE_IMAGE_MAX_MB })}
+          {fileInfo && ` · ${fileInfo.name} (${formatFileSize(fileInfo.size)})`}
+        </span>
       </p>
 
       {value && !previewOpen && (

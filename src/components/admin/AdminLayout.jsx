@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ShoppingBag, Users, Activity, Settings,
   LogOut, Sun, Moon, Languages, Menu, RefreshCw, X, Search,
   Package, Image, Bell, ChevronRight, ChevronDown, FileText, Briefcase, ToggleLeft, Monitor, MessageCircle,
-  Map, HelpCircle, Share2, Images, Clock, Landmark, Plane, TrainFront, MapPin, Car, Tags, DatabaseBackup, CreditCard,
+  Map, HelpCircle, Share2, Images, Clock, Landmark, Plane, TrainFront, MapPin, Car, Tags, DatabaseBackup, CreditCard, ListOrdered, Copyright,
 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAdminAuth } from '../../context/AdminAuthContext';
@@ -89,9 +89,12 @@ const navGroups = [
     id: 'settings',
     labelKey: 'admin.nav.groupSettings',
     items: [
+      { to: '/admin/footer', icon: Copyright, labelKey: 'admin.nav.footer' },
       { to: '/admin/payment-settings', icon: CreditCard, labelKey: 'admin.nav.paymentSettings' },
       { to: '/admin/hero', icon: Monitor, labelKey: 'admin.nav.hero' },
+      { to: '/admin/travel-reservations', icon: MessageCircle, labelKey: 'admin.nav.travelReservations' },
       { to: '/admin/backgrounds', icon: Images, labelKey: 'admin.nav.backgrounds' },
+      { to: '/admin/trip-types', icon: ListOrdered, labelKey: 'admin.nav.tripTypes' },
       { to: '/admin/sections', icon: ToggleLeft, labelKey: 'admin.nav.sections' },
       { to: '/admin/settings', icon: Settings, labelKey: 'admin.nav.settings' },
       { to: '/admin/backup', icon: DatabaseBackup, labelKey: 'admin.nav.backup' },
@@ -122,8 +125,10 @@ function AdminLayoutInner() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [pageQuery, setPageQuery] = useState('');
   const pageSearchRef = useRef(null);
+  const actionMenuRef = useRef(null);
 
   const focusPageSearch = useCallback(() => {
     setSidebarOpen(true);
@@ -156,14 +161,43 @@ function AdminLayoutInner() {
     return () => document.documentElement.classList.remove('admin-shell-active');
   }, []);
 
+  useEffect(() => {
+    if (!actionMenuOpen) return undefined;
+
+    const closeOnOutsideClick = (event) => {
+      if (!actionMenuRef.current?.contains(event.target)) setActionMenuOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setActionMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [actionMenuOpen]);
+
+  useEffect(() => {
+    setActionMenuOpen(false);
+  }, [location.pathname]);
+
   const handleLogout = async () => {
+    setActionMenuOpen(false);
     await logout();
     navigate('/admin/login');
   };
 
   const toggleLang = () => {
     setSidebarOpen(false);
+    setActionMenuOpen(false);
     setLanguage(i18n.language === 'ar' ? 'en' : 'ar');
+  };
+
+  const handleThemeToggle = () => {
+    setActionMenuOpen(false);
+    toggleTheme();
   };
 
   const toggleGroup = (id) => {
@@ -192,7 +226,7 @@ function AdminLayoutInner() {
           label: t(item.labelKey),
         })),
       ),
-    [t, i18n.language],
+    [t],
   );
 
   const filteredPages = useMemo(() => {
@@ -403,27 +437,6 @@ function AdminLayoutInner() {
           )}
         </nav>
 
-        <div className="flex-shrink-0 p-3 sm:p-4 border-t border-primary-500/10 space-y-1 pb-safe">
-          {[
-            { onClick: toggleLang, icon: Languages, label: t('nav.english') },
-            { onClick: toggleTheme, icon: theme === 'dark' ? Sun : Moon, label: theme === 'dark' ? t('admin.theme.light') : t('admin.theme.dark') },
-            { onClick: handleLogout, icon: LogOut, label: t('auth.logout'), danger: true },
-          ].map(({ onClick, icon: Icon, label, danger }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={onClick}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150 ${
-                danger
-                  ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-50'
-                  : 'text-gray-500 hover:bg-brand/5 hover:text-brand'
-              }`}
-            >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              <span className="truncate">{label}</span>
-            </button>
-          ))}
-        </div>
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden w-full">
@@ -464,12 +477,47 @@ function AdminLayoutInner() {
             >
               <RefreshCw className={`w-4 h-4 sm:w-5 sm:h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>
-            <button type="button" onClick={toggleLang} className="hidden sm:flex admin-header-btn p-2.5">
-              <Languages className="w-5 h-5" />
-            </button>
-            <button type="button" onClick={toggleTheme} className="admin-header-btn p-2 sm:p-2.5">
-              {theme === 'dark' ? <Sun className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
-            </button>
+            <div ref={actionMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setActionMenuOpen((open) => !open)}
+                className="admin-header-btn flex items-center gap-1 p-2 sm:p-2.5"
+                aria-label={t('admin.nav.settings')}
+                aria-haspopup="menu"
+                aria-expanded={actionMenuOpen}
+              >
+                <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${actionMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {actionMenuOpen && (
+                <div
+                  className="admin-header-menu absolute end-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-2xl p-1.5"
+                  role="menu"
+                >
+                  {[
+                    { onClick: toggleLang, icon: Languages, label: t('nav.english') },
+                    {
+                      onClick: handleThemeToggle,
+                      icon: theme === 'dark' ? Sun : Moon,
+                      label: theme === 'dark' ? t('admin.theme.light') : t('admin.theme.dark'),
+                    },
+                    { onClick: handleLogout, icon: LogOut, label: t('auth.logout'), danger: true },
+                  ].map(({ onClick, icon: Icon, label, danger }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={onClick}
+                      className={`admin-header-menu-item ${danger ? 'admin-header-menu-item--danger' : ''}`}
+                      role="menuitem"
+                    >
+                      <Icon className="w-4 h-4 flex-shrink-0" />
+                      <span className="truncate">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

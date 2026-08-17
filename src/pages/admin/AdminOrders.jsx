@@ -4,13 +4,11 @@ import {
   Eye, CreditCard, ShoppingBag, Plus, ArrowUpDown, X, MessageCircle, Globe, Phone,
 } from 'lucide-react';
 import {
-  updateBookingStatus,
-  updateBookingPayment,
   sendNotification,
   subscribeToBookingsPage,
   getBookingsPage,
 } from '../../firebase/admin';
-import { confirmPayment, rejectPayment } from '../../firebase/payment';
+import { queueOrRunAdminWrite } from '../../firebase/offlineAdminSync';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import { CITIES } from '../../data/staticData';
 import { getCityName, getStatusLabel, formatBookingDate } from '../../utils/bookingHelpers';
@@ -290,40 +288,78 @@ export default function AdminOrders() {
   const handleStatusChange = async (bookingId, newStatus) => {
     const booking = visibleBookings.find((b) => b.id === bookingId);
     try {
-      await updateBookingStatus(bookingId, newStatus, { notifyUserId: booking?.userId });
+      const { queued } = await queueOrRunAdminWrite('updateBookingStatus', {
+        bookingId,
+        status: newStatus,
+        options: { notifyUserId: booking?.userId },
+      });
       if (selectedBooking?.id === bookingId) setSelectedBooking({ ...selectedBooking, status: newStatus });
-      toast.success(t('ui.statusUpdated'));
+      if (queued) {
+        toast.info(i18n.language === 'ar'
+          ? 'تم حفظ التغيير محلياً وسيتم مزامنته عند عودة الخدمة.'
+          : 'Change saved locally and will sync when service returns.');
+      } else {
+        toast.success(t('ui.statusUpdated'));
+      }
       refresh();
     } catch { toast.error(t('common.error')); }
   };
 
   const handlePaymentChange = async (bookingId, paymentStatus) => {
     try {
-      await updateBookingPayment(bookingId, paymentStatus);
+      const { queued } = await queueOrRunAdminWrite('updateBookingPayment', {
+        bookingId,
+        paymentStatus,
+      });
       if (selectedBooking?.id === bookingId) setSelectedBooking({ ...selectedBooking, paymentStatus });
-      toast.success(t('admin.paymentUpdated'));
+      if (queued) {
+        toast.info(i18n.language === 'ar'
+          ? 'تم حفظ التغيير محلياً وسيتم مزامنته عند عودة الخدمة.'
+          : 'Change saved locally and will sync when service returns.');
+      } else {
+        toast.success(t('admin.paymentUpdated'));
+      }
       refresh();
     } catch { toast.error(t('common.error')); }
   };
 
   const handleConfirmPayment = async (bookingId) => {
     try {
-      await confirmPayment(bookingId, adminEmail);
+      const { queued } = await queueOrRunAdminWrite('confirmPayment', {
+        bookingId,
+        adminEmail,
+      });
       if (selectedBooking?.id === bookingId) {
         setSelectedBooking({ ...selectedBooking, paymentStatus: 'paid', status: 'confirmed' });
       }
-      toast.success(t('payment.paymentConfirmed'));
+      if (queued) {
+        toast.info(i18n.language === 'ar'
+          ? 'تم حفظ تأكيد الدفع محلياً وسيتم إرساله عند عودة الخدمة.'
+          : 'Payment confirmation saved locally and will sync when service returns.');
+      } else {
+        toast.success(t('payment.paymentConfirmed'));
+      }
       refresh();
     } catch { toast.error(t('common.error')); }
   };
 
   const handleRejectPayment = async (bookingId, reason) => {
     try {
-      await rejectPayment(bookingId, reason, adminEmail);
+      const { queued } = await queueOrRunAdminWrite('rejectPayment', {
+        bookingId,
+        reason,
+        adminEmail,
+      });
       if (selectedBooking?.id === bookingId) {
         setSelectedBooking({ ...selectedBooking, paymentStatus: 'rejected', rejectedReason: reason });
       }
-      toast.success(t('payment.paymentRejected'));
+      if (queued) {
+        toast.info(i18n.language === 'ar'
+          ? 'تم حفظ رفض الدفع محلياً وسيتم إرساله عند عودة الخدمة.'
+          : 'Payment rejection saved locally and will sync when service returns.');
+      } else {
+        toast.success(t('payment.paymentRejected'));
+      }
       refresh();
     } catch { toast.error(t('common.error')); }
   };

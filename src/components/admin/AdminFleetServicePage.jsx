@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -31,7 +31,7 @@ import {
   carOptionList,
   DEFAULT_FLEET_CAR,
 } from '../../data/adminFleetServices';
-import { getCarDisplayName, getCarImage, VEHICLE_IMAGES } from '../../data/staticData';
+import { getCarDisplayName, VEHICLE_IMAGES, resolveCarThumb } from '../../data/staticData';
 import { dedupeFleetProducts, fleetCarRouteKey } from '../../utils/productDedupe';
 import AdminPageHeader from './AdminPageHeader';
 import AdminApplyButton from './AdminApplyButton';
@@ -114,6 +114,31 @@ function layoutI18nPrefix(layout) {
 function carLabel(carKey, lang) {
   return getCarDisplayName(carKey, lang);
 }
+
+function AdminCarThumb({ carKey, imageUrl }) {
+  const fallback = resolveCarThumb(carKey, '') || VEHICLE_IMAGES.camry;
+  const [src, setSrc] = useState(() => resolveCarThumb(carKey, imageUrl) || fallback);
+
+  useEffect(() => {
+    setSrc(resolveCarThumb(carKey, imageUrl) || fallback);
+  }, [carKey, imageUrl, fallback]);
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="w-10 h-10 rounded-lg object-cover shrink-0 bg-gray-100 dark:bg-white/10"
+      onError={() => {
+        if (src !== fallback) setSrc(fallback);
+      }}
+    />
+  );
+}
+
+const STATUS_BADGE_ON = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-100';
+const STATUS_BADGE_OFF = 'bg-gray-200 text-gray-700 dark:bg-gray-600/60 dark:text-gray-100';
+const VISIBLE_BADGE = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-100';
+const HIDDEN_BADGE = 'bg-amber-100 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100';
 
 export default function AdminFleetServicePage({ serviceId }) {
   const service = getFleetService(serviceId);
@@ -208,13 +233,16 @@ export default function AdminFleetServicePage({ serviceId }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.imageUrl?.trim()) {
+    const carKey = carKeyOf({ vehicleKey: form.vehicleKey }) || form.vehicleKey?.split('-')[0] || service.defaultCar || DEFAULT_FLEET_CAR;
+    const imageUrl = String(form.imageUrl || '').trim() || resolveCarThumb(carKey, '');
+    if (!imageUrl) {
       toast.error(t('common.error'));
       return;
     }
-    const carKey = carKeyOf({ vehicleKey: form.vehicleKey }) || form.vehicleKey.split('-')[0] || '';
     const payload = {
       ...form,
+      imageUrl,
+      vehicleKey: form.vehicleKey || carKey,
       carModelEn: getCarDisplayName(carKey, 'en'),
       carModelAr: getCarDisplayName(carKey, 'ar'),
       price: Number(form.price) || 0,
@@ -794,13 +822,7 @@ export default function AdminFleetServicePage({ serviceId }) {
                     <AdminTableRow key={p.id}>
                       <AdminTableCell>
                         <div className="flex items-center gap-2">
-                          {(p.imageUrl || getCarImage(car) || VEHICLE_IMAGES[car]) && (
-                            <img
-                              src={p.imageUrl || getCarImage(car) || VEHICLE_IMAGES[car]}
-                              alt=""
-                              className="w-10 h-10 rounded-lg object-cover shrink-0"
-                            />
-                          )}
+                          <AdminCarThumb carKey={car} imageUrl={p.imageUrl} />
                           <div>
                             <span className="font-bold block">{carLabel(car, lang)}</span>
                             <span className="text-xs text-gray-500 line-clamp-1">
@@ -811,15 +833,15 @@ export default function AdminFleetServicePage({ serviceId }) {
                       </AdminTableCell>
                       {renderPriceCells(p)}
                       <AdminTableCell>
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${p.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                          {p.active ? t('admin.products.active') : t('admin.products.inactive')}
+                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${p.active !== false ? STATUS_BADGE_ON : STATUS_BADGE_OFF}`}>
+                          {p.active !== false ? t('admin.products.active') : t('admin.products.inactive')}
                         </span>
                       </AdminTableCell>
                       <AdminTableCell>
                         <button
                           type="button"
                           onClick={() => toggleHidePrice(p)}
-                          className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${p.hidePrice ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
+                          className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${p.hidePrice ? HIDDEN_BADGE : VISIBLE_BADGE}`}
                         >
                           {p.hidePrice ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                           {p.hidePrice

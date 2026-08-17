@@ -1,133 +1,170 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Mail, User, Phone, UserPlus, AlertCircle, ShieldCheck } from 'lucide-react';
+import { useSignIn, useSignUp } from '@clerk/clerk-react';
+import { AlertCircle, Mail, Phone, ShieldCheck, User, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { handleAuthError, validateRegisterForm } from '../utils/firebaseErrors';
-import AuthGlassCard from '../components/ui/AuthGlassCard';
+import { handleAuthError, validateEmail } from '../utils/firebaseErrors';
 import AuthAlertModal from '../components/ui/AuthAlertModal';
-import PasswordInput from '../components/ui/PasswordInput';
+import AuthGlassCard from '../components/ui/AuthGlassCard';
+import EmailOtpStep from '../components/ui/EmailOtpStep';
 
 const SUCCESS_REDIRECT_MS = 900;
 
 export default function Register() {
   const { t, i18n } = useTranslation();
-  const { user, register, loginWithGoogle } = useAuth();
+  const { user, completeProfile } = useAuth();
+  const { isLoaded: signUpLoaded, signUp, setActive } = useSignUp();
+  const { isLoaded: signInLoaded, signIn } = useSignIn();
   const navigate = useNavigate();
   const lang = i18n.language;
 
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' });
-  const [inlineError, setInlineError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [modal, setModal] = useState(null);
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [form, setForm] = useState({ name: '', phone: '' });
+  const [step, setStep] = useState('email');
   const [agreed, setAgreed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [inlineError, setInlineError] = useState('');
+  const [modal, setModal] = useState(null);
+  const [resendKey, setResendKey] = useState(0);
   const authAttemptRef = useRef(false);
   const redirectTimerRef = useRef(null);
 
   useEffect(() => {
-    if (user && !authAttemptRef.current) navigate('/dashboard', { replace: true });
-  }, [user, navigate]);
+    if (user && !authAttemptRef.current && step !== 'details') {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate, step]);
 
   useEffect(() => () => window.clearTimeout(redirectTimerRef.current), []);
 
-  const update = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
-
-  const showError = (message, code, type = 'error') => {
+  const showError = (error, keepOpen = false) => {
+    if (!keepOpen) authAttemptRef.current = false;
+    const message = error?.errors?.[0]?.longMessage
+      || error?.errors?.[0]?.message
+      || handleAuthError(error, 'register', lang).message;
     setInlineError(message);
-    const isSecurity = code?.includes('disposable') || code?.includes('weak') || code === 'validation/error';
     setModal({
-      type: isSecurity ? 'security' : type,
-      title: lang === 'ar' ? 'تعذر إكمال العملية' : 'We could not continue',
+      type: 'error',
+      title: lang === 'ar' ? 'تعذر إنشاء الحساب' : 'Registration failed',
       message,
-      code,
+      code: error?.errors?.[0]?.code || error?.code,
     });
   };
 
-  const showSuccess = ({ google = false, isNew = false } = {}) => {
-    const title = google
-      ? (isNew
-        ? (lang === 'ar' ? 'أهلاً بك! تم التسجيل عبر Google' : 'Welcome! Signed up with Google')
-        : (lang === 'ar' ? 'تم الدخول عبر Google' : 'Signed in with Google'))
-      : (lang === 'ar' ? 'أهلاً بك معنا!' : 'Welcome aboard!');
-
-    const message = google
-      ? (lang === 'ar'
-        ? 'حسابك جاهز وتم تسجيل دخولك تلقائياً. جاري نقلك إلى لوحة التحكم…'
-        : 'Your account is ready and you are signed in. Taking you to the dashboard…')
-      : (lang === 'ar'
-        ? 'تم إنشاء حسابك بنجاح. سننقلك الآن إلى لوحة التحكم.'
-        : 'Your account is ready. Taking you to your dashboard now.');
-
-    setModal({ type: 'success', title, message });
-    redirectTimerRef.current = window.setTimeout(() => navigate('/dashboard', { replace: true }), SUCCESS_REDIRECT_MS);
-  };
-
-  const closeModal = () => {
-    const isSuccess = modal?.type === 'success';
-    setModal(null);
-    if (isSuccess) {
-      window.clearTimeout(redirectTimerRef.current);
-      navigate('/dashboard', { replace: true });
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const sendCode = async ({ resend = false } = {}) => {
+    if (!signUpLoaded || !signUp) return;
     setInlineError('');
     setModal(null);
-
-    if (!agreed) {
-      const msg = lang === 'ar' ? 'يرجى الموافقة على شروط الخدمة وسياسة الخصوصية' : 'Please accept the terms and privacy policy';
-      showError(msg, 'validation/terms');
-      return;
-    }
-
-    const validation = validateRegisterForm(form, lang);
+    const validation = validateEmail(email, lang);
     if (!validation.valid) {
-      showError(validation.errors[0], 'validation/error');
+      setInlineError(validation.errors[0]);
       return;
     }
 
-    authAttemptRef.current = true;
     setLoading(true);
     try {
-      await register(validation.email, form.password, form.name.trim(), form.phone.trim());
-      showSuccess();
-    } catch (err) {
-      authAttemptRef.current = false;
-      const { message, code } = handleAuthError(err, 'register', lang);
-      const modalType = code === 'auth/email-already-in-use' ? 'warning' : 'error';
-      showError(message, code, modalType);
+      if (!resend) {
+        await signUp.create({ emailAddress: validation.email });
+      }
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      setEmail(validation.email);
+      setCode('');
+      setStep('otp');
+      setResendKey((value) => value + 1);
+      if (resend) {
+        setModal({
+          type: 'success',
+          title: lang === 'ar' ? 'تم إرسال رمز جديد' : 'New OTP sent',
+          message: lang === 'ar' ? 'تحقق من صندوق الوارد.' : 'Check your inbox for the new code.',
+        });
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyCode = async (event) => {
+    event.preventDefault();
+    if (!signUpLoaded || !signUp) return;
+    authAttemptRef.current = true;
+    setInlineError('');
+    setLoading(true);
+    try {
+      const result = await signUp.attemptEmailAddressVerification({ code });
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId });
+        setStep('details');
+      } else if (result.status === 'missing_requirements') {
+        await setActive({ session: result.createdSessionId || signUp.createdSessionId });
+        setStep('details');
+      } else {
+        throw { errors: [{ message: lang === 'ar' ? 'تعذر إكمال التحقق.' : 'Could not complete verification.' }] };
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const finishRegistration = async (event) => {
+    event.preventDefault();
+    const name = form.name.trim().replace(/\s+/g, ' ');
+    const phone = form.phone.trim();
+    const digits = phone.replace(/\D/g, '');
+    if (!name || name.length > 100) {
+      setInlineError(lang === 'ar' ? 'يرجى إدخال الاسم الكامل' : 'Full name is required.');
+      return;
+    }
+    if (digits.length < 8 || digits.length > 15) {
+      setInlineError(lang === 'ar' ? 'يرجى إدخال رقم جوال صحيح' : 'Enter a valid mobile number.');
+      return;
+    }
+    if (!agreed) {
+      setInlineError(lang === 'ar' ? 'يرجى الموافقة على الشروط وسياسة الخصوصية' : 'Please accept the terms and privacy policy.');
+      return;
+    }
+
+    setInlineError('');
+    setLoading(true);
+    try {
+      await completeProfile({ name, phone });
+      setModal({
+        type: 'success',
+        title: lang === 'ar' ? 'أهلاً بك معنا!' : 'Welcome aboard!',
+        message: lang === 'ar'
+          ? 'تم حفظ بياناتك وإنشاء حسابك بنجاح.'
+          : 'Your details are saved and your account is ready.',
+      });
+      redirectTimerRef.current = window.setTimeout(
+        () => navigate('/dashboard', { replace: true }),
+        SUCCESS_REDIRECT_MS,
+      );
+    } catch (error) {
+      showError(error, true);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogle = async () => {
-    setInlineError('');
-    setModal(null);
-    authAttemptRef.current = true;
+    if (!signInLoaded || !signIn) return;
     setLoading(true);
     try {
-      // Google = register + login in one step
-      const result = await loginWithGoogle();
-      if (result?.user) {
-        showSuccess({ google: true, isNew: Boolean(result.isNew) });
-      }
-    } catch (err) {
-      authAttemptRef.current = false;
-      const { message, code } = handleAuthError(err, 'google-login', lang);
-      showError(message, code, code === 'auth/admin-account' ? 'warning' : 'error');
-    } finally {
+      await signIn.authenticateWithRedirect({
+        strategy: 'oauth_google',
+        redirectUrl: `${window.location.origin}/sso-callback`,
+        redirectUrlComplete: '/dashboard',
+      });
+    } catch (error) {
+      showError(error);
       setLoading(false);
     }
   };
-
-  const textFields = [
-    { key: 'name', type: 'text', icon: User, label: t('auth.name') },
-    { key: 'email', type: 'email', icon: Mail, label: t('auth.email'), dir: 'ltr' },
-    { key: 'phone', type: 'tel', icon: Phone, label: t('auth.phone'), dir: 'ltr' },
-  ];
 
   return (
     <>
@@ -139,122 +176,100 @@ export default function Register() {
           </div>
         )}
 
-        <div className="auth-info-note mb-4">
-          <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{t('auth.googleSignupHint')}</span>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleGoogle}
-          disabled={loading}
-          className="auth-btn-google disabled:opacity-60"
-        >
-          <img src="https://www.google.com/favicon.ico" alt="" className="w-5 h-5" />
-          {loading ? t('common.loading') : t('auth.registerWithGoogle')}
-        </button>
-        <p className="text-[11px] text-gray-400 text-center mt-2 leading-relaxed">
-          {t('auth.googleTermsNote')}
-        </p>
-
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-200/60 dark:border-white/10" />
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-3 bg-transparent text-gray-400">{t('auth.orContinueWith')}</span>
-          </div>
-        </div>
-
-        <form id="register-form" onSubmit={handleSubmit} className="space-y-4">
-          {textFields.map(({ key, type, icon: Icon, label, dir }) => (
-            <div key={key}>
-              <label htmlFor={`register-${key}`} className="block text-sm font-semibold text-brand mb-1.5">{label}</label>
-              <div className="relative group">
-                <Icon className="auth-input-icon" />
-                <input
-                  type={type}
-                  id={`register-${key}`}
-                  value={form[key]}
-                  onChange={update(key)}
-                  required
-                  dir={dir}
-                  className="auth-input"
-                />
+        {step === 'email' && (
+          <>
+            <div className="auth-info-note mb-4">
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{t('auth.otpSentHint')}</span>
+            </div>
+            <button type="button" onClick={handleGoogle} disabled={loading || !signInLoaded} className="auth-btn-google disabled:opacity-60 mb-4">
+              <img src="https://www.google.com/favicon.ico" alt="" className="w-5 h-5" />
+              {loading ? t('common.loading') : t('auth.registerWithGoogle')}
+            </button>
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-3 bg-white text-gray-400">{t('auth.orContinueWith')}</span>
               </div>
             </div>
-          ))}
+            <form onSubmit={(event) => { event.preventDefault(); sendCode(); }} className="space-y-4">
+              <div>
+                <label htmlFor="register-email" className="block text-sm font-semibold text-brand mb-1.5">{t('auth.email')}</label>
+                <div className="relative group">
+                  <Mail className="auth-input-icon" />
+                  <input id="register-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="auth-input" dir="ltr" autoComplete="email" required />
+                </div>
+              </div>
+              <div id="clerk-captcha" />
+              <button type="submit" disabled={loading || !signUpLoaded} className="auth-btn-primary w-full flex items-center justify-center gap-2">
+                <Mail className="w-5 h-5" />
+                {loading ? t('common.loading') : (lang === 'ar' ? 'إرسال رمز التحقق' : 'Send verification code')}
+              </button>
+            </form>
+          </>
+        )}
 
-          <div>
-            <label htmlFor="register-password" className="block text-sm font-semibold text-brand mb-1.5">{t('auth.password')}</label>
-            <PasswordInput
-              id="register-password"
-              value={form.password}
-              onChange={update('password')}
-              required
-              showStrength
-              lang={lang}
-              autoComplete="new-password"
-            />
-          </div>
+        {step === 'otp' && (
+          <EmailOtpStep
+            email={email}
+            code={code}
+            onCodeChange={setCode}
+            onVerify={verifyCode}
+            onResend={() => sendCode({ resend: true })}
+            onBack={() => { setStep('email'); setInlineError(''); }}
+            loading={loading}
+            resendKey={resendKey}
+            lang={lang}
+            expiresIn={600}
+            resendAfter={30}
+          />
+        )}
 
-          <div>
-            <label htmlFor="register-confirm-password" className="block text-sm font-semibold text-brand mb-1.5">{t('auth.confirmPassword')}</label>
-            <PasswordInput
-              id="register-confirm-password"
-              value={form.confirmPassword}
-              onChange={update('confirmPassword')}
-              required
-              autoComplete="new-password"
-              lang={lang}
-            />
-            {form.confirmPassword && form.password !== form.confirmPassword && (
-              <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                {lang === 'ar' ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match'}
-              </p>
-            )}
-          </div>
-
-          <p className="text-xs text-gray-400 leading-relaxed">{t('auth.passwordHint')}</p>
-
-          <label className="flex items-start gap-2.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-              className="auth-checkbox mt-0.5"
-            />
-            <span className="text-xs text-gray-500 leading-relaxed">{t('auth.termsAgree')}</span>
-          </label>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="auth-btn-primary w-full flex items-center justify-center gap-2 mt-2"
-          >
-            <UserPlus className="w-5 h-5 shrink-0" />
-            {loading ? t('common.loading') : t('auth.register')}
-          </button>
-        </form>
+        {step === 'details' && (
+          <form onSubmit={finishRegistration} className="space-y-4">
+            <div className="auth-info-note">
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{lang === 'ar' ? 'تم تأكيد البريد. أكمل الاسم والجوال لحفظ الحساب في لوحة الإدارة.' : 'Email verified. Add name and mobile so the account is saved for admin.'}</span>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-brand mb-1.5">{t('auth.email')}</label>
+              <div className="relative group">
+                <Mail className="auth-input-icon" />
+                <input type="email" value={email} className="auth-input opacity-70" dir="ltr" disabled />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="register-name" className="block text-sm font-semibold text-brand mb-1.5">{t('auth.name')}</label>
+              <div className="relative group">
+                <User className="auth-input-icon" />
+                <input id="register-name" type="text" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="auth-input" autoComplete="name" required />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="register-phone" className="block text-sm font-semibold text-brand mb-1.5">{t('auth.phone')}</label>
+              <div className="relative group">
+                <Phone className="auth-input-icon" />
+                <input id="register-phone" type="tel" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} className="auth-input" autoComplete="tel" dir="ltr" required />
+              </div>
+            </div>
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+              <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} className="auth-checkbox mt-0.5" />
+              <span className="text-xs text-gray-500 leading-relaxed">{t('auth.termsAgree')}</span>
+            </label>
+            <button type="submit" disabled={loading} className="auth-btn-primary w-full flex items-center justify-center gap-2">
+              <UserPlus className="w-5 h-5" />
+              {loading ? t('common.loading') : (lang === 'ar' ? 'إنشاء الحساب' : 'Create account')}
+            </button>
+          </form>
+        )}
 
         <p className="text-center mt-6 text-sm text-gray-500">
           {t('auth.hasAccount')}{' '}
-          <Link to="/login" className="text-brand hover:text-gold font-bold transition-colors">
-            {t('auth.login')}
-          </Link>
+          <Link to="/login" className="text-brand hover:text-gold font-bold transition-colors">{t('auth.login')}</Link>
         </p>
       </AuthGlassCard>
 
-      <AuthAlertModal
-        open={!!modal}
-        onClose={closeModal}
-        type={modal?.type}
-        title={modal?.title}
-        message={modal?.message}
-        code={modal?.code}
-        actionLabel={modal?.type === 'success' ? (lang === 'ar' ? 'الذهاب للوحة التحكم' : 'Go to dashboard') : undefined}
-      />
+      <AuthAlertModal open={!!modal} onClose={() => setModal(null)} type={modal?.type} title={modal?.title} message={modal?.message} code={modal?.code} />
     </>
   );
 }

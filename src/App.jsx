@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ClerkProvider } from '@clerk/clerk-react';
 import { AuthProvider } from './context/AuthContext';
 import { AdminAuthProvider } from './context/AdminAuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -15,8 +16,11 @@ import { SiteContentProvider } from './context/SiteContentContext';
 import { BrandingProvider } from './context/BrandingContext';
 import './i18n';
 
+const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
+const SSOCallback = lazy(() => import('./pages/SSOCallback'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const BookingSearch = lazy(() => import('./pages/BookingSearch'));
@@ -47,7 +51,10 @@ const AdminSections = lazy(() => import('./pages/admin/AdminSections'));
 const AdminBanners = lazy(() => import('./pages/admin/AdminBanners'));
 const AdminGallery = lazy(() => import('./pages/admin/AdminGallery'));
 const AdminSocialMedia = lazy(() => import('./pages/admin/AdminSocialMedia'));
+const AdminTravelReservations = lazy(() => import('./pages/admin/AdminTravelReservations'));
+const AdminFooter = lazy(() => import('./pages/admin/AdminFooter'));
 const AdminHero = lazy(() => import('./pages/admin/AdminHero'));
+const AdminBookingTripTypes = lazy(() => import('./pages/admin/AdminBookingTripTypes'));
 const AdminBackgrounds = lazy(() => import('./pages/admin/AdminBackgrounds'));
 const AdminNotifications = lazy(() => import('./pages/admin/AdminNotifications'));
 const AdminChat = lazy(() => import('./pages/admin/AdminChat'));
@@ -70,7 +77,16 @@ function LazyRoute({ children }) {
 }
 
 export default function App() {
+  if (!clerkPubKey) {
+    return (
+      <div className="min-h-screen grid place-items-center p-6 text-center">
+        <p className="text-red-600 font-semibold">Missing VITE_CLERK_PUBLISHABLE_KEY in .env</p>
+      </div>
+    );
+  }
+
   return (
+    <ClerkProvider publishableKey={clerkPubKey} afterSignOutUrl="/">
     <ThemeProvider>
       <ToastProvider>
       <CartProvider>
@@ -126,10 +142,13 @@ export default function App() {
                 <Route path="blogs" element={<LazyRoute><AdminBlogs /></LazyRoute>} />
                 <Route path="sections" element={<LazyRoute><AdminSections /></LazyRoute>} />
                 <Route path="hero" element={<LazyRoute><AdminHero /></LazyRoute>} />
+                <Route path="trip-types" element={<LazyRoute><AdminBookingTripTypes /></LazyRoute>} />
                 <Route path="backgrounds" element={<LazyRoute><AdminBackgrounds /></LazyRoute>} />
                 <Route path="banners" element={<LazyRoute><AdminBanners /></LazyRoute>} />
                 <Route path="gallery" element={<LazyRoute><AdminGallery /></LazyRoute>} />
                 <Route path="social" element={<LazyRoute><AdminSocialMedia /></LazyRoute>} />
+                <Route path="travel-reservations" element={<LazyRoute><AdminTravelReservations /></LazyRoute>} />
+                <Route path="footer" element={<LazyRoute><AdminFooter /></LazyRoute>} />
                 <Route path="notifications" element={<LazyRoute><AdminNotifications /></LazyRoute>} />
                 <Route path="chat" element={<LazyRoute><AdminChat /></LazyRoute>} />
                 <Route path="activity" element={<LazyRoute><AdminActivity /></LazyRoute>} />
@@ -143,6 +162,7 @@ export default function App() {
             <Route index element={<Home />} />
             <Route path="login" element={<LazyRoute><Login /></LazyRoute>} />
             <Route path="register" element={<LazyRoute><Register /></LazyRoute>} />
+            <Route path="sso-callback" element={<LazyRoute><SSOCallback /></LazyRoute>} />
             <Route path="forgot-password" element={<LazyRoute><ForgotPassword /></LazyRoute>} />
             <Route path="booking/search" element={<LazyRoute><BookingSearch /></LazyRoute>} />
             <Route
@@ -191,5 +211,6 @@ export default function App() {
       </CartProvider>
       </ToastProvider>
     </ThemeProvider>
+    </ClerkProvider>
   );
 }

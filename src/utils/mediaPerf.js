@@ -67,7 +67,9 @@ export function optimizedImageUrl(url, width = 640, quality = 72) {
   const light = lightenMediaUrl(url);
   if (UNSPLASH_HOST.test(light)) return withUnsplashParams(light, { w: width, q: quality });
   if (PEXELS_IMG.test(light)) return withPexelsParams(light, { w: width });
-  if (FIREBASE_STORAGE.test(light) || IMGBB_HOST.test(light)) {
+  // ImgBB has no resize API — keep the raw URL (query params can break some links).
+  if (IMGBB_HOST.test(light)) return light;
+  if (FIREBASE_STORAGE.test(light)) {
     return withGenericWidth(light, width);
   }
   return light;

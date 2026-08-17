@@ -48,12 +48,94 @@ service cloud.firestore {
       return request.query.limit != null && request.query.limit <= max;
     }
 
+    function isValidPriceRequestCreate() {
+      return request.resource.data.keys()
+          .hasOnly(['name', 'phone', 'email', 'suggestedPrice', 'tripDetails', 'lang', 'status', 'createdAt'])
+        && request.resource.data.status == 'new'
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() < 120
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() > 0
+        && request.resource.data.phone.size() < 40
+        && request.resource.data.tripDetails is string
+        && request.resource.data.tripDetails.size() > 0
+        && request.resource.data.tripDetails.size() < 2000
+        && request.resource.data.suggestedPrice is number
+        && request.resource.data.suggestedPrice >= 0
+        && request.resource.data.suggestedPrice < 10000000
+        && (
+          !('email' in request.resource.data)
+          || request.resource.data.email == null
+          || (
+            request.resource.data.email is string
+            && request.resource.data.email.size() < 200
+          )
+        )
+        && (
+          !('lang' in request.resource.data)
+          || (
+            request.resource.data.lang is string
+            && request.resource.data.lang.size() < 10
+          )
+        );
+    }
+
+    function isBookingCounterCreate(counterId) {
+      return isSignedIn()
+        && counterId == 'bookings'
+        && request.resource.data.keys().hasOnly(['last'])
+        && request.resource.data.last == 1;
+    }
+
+    function isBookingCounterBump(counterId) {
+      return isSignedIn()
+        && counterId == 'bookings'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['last'])
+        && request.resource.data.last is int
+        && request.resource.data.last == resource.data.get('last', 0) + 1;
+    }
+
+    function isValidEmailQueueCreate() {
+      return isSignedIn()
+        && request.resource.data.status == 'queued'
+        && request.resource.data.to is string
+        && request.resource.data.to.size() > 3
+        && request.resource.data.to.size() < 200
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() > 0
+        && request.resource.data.subject.size() < 300
+        && request.resource.data.html is string
+        && request.resource.data.html.size() > 0
+        && request.resource.data.html.size() < 100000
+        && request.resource.data.type is string
+        && request.resource.data.type.size() > 0
+        && request.resource.data.type.size() < 80;
+    }
+
     // ── Users (Google/email signup writes own profile) ─────
     match /users/{userId} {
       allow read: if isAdmin() || isOwner(userId);
       allow create: if isAdmin() || isOwner(userId);
       allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
+
+      // Login history is written by Cloud Functions (Admin SDK).
+      match /loginActivity/{activityId} {
+        allow get: if isAdmin() || isOwner(userId);
+        allow list: if isAdmin() || (isOwner(userId) && boundedList(50));
+        allow write: if false;
+      }
+    }
+
+    // OTP hashes and rate limits are server-only. Cloud Functions use Admin SDK
+    // and do not depend on client rules.
+    match /otpChallenges/{challengeId} {
+      allow read, write: if false;
+    }
+
+    match /otpRateLimits/{rateLimitId} {
+      allow read, write: if false;
     }
 
     // ── Bookings — login required; userId must match auth ──
@@ -77,7 +159,7 @@ service cloud.firestore {
 
     // ── Price requests (public form → admin inbox) ─────────
     match /priceRequests/{requestId} {
-      allow create: if true;
+      allow create: if isValidPriceRequestCreate();
       allow get: if isAdmin();
       allow list: if isAdmin();
       allow update, delete: if isAdmin();
@@ -129,6 +211,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /travelReservations/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /vehicles/{vehicleId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -175,13 +262,14 @@ service cloud.firestore {
     // ── Order number counter (auth checkout transaction) ──
     match /counters/{counterId} {
       allow read: if isSignedIn() || isAdmin();
-      allow create, update: if (isSignedIn() && counterId == 'bookings') || isAdmin();
+      allow create: if isAdmin() || isBookingCounterCreate(counterId);
+      allow update: if isAdmin() || isBookingCounterBump(counterId);
       allow delete: if isAdmin();
     }
 
     // ── Chat (guest widget + admin replies)
-    // Guest widget queries by conversationId without auth — keep read open,
-    // but cap anonymous/list abuse with a max limit when not admin.
+    // Guest widget queries by conversationId without auth — keep bounded list open
+    // (Firestore rules cannot require a where filter). Mark-read is admin-only.
     match /chatMessages/{messageId} {
       allow get: if true;
       allow list: if isAdmin() || boundedList(100);
@@ -189,18 +277,20 @@ service cloud.firestore {
         || (
           request.resource.data.senderRole in ['user', 'guest']
           && request.resource.data.conversationId is string
+          && request.resource.data.conversationId.size() > 8
+          && request.resource.data.conversationId.size() < 128
           && request.resource.data.message is string
           && request.resource.data.message.size() > 0
           && request.resource.data.message.size() < 2000
         );
       allow update: if isAdmin()
-        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isAdmin();
     }
 
     // ── Email queue ───────────────────────────────────────
     match /emailQueue/{emailId} {
-      allow create: if isSignedIn() || isAdmin();
+      allow create: if isAdmin() || isValidEmailQueueCreate();
       allow read, update, delete: if isAdmin();
     }
   }

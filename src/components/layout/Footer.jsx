@@ -27,9 +27,43 @@ const popularRoutes = [
 export default function Footer() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const { socialLinks } = useSiteContent();
+  const isAr = lang === 'ar';
+  const { socialLinks, footerCredit } = useSiteContent();
 
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  const credit = footerCredit || {};
+  const copyrightText = (isAr ? credit.copyrightAr : credit.copyrightEn)
+    || t('footer.copyright');
+  const designedByLabel = (isAr ? credit.designedByAr : credit.designedByEn)
+    || t('footer.designedBy');
+  const designerName = (isAr ? credit.designerNameAr : credit.designerNameEn)
+    || credit.designerNameEn
+    || credit.designerNameAr
+    || '';
+  const designerUrl = String(credit.designerUrl || '').trim();
+  const designerLogoUrl = String(credit.designerLogoUrl || '').trim();
+  const showCredit = credit.showCredit !== false && Boolean(designerName || designerLogoUrl);
+
+  const designerHref = (() => {
+    if (!designerUrl) return '';
+    if (/^(https?:|mailto:|tel:)/i.test(designerUrl)) return designerUrl;
+    if (designerUrl.startsWith('//')) return `https:${designerUrl}`;
+    return `https://${designerUrl}`;
+  })();
+
+  const designerContent = (
+    <>
+      {designerLogoUrl ? (
+        <img
+          src={designerLogoUrl}
+          alt=""
+          className="h-9 sm:h-10 w-auto max-w-[140px] object-contain opacity-95"
+        />
+      ) : null}
+      {designerName ? <span>{designerName}</span> : null}
+    </>
+  );
 
   return (
     <footer className="bg-brand-dark text-white border-t border-gold/10 pt-10 sm:pt-14 md:pt-16 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 overflow-hidden">
@@ -131,12 +165,28 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-between pt-8 text-xs text-white/40">
-          <div className="flex flex-col gap-1 text-center sm:text-start">
-            <p>{t('footer.copyright')}</p>
-            <p className="text-white/30">
-              {t('footer.commercialReg')}: {CONTACT.commercialReg} · {t('footer.knownNumber')}: {CONTACT.knownNumber}
-            </p>
+        <div className="flex flex-col sm:flex-row items-center justify-between pt-8 text-sm text-white/40">
+          <div className="flex flex-col gap-1.5 text-center sm:text-start">
+            <p className="text-base sm:text-lg text-white/55">{copyrightText}</p>
+            {showCredit && (
+              <p className="text-sm inline-flex flex-wrap items-center justify-center sm:justify-start gap-x-1.5 gap-y-1">
+                <span>{designedByLabel}</span>
+                {designerHref ? (
+                  <a
+                    href={designerHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-gold/80 hover:text-gold underline underline-offset-2 transition-colors"
+                  >
+                    {designerContent}
+                  </a>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-gold/80">
+                    {designerContent}
+                  </span>
+                )}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-4 mt-4 sm:mt-0">
             <button type="button" className="hover:text-white transition-colors">{t('footer.privacy')}</button>

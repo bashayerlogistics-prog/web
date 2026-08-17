@@ -105,7 +105,7 @@ export default function FleetCategoriesDropdown({
                   className={`header-fleet-dd__mobile-item ${active ? 'header-fleet-dd__mobile-item--active' : ''}`}
                 >
                   <img
-                    src={car.imageUrl || getCarImage(car.id)}
+                    src={getCarImage(car.id)}
                     alt=""
                     className="header-fleet-dd__thumb"
                   />
@@ -170,7 +170,7 @@ export default function FleetCategoriesDropdown({
                 }`}
               >
                 <img
-                  src={car.imageUrl || getCarImage(car.id)}
+                  src={getCarImage(car.id)}
                   alt=""
                   className="header-fleet-dd__thumb"
                 />

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, FileText, Image as ImageIcon, Download } from 'lucide-react';
+import { Plus, FileText, Download } from 'lucide-react';
 import {
   getAllBlogs,
   createBlog,
@@ -9,7 +9,6 @@ import {
   seedDefaultBlogs,
   replaceDefaultBlogs,
 } from '../../firebase/admin';
-import { uploadImage } from '../../firebase/storage';
 import { useAdminDataLoader } from '../../hooks/useAdminDataLoader';
 import { usePagination } from '../../hooks/usePagination';
 import { useAdminInstantSearch, useResetPageOnFilter } from '../../hooks/useAdminInstantSearch';
@@ -29,6 +28,7 @@ import AdminPagination from '../../components/admin/AdminPagination';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import AiSuggestionsTable from '../../components/admin/AiSuggestionsTable';
 import ContentModeTabs from '../../components/admin/ContentModeTabs';
+import MediaUpload from '../../components/admin/MediaUpload';
 import { BLOG_AI_SUGGESTIONS } from '../../data/aiContentSuggestions';
 
 const emptyForm = {
@@ -57,7 +57,6 @@ export default function AdminBlogs() {
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const { search, onSearchChange, query, isPending: searchPending } = useAdminInstantSearch();
   const [statusFilter, setStatusFilter] = useState('all');
   const [seeding, setSeeding] = useState(false);
@@ -85,21 +84,6 @@ export default function AdminBlogs() {
 
   const activeCount = (blogs || []).filter((b) => b.active).length;
   const inactiveCount = (blogs || []).length - activeCount;
-
-  const handleImage = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const url = await uploadImage(file, 'blogs');
-      setForm((f) => ({ ...f, imageUrl: url }));
-      toast.success(t('admin.imageUploaded'));
-    } catch {
-      toast.error(t('common.error'));
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -321,17 +305,16 @@ export default function AdminBlogs() {
               <textarea value={form.excerptAr} onChange={(e) => setForm({ ...form, excerptAr: e.target.value })} placeholder="المقتطف (AR)" rows={2} dir="rtl" className="admin-input md:col-span-2" />
               <textarea value={form.contentEn} onChange={(e) => setForm({ ...form, contentEn: e.target.value })} placeholder="Full content (EN)" rows={5} className="admin-input md:col-span-2" />
               <textarea value={form.contentAr} onChange={(e) => setForm({ ...form, contentAr: e.target.value })} placeholder="المحتوى الكامل (AR)" rows={5} dir="rtl" className="admin-input md:col-span-2" />
-              <label className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-primary-300 cursor-pointer hover:bg-primary-50/50">
-                <ImageIcon className="w-5 h-5 text-primary-500" />
-                <span className="text-sm font-semibold">{uploading ? t('common.loading') : t('admin.uploadImage')}</span>
-                <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
-              </label>
+              <MediaUpload
+                value={form.imageUrl}
+                onChange={(imageUrl) => setForm((current) => ({ ...current, imageUrl }))}
+                folder="blogs"
+              />
               <label className="flex items-center gap-2 px-4 py-3 rounded-xl border border-white/50 bg-white/50 dark:admin-surface">
                 <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} className="w-4 h-4" />
                 <span className="font-semibold">{t('admin.products.active')}</span>
               </label>
             </div>
-            {form.imageUrl && <img src={form.imageUrl} alt="" className="w-full max-h-48 object-cover rounded-xl" />}
             <div className="flex gap-2">
               <AdminApplyButton type="submit" />
               <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 rounded-xl border font-bold">{t('common.cancel')}</button>

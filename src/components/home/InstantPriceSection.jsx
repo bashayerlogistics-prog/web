@@ -21,7 +21,6 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   Clock,
-  Route,
 } from 'lucide-react';
 import {
   CITIES,
@@ -54,6 +53,8 @@ import { useSiteContent } from '../../context/SiteContentContext';
 import { useToast } from '../../context/ToastContext';
 import { DEFAULT_INSTANT_PRICE } from '../../firebase/content';
 import { optimizedImageUrl } from '../../utils/mediaPerf';
+import { usePublicTripTypes } from '../../hooks/usePublicTripTypes';
+import BookingTripDetails from './BookingTripDetails';
 
 const INSTANT_BG_DESKTOP = '/images/instant-price-bg.webp';
 const INSTANT_BG_MOBILE = '/images/instant-price-bg-mobile.webp';
@@ -103,20 +104,22 @@ function buildSearchParams({
   hours,
   hourlyDest,
   isRound,
+  isOneWay,
   isHourly,
   vehicleId,
   rtRoute,
 }) {
-  const station = isRound ? getRoundTripStation(rtRoute) : null;
-  const routeId = isRound
+  const usesStationRoute = isRound || isOneWay;
+  const station = usesStationRoute ? getRoundTripStation(rtRoute) : null;
+  const routeId = usesStationRoute
     ? (rtRoute || DEFAULT_ROUND_TRIP_ROUTE)
     : isHourly
       ? resolveHourlyRouteId(from, hourlyDest || 'internal', Number(hours))
       : resolveRouteId(from, to || from);
   const params = new URLSearchParams({
     trip_type: tripType,
-    from: isRound ? (station?.cityFrom || '') : from,
-    to: isHourly ? '' : (isRound ? (station?.cityTo || '') : to),
+    from: usesStationRoute ? (station?.cityFrom || '') : from,
+    to: isHourly ? '' : (usesStationRoute ? (station?.cityTo || '') : to),
     route: routeId,
     date,
     time,
@@ -142,13 +145,6 @@ const tomorrow = () => {
   d.setDate(d.getDate() + 1);
   return d.toISOString().split('T')[0];
 };
-
-const TRIP_TYPES = [
-  { value: 'one_way', labelKey: 'booking.oneWay', Icon: Route },
-  { value: 'round_trip', labelKey: 'booking.roundTrip', Icon: ArrowLeftRight },
-  { value: 'hourly', labelKey: 'booking.hourly', Icon: Clock },
-  { value: 'custom_price', labelKey: 'booking.customPrice', Icon: Tag },
-];
 
 const PASSENGER_OPTIONS = BOOKING_PASSENGER_OPTIONS;
 
@@ -203,6 +199,17 @@ function IpSelect({
   const [open, setOpen] = useState(false);
 
   const selected = options.find((o) => String(o.value) === String(value)) || options[0];
+
+  useEffect(() => {
+    const section = rootRef.current?.closest('.instant-price-section');
+    if (!section) return undefined;
+    if (open && !disabled) {
+      section.classList.add('instant-price-section--dropdown-open');
+      return () => section.classList.remove('instant-price-section--dropdown-open');
+    }
+    section.classList.remove('instant-price-section--dropdown-open');
+    return undefined;
+  }, [open, disabled]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -285,8 +292,11 @@ export default function InstantPriceSection() {
   const { instantPrice: cmsRaw, fleet, carCatalog, fleetRoutes } = useSiteContent();
   const cms = cmsRaw || DEFAULT_INSTANT_PRICE;
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
+  const { tripTypes: TRIP_TYPES, tripType, setTripType, formFields } = usePublicTripTypes('instantPrice', lang);
 
-  const [tripType, setTripType] = useState('round_trip');
+  const fieldLabel = (key, fallback) => formFields?.[key]?.label || fallback;
+  const showField = (key) => formFields?.[key]?.show !== false;
+
   const [from, setFrom] = useState(DEFAULT_BOOKING_FROM);
   const [to, setTo] = useState(DEFAULT_BOOKING_TO);
   const [rtRoute, setRtRoute] = useState(DEFAULT_ROUND_TRIP_ROUTE);
@@ -346,8 +356,6 @@ export default function InstantPriceSection() {
       passengersLabel: pick(cms, 'passengersLabel', lang),
       carLabel: pick(cms, 'carLabel', lang),
       carOption: pick(cms, 'carOption', lang),
-      currencyLabel: pick(cms, 'currencyLabel', lang),
-      currencyOption: pick(cms, 'currencyOption', lang),
       whatsappDisplay: cms.whatsappDisplay || CONTACT.phone,
       phoneDisplay: cms.phoneDisplay || CONTACT.phone,
       whatsappUrl: cms.whatsappUrl || CONTACT.whatsapp,
@@ -360,21 +368,22 @@ export default function InstantPriceSection() {
   const isRound = tripType === 'round_trip';
   const isHourly = tripType === 'hourly';
   const isOneWay = tripType === 'one_way';
-  const cityOptions = isHourly ? HOURLY_CITIES : isOneWay ? ONE_WAY_CITIES : CITIES;
+  const isBetweenCities = tripType === 'between_cities';
+  const cityOptions = isHourly ? HOURLY_CITIES : isBetweenCities ? ONE_WAY_CITIES : CITIES;
 
-  const oneWayToOptions = useMemo(() => {
-    if (!isOneWay || !from) return cityOptions;
+  const betweenCitiesToOptions = useMemo(() => {
+    if (!isBetweenCities || !from) return cityOptions;
     const valid = new Set(getBetweenCitiesDestinations(from));
     return cityOptions.filter((c) => valid.has(c.id));
-  }, [isOneWay, from, cityOptions]);
+  }, [isBetweenCities, from, cityOptions]);
 
   useEffect(() => {
-    if (!isOneWay || !from) return;
+    if (!isBetweenCities || !from) return;
     const valid = getBetweenCitiesDestinations(from);
     if (valid.length && !valid.includes(String(to))) {
       setTo(valid[0]);
     }
-  }, [isOneWay, from, to]);
+  }, [isBetweenCities, from, to]);
 
   useEffect(() => {
     if (!isHourly) return;
@@ -422,6 +431,13 @@ export default function InstantPriceSection() {
       const station = getRoundTripStation(rtRoute);
       return station?.title?.[lang] || station?.title?.ar || '';
     }
+    if (isOneWay) {
+      return (
+        rtPickupOptions.find((s) => s.id === rtRoute)?.label ||
+        getRoundTripStation(rtRoute)?.title?.[lang] ||
+        ''
+      );
+    }
     if (isHourly && from) {
       const dest = hourlyDestOptions.find((d) => d.key === hourlyDest);
       return dest?.label || cityName(from);
@@ -433,7 +449,85 @@ export default function InstantPriceSection() {
     }
     if (from && isHourly) return cityName(from);
     return '';
-  }, [from, to, isHourly, isRound, rtRoute, lang, hourlyDest, hourlyDestOptions, rtPickupOptions, rtDropoffOptions]);
+  }, [from, to, isHourly, isOneWay, isRound, rtRoute, lang, hourlyDest, hourlyDestOptions, rtPickupOptions, rtDropoffOptions]);
+
+  const tripDetailRows = useMemo(() => {
+    if (isCustom) return [];
+    const fromValue = isRound || isOneWay
+      ? (rtPickupOptions.find((s) => s.id === rtRoute)?.label || '')
+      : cityName(from);
+    const toValue = isRound
+      ? (rtDropoffOptions.find((s) => s.id === rtRoute)?.label || '')
+      : isOneWay || isHourly
+        ? ''
+        : cityName(to);
+    const priceValue = quoteReady && selectedVehicle
+      ? (selectedVehicle.hidePrice
+        ? t('booking.contactForPrice')
+        : formatPriceDisplay(selectedVehicle, t('booking.sar')))
+      : '';
+
+    return [
+      {
+        key: 'from',
+        show: showField('from') && !isHourly,
+        label: fieldLabel('from', copy.fromLabel),
+        value: fromValue,
+      },
+      {
+        key: 'to',
+        show: showField('to') && !isHourly && !isOneWay,
+        label: fieldLabel('to', copy.toLabel),
+        value: toValue,
+      },
+      {
+        key: 'location',
+        show: showField('location') && isHourly,
+        label: fieldLabel('location', copy.fromLabel),
+        value: routeDisplay,
+      },
+      {
+        key: 'pickupTime',
+        show: showField('pickupTime'),
+        label: fieldLabel('pickupTime', copy.timeLabel),
+        value: date && time ? `${date}  ${time}` : '',
+        ltr: true,
+      },
+      {
+        key: 'hours',
+        show: showField('hours') && isHourly,
+        label: fieldLabel('hours', t('booking.hours')),
+        value: hours
+          ? `${hours} ${Number(hours) === 1 ? t('booking.hour') : t('booking.hours_plural')}`
+          : '',
+      },
+      {
+        key: 'passengers',
+        show: showField('passengers'),
+        label: fieldLabel('passengers', copy.passengersLabel),
+        value: passengers ? String(passengers) : '',
+      },
+      {
+        key: 'car',
+        show: showField('car'),
+        label: fieldLabel('car', copy.carLabel),
+        value: selectedVehicle
+          ? shortVehicleName(selectedVehicle, lang)
+          : (carType ? getCarDisplayName(carType, lang) : ''),
+      },
+      {
+        key: 'price',
+        show: showField('price'),
+        label: fieldLabel('price', t('instantPrice.estimatedPrice')),
+        value: priceValue,
+        ltr: true,
+      },
+    ];
+  }, [
+    isCustom, isRound, isOneWay, isHourly, from, to, rtRoute, date, time, hours,
+    passengers, carType, routeDisplay, quoteReady, selectedVehicle, formFields,
+    copy, lang, t, rtPickupOptions, rtDropoffOptions,
+  ]);
 
   const selectedRange = selectedVehicle ? priceRange(selectedVehicle) : null;
 
@@ -470,6 +564,7 @@ export default function InstantPriceSection() {
       hours,
       hourlyDest,
       isRound,
+      isOneWay,
       isHourly,
       vehicleId,
       rtRoute,
@@ -479,7 +574,7 @@ export default function InstantPriceSection() {
     e.preventDefault();
     if (isCustom || searching) return;
 
-    if (isRound) {
+    if (isRound || isOneWay) {
       if (!rtRoute) {
         toast.warning(t('instantPrice.needFrom'));
         return;
@@ -682,7 +777,7 @@ export default function InstantPriceSection() {
                   const TripIcon = opt.Icon;
                   return (
                     <label
-                      key={opt.value}
+                      key={opt.id || opt.value}
                       className={`instant-price-chip ${checked ? 'instant-price-chip--active' : ''}`}
                     >
                       <input
@@ -694,7 +789,7 @@ export default function InstantPriceSection() {
                         className="sr-only"
                       />
                       {TripIcon && <TripIcon className="w-3 h-3 shrink-0" aria-hidden />}
-                      {t(opt.labelKey)}
+                      {opt.label}
                     </label>
                   );
                 })}
@@ -739,15 +834,34 @@ export default function InstantPriceSection() {
                           />
                         </div>
                       </div>
+                    ) : isOneWay ? (
+                      <div className="grid grid-cols-1 gap-2 sm:gap-2.5">
+                        <div>
+                          <label className={darkLabel}>{t('booking.pickupArrival')}</label>
+                          <IpSelect
+                            value={rtRoute}
+                            onChange={setRtRoute}
+                            required
+                            aria-label={t('booking.pickupArrival')}
+                            icon={MapPin}
+                            iconSide="end"
+                            options={rtPickupOptions.map((s) => ({
+                              value: s.id,
+                              label: s.label,
+                            }))}
+                          />
+                        </div>
+                      </div>
                     ) : (
                       <div className={`grid gap-2 sm:gap-2.5 ${isHourly ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                        {showField('from') && (
                         <div>
-                          <label className={darkLabel}>{copy.fromLabel}</label>
+                          <label className={darkLabel}>{fieldLabel('from', copy.fromLabel)}</label>
                           <IpSelect
                             value={from}
                             onChange={setFrom}
                             required
-                            aria-label={copy.fromLabel}
+                            aria-label={fieldLabel('from', copy.fromLabel)}
                             icon={MapPin}
                             iconSide="end"
                             options={[
@@ -759,20 +873,21 @@ export default function InstantPriceSection() {
                             ]}
                           />
                         </div>
+                        )}
 
-                        {!isHourly && (
+                        {!isHourly && showField('to') && (
                           <div>
-                            <label className={darkLabel}>{copy.toLabel}</label>
+                            <label className={darkLabel}>{fieldLabel('to', copy.toLabel)}</label>
                             <IpSelect
                               value={to}
                               onChange={setTo}
                               required
-                              aria-label={copy.toLabel}
+                              aria-label={fieldLabel('to', copy.toLabel)}
                               icon={Flag}
                               iconSide="end"
                               options={[
                                 { value: '', label: copy.toPlaceholder },
-                                ...(isOneWay ? oneWayToOptions : cityOptions).map((c) => ({
+                                ...(isBetweenCities ? betweenCitiesToOptions : cityOptions).map((c) => ({
                                   value: c.id,
                                   label: c[lang] || c.ar,
                                 })),
@@ -783,13 +898,14 @@ export default function InstantPriceSection() {
                       </div>
                     )}
 
+                    {showField('pickupTime') && (
                     <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                       <div>
-                        <label className={darkLabel}>{copy.timeLabel}</label>
+                        <label className={darkLabel}>{fieldLabel('pickupTime', copy.timeLabel)}</label>
                         <IpSelect
                           value={time}
                           onChange={setTime}
-                          aria-label={copy.timeLabel}
+                          aria-label={fieldLabel('pickupTime', copy.timeLabel)}
                           icon={ChevronDown}
                           iconSide="start"
                           options={TIME_SLOTS.map((slot) => ({
@@ -813,14 +929,16 @@ export default function InstantPriceSection() {
                         </div>
                       </div>
                     </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
+                      {showField('passengers') && (
                       <div>
-                        <label className={darkLabel}>{copy.passengersLabel}</label>
+                        <label className={darkLabel}>{fieldLabel('passengers', copy.passengersLabel)}</label>
                         <IpSelect
                           value={passengers}
                           onChange={(v) => setPassengers(Number(v))}
-                          aria-label={copy.passengersLabel}
+                          aria-label={fieldLabel('passengers', copy.passengersLabel)}
                           icon={ChevronDown}
                           iconSide="start"
                           options={PASSENGER_OPTIONS.map((n) => ({
@@ -829,12 +947,14 @@ export default function InstantPriceSection() {
                           }))}
                         />
                       </div>
+                      )}
+                      {showField('car') && (
                       <div>
-                        <label className={darkLabel}>{copy.carLabel}</label>
+                        <label className={darkLabel}>{fieldLabel('car', copy.carLabel)}</label>
                         <IpSelect
                           value={carType}
                           onChange={setCarType}
-                          aria-label={copy.carLabel}
+                          aria-label={fieldLabel('car', copy.carLabel)}
                           icon={ChevronDown}
                           iconSide="start"
                           options={carTypes.map((key) => ({
@@ -843,6 +963,7 @@ export default function InstantPriceSection() {
                           }))}
                         />
                       </div>
+                      )}
                     </div>
 
                     {isRound && (
@@ -874,14 +995,15 @@ export default function InstantPriceSection() {
                       </div>
                     )}
 
-                    {isHourly && (
+                    {isHourly && (showField('hours') || showField('location')) && (
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5">
+                        {showField('hours') && (
                         <div>
-                          <label className={darkLabel}>{t('booking.hours')}</label>
+                          <label className={darkLabel}>{fieldLabel('hours', t('booking.hours'))}</label>
                           <IpSelect
                             value={hours}
                             onChange={setHours}
-                            aria-label={t('booking.hours')}
+                            aria-label={fieldLabel('hours', t('booking.hours'))}
                             icon={ChevronDown}
                             iconSide="end"
                             options={hourOptions.map((h) => ({
@@ -890,14 +1012,16 @@ export default function InstantPriceSection() {
                             }))}
                           />
                         </div>
+                        )}
+                        {showField('location') && (
                         <div className="sm:col-span-2 min-w-0">
-                          <label className={darkLabel}>{t('booking.destination')}</label>
+                          <label className={darkLabel}>{fieldLabel('location', t('booking.destination'))}</label>
                           <IpSelect
                             value={hourlyDest}
                             onChange={setHourlyDest}
                             disabled={!from || !hourlyDestOptions.length}
                             title={hourlyDestOptions.find((d) => d.key === hourlyDest)?.label || ''}
-                            aria-label={t('booking.destination')}
+                            aria-label={fieldLabel('location', t('booking.destination'))}
                             icon={ChevronDown}
                             iconSide="end"
                             options={hourlyDestOptions.map((d) => ({
@@ -906,37 +1030,27 @@ export default function InstantPriceSection() {
                             }))}
                           />
                         </div>
+                        )}
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-2 sm:gap-2.5 sm:items-end">
-                      <div>
-                        <label className={darkLabel}>{copy.currencyLabel}</label>
-                        <IpSelect
-                          value="SAR"
-                          onChange={() => {}}
-                          aria-label={copy.currencyLabel}
-                          icon={ChevronDown}
-                          iconSide="start"
-                          options={[{ value: 'SAR', label: copy.currencyOption }]}
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={searching}
-                        className="instant-price-cta group sm:min-w-[11.5rem]"
-                      >
-                        <span className="instant-price-cta__shine" aria-hidden="true" />
-                        {searching ? (
-                          <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin relative z-10" />
-                        ) : (
-                          <Search className="w-4 h-4 sm:w-5 sm:h-5 relative z-10 transition-transform group-hover:scale-110" />
-                        )}
-                        <span className="relative z-10">
-                          {searching ? t('instantPrice.searching') : copy.cta}
-                        </span>
-                      </button>
-                    </div>
+                    <BookingTripDetails rows={tripDetailRows} tone="dark" className="mt-1" />
+
+                    <button
+                      type="submit"
+                      disabled={searching}
+                      className="instant-price-cta group w-full"
+                    >
+                      <span className="instant-price-cta__shine" aria-hidden="true" />
+                      {searching ? (
+                        <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin relative z-10" />
+                      ) : (
+                        <Search className="w-4 h-4 sm:w-5 sm:h-5 relative z-10 transition-transform group-hover:scale-110" />
+                      )}
+                      <span className="relative z-10">
+                        {searching ? t('instantPrice.searching') : copy.cta}
+                      </span>
+                    </button>
 
                     {quoteReady && (
                       <div className="instant-price-quote" role="region" aria-live="polite">
@@ -982,14 +1096,6 @@ export default function InstantPriceSection() {
                                   {t('booking.dropoffDeparture')}: {selectedVehicle.dropoffPrice ?? '—'}
                                 </p>
                               )}
-                              <p className="instant-price-quote__meta">
-                                {routeDisplay}
-                                {selectedVehicle
-                                  ? ` • ${shortVehicleName(selectedVehicle, lang)}`
-                                  : ''}
-                                {` • ${date} ${time}`}
-                                {` • ${passengers} ${t('fleet.passengers')}`}
-                              </p>
                             </div>
 
                             <div className="instant-price-quote__cars">

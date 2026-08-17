@@ -6,12 +6,15 @@ import {
   getGalleryHeroSettings,
   getHeroSettings,
   getInstantPriceSettings,
+  getReligiousToursSettings,
   updateGalleryHeroSettings,
   updateHeroSettings,
   updateInstantPriceSettings,
+  updateReligiousToursSettings,
   upsertCar,
 } from '../../firebase/admin';
 import { DEFAULT_HERO, DEFAULT_INSTANT_PRICE } from '../../firebase/content';
+import { DEFAULT_RELIGIOUS_TOURS } from '../../data/religiousTours';
 import {
   DEFAULT_GALLERY_HERO,
   getCategoryHeroImage,
@@ -27,6 +30,13 @@ import GlassCard from '../../components/ui/GlassCard';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 const CAR_KEYS = ['taurus', 'camry', 'staria', 'yukon', 'hiace'];
+
+const ZIYARAT_CITIES = [
+  { key: 'makkah', en: 'Makkah', ar: 'مكة المكرمة' },
+  { key: 'madinah', en: 'Madinah', ar: 'المدينة المنورة' },
+  { key: 'jeddah', en: 'Jeddah', ar: 'جدة' },
+  { key: 'riyadh', en: 'Riyadh', ar: 'الرياض' },
+];
 
 const BACKGROUND_OPTIONS = [
   {
@@ -68,6 +78,19 @@ const BACKGROUND_OPTIONS = [
     folder: 'backgrounds/instant-price',
     device: 'desktop',
   },
+  ...ZIYARAT_CITIES.map((city) => ({
+    id: `ziyarat-${city.key}`,
+    pageEn: 'Home page',
+    pageAr: 'الصفحة الرئيسية',
+    sectionEn: `Ziyarat — ${city.en}`,
+    sectionAr: `الزيارات — ${city.ar}`,
+    source: 'religiousTours',
+    field: city.key,
+    width: 1280,
+    height: 720,
+    folder: `ziyarat/${city.key}`,
+    device: 'desktop',
+  })),
   {
     id: 'gallery-hero-desktop',
     pageEn: 'Gallery page',
@@ -126,6 +149,9 @@ export default function AdminBackgrounds() {
     hero: { ...DEFAULT_HERO },
     instantPrice: { ...DEFAULT_INSTANT_PRICE },
     galleryHero: { ...DEFAULT_GALLERY_HERO },
+    religiousTours: {
+      cityImages: { ...DEFAULT_RELIGIOUS_TOURS.cityImages },
+    },
     cars: {},
   });
   const [loading, setLoading] = useState(true);
@@ -136,10 +162,11 @@ export default function AdminBackgrounds() {
     (async () => {
       setLoading(true);
       try {
-        const [hero, instantPrice, galleryHero, dbCars] = await Promise.all([
+        const [hero, instantPrice, galleryHero, religiousTours, dbCars] = await Promise.all([
           getHeroSettings(),
           getInstantPriceSettings(),
           getGalleryHeroSettings(),
+          getReligiousToursSettings(),
           getAllCars(),
         ]);
         if (cancelled) return;
@@ -153,6 +180,12 @@ export default function AdminBackgrounds() {
           hero: { ...DEFAULT_HERO, ...(hero || {}) },
           instantPrice: { ...DEFAULT_INSTANT_PRICE, ...(instantPrice || {}) },
           galleryHero: { ...DEFAULT_GALLERY_HERO, ...(galleryHero || {}) },
+          religiousTours: {
+            cityImages: {
+              ...DEFAULT_RELIGIOUS_TOURS.cityImages,
+              ...(religiousTours?.cityImages || {}),
+            },
+          },
           cars,
         });
       } catch {
@@ -173,7 +206,11 @@ export default function AdminBackgrounds() {
 
   const value = selected.source === 'car'
     ? content.cars[selected.carId]?.[selected.field] || getCategoryHeroImage(selected.carId)
-    : content[selected.source]?.[selected.field] || '';
+    : selected.source === 'religiousTours'
+      ? content.religiousTours?.cityImages?.[selected.field]
+        || DEFAULT_RELIGIOUS_TOURS.cityImages[selected.field]
+        || ''
+      : content[selected.source]?.[selected.field] || '';
 
   const setValue = (url) => {
     if (selected.source === 'car') {
@@ -183,6 +220,19 @@ export default function AdminBackgrounds() {
           ...current.cars,
           [selected.carId]: {
             ...current.cars[selected.carId],
+            [selected.field]: url,
+          },
+        },
+      }));
+      return;
+    }
+    if (selected.source === 'religiousTours') {
+      setContent((current) => ({
+        ...current,
+        religiousTours: {
+          ...current.religiousTours,
+          cityImages: {
+            ...current.religiousTours?.cityImages,
             [selected.field]: url,
           },
         },
@@ -208,6 +258,14 @@ export default function AdminBackgrounds() {
         await updateInstantPriceSettings({ [selected.field]: value });
       } else if (selected.source === 'galleryHero') {
         await updateGalleryHeroSettings({ [selected.field]: value });
+      } else if (selected.source === 'religiousTours') {
+        await updateReligiousToursSettings({
+          cityImages: {
+            ...DEFAULT_RELIGIOUS_TOURS.cityImages,
+            ...content.religiousTours?.cityImages,
+            [selected.field]: value,
+          },
+        });
       } else {
         await upsertCar(selected.carId, {
           ...content.cars[selected.carId],
@@ -236,8 +294,8 @@ export default function AdminBackgrounds() {
         title={lang === 'ar' ? 'صور الخلفيات' : 'Background images'}
         subtitle={
           lang === 'ar'
-            ? 'غيّر خلفيات الصفحات والأقسام من مكان واحد'
-            : 'Change every page and section background from one place'
+            ? 'غيّر خلفيات الصفحات والأقسام من مكان واحد.'
+            : 'Change page & section background images.'
         }
       />
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useSearchParams } from 'react-router-dom';
 
@@ -48,7 +48,7 @@ export default function Checkout() {
 
   const { t, i18n } = useTranslation();
 
-  const { user } = useAuth();
+  const { user, clerkUser } = useAuth();
 
   const { toast } = useToast();
 
@@ -60,15 +60,27 @@ export default function Checkout() {
 
   const lang = i18n.language;
 
-
+  const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress
+    || clerkUser?.emailAddresses?.[0]?.emailAddress
+    || '';
+  const clerkName = [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(' ')
+    || clerkUser?.unsafeMetadata?.fullName
+    || '';
 
   const [paymentMethod, setPaymentMethod] = useState('');
 
-  const [customerName, setCustomerName] = useState(user?.displayName || '');
+  const [customerName, setCustomerName] = useState(user?.displayName || clerkName || '');
 
   const [customerPhone, setCustomerPhone] = useState('');
 
-  const [customerEmail, setCustomerEmail] = useState(user?.email || '');
+  const [customerEmail, setCustomerEmail] = useState(user?.email || clerkEmail || '');
+
+  useEffect(() => {
+    if (user?.email || clerkEmail) setCustomerEmail(user?.email || clerkEmail);
+    if (user?.displayName || clerkName) {
+      setCustomerName((current) => current || user?.displayName || clerkName);
+    }
+  }, [user, clerkEmail, clerkName]);
 
   const [proofUrl, setProofUrl] = useState(null);
   const [proofFile, setProofFile] = useState(null);
@@ -203,6 +215,7 @@ export default function Checkout() {
         customerName: customerName.trim() || user?.displayName || '',
 
         customerEmail: customerEmail.trim() || user?.email || '',
+        language: lang,
 
         customerPhone: customerPhone.trim(),
 
