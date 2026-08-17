@@ -50,4 +50,6 @@ jobs:
             echo "Missing FIREBASE_TOKEN secret. Create with: npx firebase login:ci"
             exit 1
           fi
-          npx firebase-tools@latest deploy --only firestore:rules,storage,functions --non-interactive --token "$FIREBASE_TOKEN"
+          # Storage only if enabled in Firebase console (Get Started).
+          # Until then deploy rules + indexes + functions.
+          npx firebase-tools@latest deploy --only firestore:rules,firestore:indexes,functions --non-interactive --token "$FIREBASE_TOKEN"
