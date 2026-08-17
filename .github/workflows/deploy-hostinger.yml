@@ -67,6 +67,7 @@ jobs:
           username: ${{ secrets.HOSTINGER_FTP_USER }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: domains/bashayer-logistics.com/public_html/
+          # Use an FTP account rooted at this domain's live public_html directory.
+          server-dir: ./
           protocol: ftps
           dangerous-clean-slate: false

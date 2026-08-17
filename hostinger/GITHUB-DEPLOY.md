@@ -13,7 +13,7 @@ hPanel → **Files** → **FTP Accounts** (or Hosting → FTP):
 - Host (e.g. `ftp.yourdomain.com` or server IP)
 - Username
 - Password
-- Remote folder: `domains/bashayer-logistics.com/public_html/`
+- FTP account root must be this domain's live `public_html`; deploy path is `./`
 
 ### 2) GitHub repository secrets
 
