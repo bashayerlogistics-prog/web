@@ -1235,21 +1235,19 @@
       "contrastHelp": "Auto-fix only adjusts colors that fail WCAG AA: primary for white text and secondary for dark text."
     },
     "backup": {
-      "title": "Backup & Restore",
-      "subtitle": "All-in-One style: export or import database, images, content, and settings in one ZIP.",
-      "advancedTitle": "Advanced JSON modules",
-      "advancedDesc": "Optional selective JSON export/import for partial restores only.",
+      "title": "Backup & restore",
+      "subtitle": "Full site backup as JSON on the free Spark plan — no Cloud Functions required.",
       "modulesTitle": "What to include",
-      "modulesDesc": "Choose UI (site + branding/settings) and/or operational Firebase data.",
-      "selectAll": "Select all",
+      "modulesDesc": "Leave all modules selected for a full backup. Or pick only what you need.",
+      "selectAll": "Select all (full)",
       "uiOnly": "UI + settings only",
       "clear": "Clear",
       "docCount": "{{count}} docs",
       "refreshCounts": "Refresh counts",
       "selectModules": "Select at least one module",
       "exportTitle": "Backup → JSON",
-      "exportDesc": "Download a JSON file of the selected modules from live Firestore.",
-      "downloadJson": "Download backup JSON",
+      "exportDesc": "Download a JSON file of the selected modules from live Firestore. Select all for a full backup.",
+      "downloadJson": "Download full backup JSON",
       "exporting": "Exporting…",
       "exportDone": "Backup saved as {{name}} ({{docs}} docs)",
       "exportFailed": "Backup export failed",
@@ -1280,36 +1278,17 @@
       "emptyBackup": "Backup file has no collections or settings",
       "progress": "{{step}} · {{current}}/{{total}}",
       "full": {
-        "title": "All-in-One Migration",
-        "recommended": "Recommended",
-        "description": "One ZIP like WordPress All-in-One Migration: database + content + settings + image/media URLs + Firebase Storage files.",
+        "title": "Full site backup (JSON)",
+        "recommended": "Free plan",
+        "description": "Export or import the full Firestore site state as one JSON file — content, settings, bookings, users, and media URLs.",
         "liveDocs": "{{count}} documents currently live in Firestore",
-        "serverProcessed": "Securely processed by Cloud Functions",
-        "exportTitle": "Export everything",
-        "exportDescription": "Download one portable ZIP with the full site state.",
-        "downloadZip": "Export full site (.zip)",
-        "preparing": "Preparing full backup…",
-        "exportDone": "Full backup downloaded: {{docs}} documents and {{files}} storage files",
-        "exportFailed": "Full backup export failed. Deploy the latest Functions and Storage rules, then try again.",
-        "importTitle": "Import everything",
-        "importDescription": "Upload a full backup ZIP to restore the same site state.",
-        "chooseZip": "Choose full backup ZIP",
-        "chooseFirst": "Choose a full backup ZIP first",
-        "invalidArchive": "Choose a valid .zip backup archive",
-        "tooLarge": "The backup archive is larger than the 1 GB limit",
-        "mergeHint": "Add and update; keep other current data.",
-        "replaceHint": "Clear current site data and media first.",
-        "replaceWarning": "This permanently replaces current Firestore data and Storage media. Export the current site first.",
-        "importNow": "Import full site",
-        "importing": "Importing full backup…",
-        "importDone": "Full site restored: {{docs}} documents and {{files}} storage files",
-        "importFailed": "Full backup import failed. No success was reported; review the deployed Function logs.",
-        "includes": "Included: all Firestore data (orders, users, cars, products, blogs, gallery, chat, branding, hero, payment settings, and more), image/media URLs, and any Firebase Storage files.",
-        "exclusions": "Not included for security: Firebase Authentication passwords/login secrets, Cloud Function secrets, and deployed source code. Uploaded images stay on ImgBB via saved URLs after restore.",
+        "clientProcessed": "Runs in your browser (Spark / free)",
+        "includes": "Included: Firestore data (orders, users, cars, products, blogs, gallery, travel reservations, chat, branding, hero, payment settings, and more) plus image/media URLs saved in those docs.",
+        "exclusions": "Not included: Firebase Auth passwords, binary files on Firebase Storage or ImgBB (URLs are kept so images still load after restore), and deployed app code.",
         "coverage": {
           "database": {
             "title": "Database",
-            "hint": "All Firestore collections and nested docs"
+            "hint": "Bookings, users, chat, logs"
           },
           "content": {
             "title": "Content",
@@ -1320,16 +1299,9 @@
             "hint": "Branding, hero, sections, payment, footer"
           },
           "images": {
-            "title": "Images",
-            "hint": "Media URLs + Firebase Storage files"
+            "title": "Image URLs",
+            "hint": "ImgBB / CDN links stored in Firestore"
           }
-        },
-        "phases": {
-          "creating": "Collecting database, content, settings, and media",
-          "downloading": "Downloading archive",
-          "uploading": "Uploading archive",
-          "restoring": "Restoring database, content, settings, and media",
-          "done": "Complete"
         }
       },
       "modules": {
@@ -1342,7 +1314,7 @@
         "chat": "Live chat"
       },
       "moduleHints": {
-        "ui": "Packages, cars, services, blogs, gallery, routes, FAQ, social + branding/hero/sections",
+        "ui": "Packages, cars, services, blogs, gallery, routes, FAQ, social, travel reservations + branding/hero/sections",
         "bookings": "Orders and booking counters",
         "users": "Registered user profiles",
         "priceRequests": "Your Price request forms",

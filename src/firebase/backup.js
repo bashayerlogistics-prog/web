@@ -32,6 +32,7 @@ export const BACKUP_MODULES = {
       'socialLinks',
       'vehicles',
       'products',
+      'travelReservations',
     ],
     includeSiteSettings: true,
   },
