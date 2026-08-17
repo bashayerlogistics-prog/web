@@ -13,7 +13,7 @@ hPanel → **Files** → **FTP Accounts** (or Hosting → FTP):
 - Host (e.g. `ftp.yourdomain.com` or server IP)
 - Username
 - Password
-- Remote folder: `/` (the Hostinger FTP account is already rooted at `public_html`)
+- Remote folder: `domains/bashayer-logistics.com/public_html/`
 
 ### 2) GitHub repository secrets
 

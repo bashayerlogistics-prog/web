@@ -67,7 +67,6 @@ jobs:
           username: ${{ secrets.HOSTINGER_FTP_USER }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./dist/
-          # Hostinger's FTP account is already rooted at the domain's public_html.
-          server-dir: ./
+          server-dir: domains/bashayer-logistics.com/public_html/
           protocol: ftps
           dangerous-clean-slate: false
