@@ -31,25 +31,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: functions/package-lock.json
 
-      - name: Install functions deps
-        working-directory: functions
-        run: npm ci
-
-      - name: Deploy rules + functions
+      - name: Deploy Firestore rules + indexes
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          OTP_PEPPER: ${{ secrets.OTP_PEPPER }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
         run: |
           if [ -z "$FIREBASE_TOKEN" ]; then
-            echo "Missing FIREBASE_TOKEN secret. Create with: npx firebase login:ci"
+            echo "Missing FIREBASE_TOKEN secret."
             exit 1
           fi
-          # Storage only if enabled in Firebase console (Get Started).
-          # Until then deploy rules + indexes + functions.
-          npx firebase-tools@latest deploy --only firestore:rules,firestore:indexes,functions --non-interactive --token "$FIREBASE_TOKEN"
+          # Cloud Functions need Blaze billing — this project uses Hostinger/Resend instead.
+          # Deploy only Firestore rules + indexes on free Spark plan.
+          npx firebase-tools@latest deploy --only firestore:rules,firestore:indexes --non-interactive --token "$FIREBASE_TOKEN"
