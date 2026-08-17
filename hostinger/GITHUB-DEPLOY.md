@@ -13,7 +13,7 @@ hPanel → **Files** → **FTP Accounts** (or Hosting → FTP):
 - Host (e.g. `ftp.yourdomain.com` or server IP)
 - Username
 - Password
-- Remote folder: usually `public_html/` (must end with `/`)
+- Remote folder: `/` (the Hostinger FTP account is already rooted at `public_html`)
 
 ### 2) GitHub repository secrets
 
@@ -26,7 +26,6 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **New re
 | `HOSTINGER_FTP_HOST` | `ftp.bashayer-logistics.com` |
 | `HOSTINGER_FTP_USER` | your FTP user |
 | `HOSTINGER_FTP_PASSWORD` | your FTP password |
-| `HOSTINGER_FTP_PATH` | `public_html/` |
 
 **App build (same values as local `.env`)**
 

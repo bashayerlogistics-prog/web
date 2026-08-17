@@ -67,6 +67,7 @@ jobs:
           username: ${{ secrets.HOSTINGER_FTP_USER }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: ${{ secrets.HOSTINGER_FTP_PATH != '' && secrets.HOSTINGER_FTP_PATH || 'public_html/' }}
+          # Hostinger's FTP account is already rooted at the domain's public_html.
+          server-dir: ./
           protocol: ftps
           dangerous-clean-slate: false
