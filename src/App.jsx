@@ -94,7 +94,7 @@ export default function App() {
                     </LazyRoute>
                   }
                 />
-                <Route path="admin" element={<LazyRoute><AdminSiteContentLayout /></LazyRoute>}>
+                <Route path="admin" element={<AdminSiteContentLayout />}>
                   <Route index element={<LazyRoute><AdminOverview /></LazyRoute>} />
                   <Route path="overview" element={<Navigate to="/admin" replace />} />
                   <Route path="orders" element={<LazyRoute><AdminOrders /></LazyRoute>} />

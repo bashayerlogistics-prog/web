@@ -93,7 +93,7 @@ export default function CustomerAuthProvider({ children }) {
         setLoading(false);
         return undefined;
       }
-      signOut(auth).finally(() => setLoading(false));
+      signOut(auth).catch(() => {}).finally(() => setLoading(false));
       return undefined;
     }
 

@@ -6,6 +6,7 @@ import {
   adminCacheKey,
   ADMIN_DATA_CACHE_TTL_MS,
 } from '../utils/adminDataCache';
+import { withTimeout } from '../utils/withTimeout';
 
 /**
  * Fast admin list loader with session cache (stale-while-revalidate).
@@ -44,7 +45,7 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
     else setLoading(true);
 
     try {
-      const result = await loadFnRef.current();
+      const result = await withTimeout(loadFnRef.current(), 12000, 'admin-data');
       if (requestId !== requestIdRef.current) return;
       startTransition(() => {
         setData(result);

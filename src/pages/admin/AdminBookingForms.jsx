@@ -31,10 +31,10 @@ import { DEFAULT_INSTANT_PRICE } from '../../firebase/content';
 import { DEFAULT_RELIGIOUS_TOURS } from '../../data/religiousTours';
 import { useToast } from '../../context/ToastContext';
 import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
+import { withTimeout } from '../../utils/withTimeout';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import AdminApplyButton from '../../components/admin/AdminApplyButton';
 import GlassCard from '../../components/ui/GlassCard';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import {
   AddSectionBar,
   AdminAlertModal,
@@ -186,7 +186,7 @@ export default function AdminBookingForms() {
   const [bookingCopy, setBookingCopy] = useState({ ...DEFAULT_FORM_HEADINGS.booking });
   const [instantCopy, setInstantCopy] = useState(copyFromInstant(null));
   const [religiousCopy, setReligiousCopy] = useState(copyFromReligious(null));
-  const [syncing, setSyncing] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [focusForm, setFocusForm] = useState('booking');
@@ -196,15 +196,21 @@ export default function AdminBookingForms() {
   const [successOpen, setSuccessOpen] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       setSyncing(true);
       try {
-        const [locData, tripData, instantData, religiousData] = await Promise.all([
-          getBookingLocationsSettings(),
-          getBookingTripTypesSettings(),
-          getInstantPriceSettings(),
-          getReligiousToursSettings(),
-        ]);
+        const [locData, tripData, instantData, religiousData] = await withTimeout(
+          Promise.all([
+            getBookingLocationsSettings(),
+            getBookingTripTypesSettings(),
+            getInstantPriceSettings(),
+            getReligiousToursSettings(),
+          ]),
+          8000,
+          'booking-forms',
+        );
+        if (cancelled) return;
         const builtLoc = cloneBookingLocations(locData);
         const builtTrip = buildBookingTripTypesFromFirestore(tripData);
         setCities(builtLoc.cities);
@@ -216,20 +222,14 @@ export default function AdminBookingForms() {
         setReligiousCopy(copyFromReligious(religiousData));
         setOpenSectionId(builtTrip.options[0]?.id || null);
       } catch {
-        toast.error(t('common.error'));
-        const builtLoc = cloneBookingLocations(null);
-        const builtTrip = buildBookingTripTypesFromFirestore(null);
-        setCities(builtLoc.cities);
-        setRoutes(builtLoc.routes);
-        setOptions(builtTrip.options);
-        setFormFields(builtTrip.formFields);
-        setBookingCopy({ ...DEFAULT_FORM_HEADINGS.booking });
-        setInstantCopy(copyFromInstant(null));
-        setReligiousCopy(copyFromReligious(null));
+        if (!cancelled) toast.error(t('common.error'));
       } finally {
-        setSyncing(false);
+        if (!cancelled) setSyncing(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [t, toast]);
 
   const updateCity = (id, patch) => {
@@ -458,15 +458,17 @@ export default function AdminBookingForms() {
       }
       : null;
 
-  if (syncing) return <LoadingSpinner />;
-
   return (
     <div className="space-y-5">
       <AdminPageHeader
         title={t('admin.nav.bookingForms')}
         purposeKey="bookingForms"
         subtitle={t('admin.bookingForms.subtitle')}
-      />
+      >
+        {syncing ? (
+          <span className="text-xs font-semibold text-gray-500">{t('common.loading')}</span>
+        ) : null}
+      </AdminPageHeader>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {[

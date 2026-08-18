@@ -60,7 +60,10 @@ export function AdminAuthProvider({ children }) {
   const [loading, setLoading] = useState(!sessionHint);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    let settled = false;
+    const finish = (firebaseUser) => {
+      if (settled) return;
+      settled = true;
       if (isFirebaseAdmin(firebaseUser)) {
         localStorage.setItem(ADMIN_SESSION_KEY, 'true');
         setAdminUser({
@@ -68,15 +71,30 @@ export function AdminAuthProvider({ children }) {
           email: firebaseUser.email,
           uid: firebaseUser.uid,
         });
-      } else {
+      } else if (!sessionHint) {
         localStorage.removeItem(ADMIN_SESSION_KEY);
         setAdminUser(null);
       }
       setLoading(false);
-    });
+    };
 
-    return unsubscribe;
-  }, []);
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (firebaseUser) => finish(firebaseUser),
+      (err) => {
+        console.warn('Admin auth listener failed:', err?.message || err);
+        finish(auth.currentUser);
+      },
+    );
+
+    const timeoutId = window.setTimeout(() => finish(auth.currentUser), 4000);
+
+    return () => {
+      settled = true;
+      window.clearTimeout(timeoutId);
+      unsubscribe();
+    };
+  }, [sessionHint]);
 
   const login = useCallback(async (username, password) => {
     const trimmed = username.trim();
@@ -90,7 +108,11 @@ export function AdminAuthProvider({ children }) {
     try {
       // Keep the Firebase admin credential through browser restarts; only the
       // explicit logout action below may remove it.
-      await setPersistence(auth, browserLocalPersistence);
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch (persistErr) {
+        console.warn('Admin auth persistence fallback:', persistErr?.message || persistErr);
+      }
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
       if (!isFirebaseAdmin(cred.user)) {
