@@ -11,6 +11,7 @@ import MobileBottomNav from './MobileBottomNav';
 import WhatsAppButton from './WhatsAppButton';
 
 import ScrollManager from './ScrollManager';
+import ScrollReveal from '../ui/ScrollReveal';
 
 
 
@@ -73,6 +74,7 @@ export default function Layout() {
     <>
 
       <ScrollManager />
+      <ScrollReveal />
 
       <Header />
 

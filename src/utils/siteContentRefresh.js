@@ -13,6 +13,7 @@ import {
 import { HOURLY_FLEET_ROUTES } from '../data/hourlyPricing';
 import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
 import { DEFAULT_HOME_SECTIONS, mergeHomeSections } from '../data/homeSections';
+import { emptyFleetShowcase, normalizeFleetShowcase } from '../data/adminFleetServices';
 import { DEFAULT_BOOKING_TRIP_TYPES, buildBookingTripTypesFromFirestore } from '../data/bookingTripTypes';
 import { DEFAULT_BOOKING_LOCATIONS, buildBookingLocationsFromFirestore } from '../data/bookingLocations';
 import {
@@ -94,6 +95,7 @@ export function sanitizeSiteContentCache(data) {
     ),
     carCatalog: pickNonEmptyArray(data.carCatalog, getDefaultCarCatalog()),
     sections: mergeHomeSections(data.sections || {}),
+    fleetShowcase: normalizeFleetShowcase(data.fleetShowcase),
     hero: buildHeroFromFirestore(data.hero ?? null),
     instantPrice: buildInstantPriceFromFirestore(data.instantPrice ?? null),
     religiousTours: buildReligiousToursFromFirestore(data.religiousTours ?? null),
@@ -117,6 +119,7 @@ export function defaultSiteContentSnapshot() {
     travelReservations: DEFAULT_TRAVEL_RESERVATIONS,
     carCatalog: getDefaultCarCatalog(),
     sections: DEFAULT_HOME_SECTIONS,
+    fleetShowcase: emptyFleetShowcase(),
     hero: DEFAULT_HERO,
     instantPrice: DEFAULT_INSTANT_PRICE,
     religiousTours: DEFAULT_RELIGIOUS_TOURS,

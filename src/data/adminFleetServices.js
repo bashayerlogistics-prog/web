@@ -1,10 +1,10 @@
 import {
   FLEET_ROUTES,
-  ROUND_TRIP_TRAIN_STATIONS,
   ROUND_TRIP_TRAIN_ONLY,
   BOOKING_CAR_TYPES,
   SHORT_NAMES,
   getCarDisplayName,
+  resolveCarThumb,
 } from './staticData';
 import { AIRPORT_TRANSFER_ROUTES } from './airportPricing';
 import {
@@ -272,6 +272,27 @@ export function carOptionList(cars = FLEET_CARS) {
   }));
 }
 
+export function passengersForCar(car) {
+  if (car === 'hiace') return 10;
+  if (car === 'staria' || car === 'yukon') return 7;
+  return 4;
+}
+
+export function hoursFromRouteId(routeId, fallback = 4) {
+  const match = String(routeId || '').match(/^hr-(\d+)/);
+  return match ? Number(match[1]) : fallback;
+}
+
+export function resolveVehicleKey(service, car, routeId) {
+  if (!car || !routeId) return '';
+  const defaults = service?.getDefaults?.() || [];
+  const hit = defaults.find(
+    (d) => d.routeId === routeId && String(d.vehicleKey || '').split('-')[0] === car,
+  );
+  if (hit?.vehicleKey) return hit.vehicleKey;
+  return `${car}-${routeId}`;
+}
+
 /**
  * Homepage fleet layout (final):
  * Row 1 — Train 2 + Airport 2
@@ -289,6 +310,81 @@ export const HOME_FLEET_SERVICE_COUNTS = {
 
 export const HOME_FLEET_SERVICE_IDS = Object.keys(HOME_FLEET_SERVICE_COUNTS);
 
+export const HOME_FLEET_PAIRS = [
+  ['train', 'airport'],
+  ['cityToCity', 'hourly'],
+  ['ziyarat', 'withinCity'],
+];
+
+export function normalizeFleetShowcase(raw = {}) {
+  const out = {};
+  for (const id of HOME_FLEET_SERVICE_IDS) {
+    const item = raw?.[id] && typeof raw[id] === 'object' ? raw[id] : {};
+    const routeId = String(item.routeId || '').trim();
+    const seen = new Set();
+    const carIds = (Array.isArray(item.carIds) ? item.carIds : [])
+      .map((c) => String(c || '').split('-')[0].trim())
+      .filter((c) => c && !seen.has(c) && seen.add(c))
+      .slice(0, HOME_FLEET_SERVICE_COUNTS[id] || 2);
+    out[id] = { routeId, carIds, active: item.active !== false };
+  }
+  return out;
+}
+
+export function emptyFleetShowcase() {
+  return normalizeFleetShowcase({});
+}
+
+/** Build a new SuperAdmin package for one car on one route. */
+export function buildNewFleetProduct(service, { car, routeId, price, originalPrice, hours } = {}) {
+  const carKey = String(car || service.defaultCar || DEFAULT_FLEET_CAR).split('-')[0];
+  const rid = String(routeId || service.defaultRouteId || '').trim();
+  const defaults = service.getDefaults?.() || [];
+  const hit = defaults.find(
+    (d) => d.routeId === rid && carKeyOf(d) === carKey,
+  );
+  const route = (service.getRoutes?.() || []).find((r) => r.id === rid);
+  const nameEn = hit?.nameEn || `${getCarDisplayName(carKey, 'en')} · ${route?.label?.en || rid}`;
+  const nameAr = hit?.nameAr || `${getCarDisplayName(carKey, 'ar')} · ${route?.label?.ar || rid}`;
+  const vehicleKey = hit?.vehicleKey || resolveVehicleKey(service, carKey, rid);
+  const numericPrice = Number(price) || Number(hit?.price) || 0;
+  const payload = {
+    nameEn,
+    nameAr,
+    carModelEn: getCarDisplayName(carKey, 'en'),
+    carModelAr: getCarDisplayName(carKey, 'ar'),
+    price: numericPrice,
+    originalPrice: Number(originalPrice) || Number(hit?.originalPrice) || numericPrice,
+    imageUrl: hit?.imageUrl || resolveCarThumb(carKey, ''),
+    descriptionEn: hit?.descriptionEn || '',
+    descriptionAr: hit?.descriptionAr || '',
+    routeId: rid,
+    vehicleKey,
+    passengers: hit?.passengers || passengersForCar(carKey),
+    badgeEn: hit?.badgeEn || service.badgeEn || '',
+    badgeAr: hit?.badgeAr || service.badgeAr || '',
+    sortOrder: Number(hit?.sortOrder) || 0,
+    active: true,
+    hidePrice: false,
+    tripType: service.tripType,
+    type: 'fleet',
+    fleetServiceId: service.id,
+  };
+  if (service.layout === 'round_trip') {
+    payload.pickupPrice = Number(hit?.pickupPrice) || numericPrice;
+    payload.dropoffPrice = Number(hit?.dropoffPrice) || 0;
+    if (!price && (payload.pickupPrice || payload.dropoffPrice)) {
+      payload.price = payload.pickupPrice + payload.dropoffPrice;
+      payload.originalPrice = payload.price;
+    }
+  }
+  if (service.layout === 'hourly') {
+    payload.hours = Number(hours) || hoursFromRouteId(rid, service.hoursOptions?.[0] || 4);
+    payload.hourlyRate = Number(hit?.hourlyRate) || (payload.hours ? Math.round(numericPrice / payload.hours) : 0);
+  }
+  return payload;
+}
+
 function routeAsProduct(route) {
   return {
     tripType: route.tripType,
@@ -301,10 +397,12 @@ function uniqueCarsOnRoute(route, cars) {
   const byCar = new Map();
   for (const vehicle of route.vehicles || []) {
     const key = carKeyOf({ vehicleKey: vehicle.id });
-    if (!cars.includes(key) || byCar.has(key)) continue;
+    if (!key || byCar.has(key)) continue;
     byCar.set(key, vehicle);
   }
-  return cars.map((car) => byCar.get(car)).filter(Boolean);
+  const ordered = (cars || []).map((car) => byCar.get(car)).filter(Boolean);
+  const extra = [...byCar.values()].filter((vehicle) => !ordered.includes(vehicle));
+  return [...ordered, ...extra];
 }
 
 function scoreRouteForHome(route, service) {
@@ -323,14 +421,18 @@ function scoreRouteForHome(route, service) {
 /**
  * Build homepage fleet groups from live SuperAdmin packages.
  * Per-service car counts — one real route each, no dummy / no duplicates.
+ * Optional showcase pins which route + 2 cars appear on the homepage.
  */
-export function buildHomeFleetSections(fleetRoutes = []) {
+export function buildHomeFleetSections(fleetRoutes = [], showcase = {}) {
   if (!fleetRoutes.length) return [];
+  const pins = normalizeFleetShowcase(showcase);
 
   return HOME_FLEET_SERVICE_IDS.map((serviceId) => {
     const service = FLEET_SERVICES[serviceId];
     if (!service) return null;
     const limit = HOME_FLEET_SERVICE_COUNTS[serviceId] || 2;
+    const pin = pins[serviceId] || { routeId: '', carIds: [], active: true };
+    if (pin.active === false) return null;
 
     const matching = fleetRoutes.filter((route) =>
       service.matchProduct(routeAsProduct(route)),
@@ -342,7 +444,10 @@ export function buildHomeFleetSections(fleetRoutes = []) {
       .filter((entry) => entry.cars.length > 0)
       .sort((a, b) => b.score - a.score);
 
-    const best = ranked[0];
+    const pinned = pin.routeId
+      ? ranked.find((entry) => entry.route.id === pin.routeId)
+      : null;
+    const best = pinned || ranked[0];
     if (!best) return null;
 
     // One real route only — never mix cars from other routes (avoids fake/dummy cards)
@@ -350,10 +455,21 @@ export function buildHomeFleetSections(fleetRoutes = []) {
       best.cars.map((vehicle) => [carKeyOf({ vehicleKey: vehicle.id }), vehicle]),
     );
 
-    const vehicles = service.cars
-      .map((car) => byCar.get(car))
-      .filter(Boolean)
-      .slice(0, limit);
+    const preferredCars = [
+      ...pin.carIds,
+      ...service.cars,
+      ...best.cars.map((vehicle) => carKeyOf({ vehicleKey: vehicle.id })),
+    ];
+    const seen = new Set();
+    const vehicles = [];
+    for (const car of preferredCars) {
+      if (seen.has(car)) continue;
+      const vehicle = byCar.get(car);
+      if (!vehicle) continue;
+      seen.add(car);
+      vehicles.push(vehicle);
+      if (vehicles.length >= limit) break;
+    }
 
     if (!vehicles.length) return null;
 

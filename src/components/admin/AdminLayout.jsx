@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard, ShoppingBag, Users, Activity, Settings,
   LogOut, Sun, Moon, Languages, Menu, RefreshCw, X, Search,
-  Package, Image, Bell, ChevronRight, ChevronDown, FileText, Briefcase, ToggleLeft, Monitor, MessageCircle,
-  Map, HelpCircle, Share2, Images, Clock, Landmark, Plane, TrainFront, MapPin, Car, Tags, DatabaseBackup, CreditCard, ListOrdered, Copyright,
+  Image, Bell, ChevronRight, ChevronDown, FileText, Briefcase, ToggleLeft, Monitor, MessageCircle,
+  Map, HelpCircle, Share2, Images, Car, Tags, DatabaseBackup, CreditCard, ListOrdered, Copyright, Grid3x3,
 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAdminAuth } from '../../context/AdminAuthContext';
@@ -21,8 +21,9 @@ const navGroups = [
     id: 'main',
     labelKey: 'admin.nav.groupMain',
     items: [
-      { to: '/admin/booking-forms', icon: ListOrdered, labelKey: 'admin.nav.bookingForms' },
       { to: '/admin', icon: LayoutDashboard, labelKey: 'admin.nav.overview', end: true },
+      { to: '/admin/booking-forms', icon: ListOrdered, labelKey: 'admin.nav.bookingForms' },
+      { to: '/admin/fleet', icon: Grid3x3, labelKey: 'admin.nav.homeFleet' },
       { to: '/admin/orders', icon: ShoppingBag, labelKey: 'admin.nav.orders', badgeKey: 'pending' },
       { to: '/admin/users', icon: Users, labelKey: 'admin.nav.users' },
       { to: '/admin/price-requests', icon: FileText, labelKey: 'admin.nav.yourPrice', badgeKey: 'priceRequests' },
@@ -53,18 +54,6 @@ const navGroups = [
       { to: '/admin/cars/staria', icon: Car, labelKey: 'admin.nav.carStaria' },
       { to: '/admin/cars/yukon', icon: Car, labelKey: 'admin.nav.carYukon' },
       { to: '/admin/cars/hiace', icon: Car, labelKey: 'admin.nav.carHiace' },
-    ],
-  },
-  {
-    id: 'products',
-    labelKey: 'admin.nav.groupProducts',
-    items: [
-      { to: '/admin/city-to-city', icon: MapPin, labelKey: 'admin.nav.cityToCity' },
-      { to: '/admin/airport', icon: Plane, labelKey: 'admin.nav.airport' },
-      { to: '/admin/train', icon: TrainFront, labelKey: 'admin.nav.train' },
-      { to: '/admin/within-city', icon: Package, labelKey: 'admin.nav.withinCity' },
-      { to: '/admin/hourly', icon: Clock, labelKey: 'admin.nav.hourly' },
-      { to: '/admin/ziyarat', icon: Landmark, labelKey: 'admin.nav.ziyarat' },
     ],
   },
   {
@@ -145,7 +134,7 @@ function AdminLayoutInner() {
     return hit?.id || 'main';
   }, [location.pathname]);
 
-  const [openGroups, setOpenGroups] = useState(() => new Set(['main', 'categories', 'cars', 'products']));
+  const [openGroups, setOpenGroups] = useState(() => new Set(['main', 'categories', 'cars']));
 
   useEffect(() => {
     setOpenGroups((prev) => {

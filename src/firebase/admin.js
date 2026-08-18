@@ -18,8 +18,9 @@ import {
   getCountFromServer,
 } from 'firebase/firestore';
 import { db } from './db';
-import { getHomeSections as fetchHomeSections } from './content';
+import { getHomeSections as fetchHomeSections, getHomeFleetShowcase as fetchHomeFleetShowcase } from './content';
 import { mergeHomeSections } from '../data/homeSections';
+import { normalizeFleetShowcase } from '../data/adminFleetServices';
 import { getDefaultProducts, getDefaultServices, getDefaultBlogs } from '../data/contentSeeds';
 import { getDefaultCarCatalog, isPlaceholderSocialUrl, BOOKING_CAR_TYPES } from '../data/staticData';
 
@@ -1035,9 +1036,13 @@ export async function updateBookingTripTypesSettings(data) {
   const formFields = data?.formFields && typeof data.formFields === 'object'
     ? data.formFields
     : undefined;
+  const formHeadings = data?.formHeadings && typeof data.formHeadings === 'object'
+    ? data.formHeadings
+    : undefined;
   await setDoc(doc(db, 'siteSettings', 'bookingTripTypes'), {
     options,
     ...(formFields ? { formFields } : {}),
+    ...(formHeadings ? { formHeadings } : {}),
     updatedAt: serverTimestamp(),
   }, { merge: false });
   await logActivity('booking_trip_types_updated', { count: options.length });
@@ -1106,6 +1111,21 @@ export async function updateAllHomeSections(sections) {
   }, { merge: true });
   await logActivity('home_sections_bulk_updated', {});
   return merged;
+}
+
+export async function getAdminHomeFleetShowcase() {
+  return fetchHomeFleetShowcase();
+}
+
+export async function updateHomeFleetShowcase(patch) {
+  const current = await fetchHomeFleetShowcase();
+  const next = normalizeFleetShowcase({ ...current, ...patch });
+  await setDoc(doc(db, 'siteSettings', 'homepage'), {
+    fleetShowcase: next,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+  await logActivity('home_fleet_showcase_updated', {});
+  return next;
 }
 
 // Notifications

@@ -32,7 +32,8 @@ import {
   GALLERY_IMAGES,
 } from '../data/staticData';
 import { HOURLY_FLEET_ROUTES } from '../data/hourlyPricing';
-import { DEFAULT_HOME_SECTIONS, mergeHomeSections } from '../data/homeSections';
+import { mergeHomeSections } from '../data/homeSections';
+import { emptyFleetShowcase, normalizeFleetShowcase } from '../data/adminFleetServices';
 import {
   DEFAULT_RELIGIOUS_TOURS,
   buildReligiousToursFromFirestore,
@@ -835,14 +836,30 @@ export function buildHeroFromFirestore(heroData) {
   };
 }
 
-export async function getHomeSections() {
+export async function getHomepageSettings() {
   try {
     const snap = await getDoc(doc(db, 'siteSettings', 'homepage'));
-    if (!snap.exists()) return mergeHomeSections({});
-    return mergeHomeSections(snap.data()?.sections || {});
+    const data = snap.exists() ? snap.data() : {};
+    return {
+      sections: mergeHomeSections(data.sections || {}),
+      fleetShowcase: normalizeFleetShowcase(data.fleetShowcase),
+    };
   } catch {
-    return mergeHomeSections({});
+    return {
+      sections: mergeHomeSections({}),
+      fleetShowcase: emptyFleetShowcase(),
+    };
   }
+}
+
+export async function getHomeSections() {
+  const { sections } = await getHomepageSettings();
+  return sections;
+}
+
+export async function getHomeFleetShowcase() {
+  const { fleetShowcase } = await getHomepageSettings();
+  return fleetShowcase;
 }
 
 function mapSnapshotDocs(snapshot) {

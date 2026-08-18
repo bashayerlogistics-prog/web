@@ -12,7 +12,7 @@ export const PRIMARY_TRIP_TYPE_FORMS = ['booking', 'instantPrice'];
 
 export const BOOKING_TRIP_TYPE_FORMS = [...PRIMARY_TRIP_TYPE_FORMS, 'religiousTours'];
 
-export const MAX_TRIP_TYPE_OPTIONS = 6;
+export const MAX_TRIP_TYPE_OPTIONS = 10;
 
 /** Fields that can be shown/hidden + renamed per homepage form. */
 export const BOOKING_FORM_FIELD_KEYS = [
@@ -123,6 +123,16 @@ export const DEFAULT_BOOKING_TRIP_TYPE_OPTIONS = [
   },
 ];
 
+/** Public card headings for Form 1 (Forms 2–3 keep their own CMS docs). */
+export const DEFAULT_FORM_HEADINGS = {
+  booking: {
+    titleEn: 'Book Airport · Train · Cities · Hourly',
+    titleAr: 'احجز مطار · قطار · مدن · بالساعة',
+    subtitleEn: 'Quick Booking',
+    subtitleAr: 'حجز سريع',
+  },
+};
+
 export const DEFAULT_BOOKING_TRIP_TYPES = {
   options: DEFAULT_BOOKING_TRIP_TYPE_OPTIONS.map((o) => ({
     ...o,
@@ -132,6 +142,9 @@ export const DEFAULT_BOOKING_TRIP_TYPES = {
     booking: makeFormFields(DEFAULT_FORM_FIELDS.booking),
     instantPrice: makeFormFields(DEFAULT_FORM_FIELDS.instantPrice),
     religiousTours: makeFormFields(DEFAULT_FORM_FIELDS.religiousTours),
+  },
+  formHeadings: {
+    booking: { ...DEFAULT_FORM_HEADINGS.booking },
   },
 };
 
@@ -168,6 +181,36 @@ export function sanitizeFormFields(rawFields) {
   return result;
 }
 
+function sanitizeHeading(raw, fallback) {
+  return {
+    titleEn: String(raw?.titleEn ?? fallback.titleEn ?? '').trim() || fallback.titleEn,
+    titleAr: String(raw?.titleAr ?? fallback.titleAr ?? '').trim() || fallback.titleAr,
+    subtitleEn: String(raw?.subtitleEn ?? fallback.subtitleEn ?? '').trim() || fallback.subtitleEn,
+    subtitleAr: String(raw?.subtitleAr ?? fallback.subtitleAr ?? '').trim() || fallback.subtitleAr,
+  };
+}
+
+export function sanitizeFormHeadings(raw) {
+  return {
+    booking: sanitizeHeading(raw?.booking, DEFAULT_FORM_HEADINGS.booking),
+  };
+}
+
+export function getFormHeading(tripTypes, lang = 'en') {
+  const heading = buildBookingTripTypesFromFirestore(tripTypes).formHeadings?.booking
+    || DEFAULT_FORM_HEADINGS.booking;
+  if (lang === 'ar') {
+    return {
+      title: heading.titleAr || heading.titleEn,
+      subtitle: heading.subtitleAr || heading.subtitleEn,
+    };
+  }
+  return {
+    title: heading.titleEn || heading.titleAr,
+    subtitle: heading.subtitleEn || heading.subtitleAr,
+  };
+}
+
 export function isPrimaryFormActive(forms) {
   return forms?.booking !== false && forms?.instantPrice !== false;
 }
@@ -193,24 +236,30 @@ function normalizeOption(raw, index, fallbackById) {
     active: raw?.active !== false,
     builtin: Boolean(fallback?.builtin || raw?.builtin),
     forms: sanitizeForms(raw?.forms, fallback?.forms),
+    extraFields: Array.isArray(raw?.extraFields)
+      ? raw.extraFields.filter((key) => BOOKING_FORM_FIELD_KEYS.includes(key))
+      : [],
   };
 }
 
-/** Merge Firestore doc with defaults — keeps all 5 builtins, allows extras (max 6). */
+/** Merge Firestore doc with defaults — keeps all 5 builtins, allows extras. */
 export function buildBookingTripTypesFromFirestore(data) {
   const fallbackById = new Map(
     DEFAULT_BOOKING_TRIP_TYPE_OPTIONS.map((o) => [o.id, o]),
   );
   const incoming = Array.isArray(data?.options) ? data.options : [];
   const formFields = sanitizeFormFields(data?.formFields);
+  const formHeadings = sanitizeFormHeadings(data?.formHeadings);
 
   if (!incoming.length) {
     return {
       options: DEFAULT_BOOKING_TRIP_TYPE_OPTIONS.map((o) => ({
         ...o,
         forms: { ...o.forms },
+        extraFields: [],
       })),
       formFields,
+      formHeadings,
     };
   }
 
@@ -223,7 +272,7 @@ export function buildBookingTripTypesFromFirestore(data) {
 
   DEFAULT_BOOKING_TRIP_TYPE_OPTIONS.forEach((builtin) => {
     if (!seen.has(builtin.id) && normalized.length < MAX_TRIP_TYPE_OPTIONS) {
-      normalized.push({ ...builtin, forms: { ...builtin.forms } });
+      normalized.push({ ...builtin, forms: { ...builtin.forms }, extraFields: [] });
     }
   });
 
@@ -231,6 +280,7 @@ export function buildBookingTripTypesFromFirestore(data) {
   return {
     options: normalized.slice(0, MAX_TRIP_TYPE_OPTIONS),
     formFields,
+    formHeadings,
   };
 }
 
@@ -282,6 +332,7 @@ export function createTripTypeOption(partial = {}) {
     active: partial.active !== false,
     builtin: false,
     forms: sanitizeForms(partial.forms),
+    extraFields: Array.isArray(partial.extraFields) ? partial.extraFields : [],
   };
 }
 

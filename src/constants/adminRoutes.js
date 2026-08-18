@@ -1,9 +1,11 @@
 /** Whitelisted super-admin child paths (no trailing slashes). */
 export const ADMIN_CHILD_ROUTES = new Set([
+  'overview',
   'orders',
   'price-requests',
   'users',
   'city-to-city',
+  'fleet',
   'airport',
   'train',
   'within-city',

@@ -288,6 +288,7 @@ export async function createOrderWithPayment(orderData, userId = null, { proofFi
     proofFile,
     queuedAt: new Date().toISOString(),
   });
+  startPendingOrderSync();
   return { id: bookingId, orderNumber, queued: true };
 }
 

@@ -13,7 +13,7 @@ import {
 
   getCarCatalog,
 
-  getHomeSections,
+  getHomepageSettings,
 
   getHeroContent,
 
@@ -28,16 +28,6 @@ import {
   getBookingLocationsContent,
 
   getFooterCreditContent,
-
-  subscribeHeroContent,
-
-  subscribeInstantPriceContent,
-
-  subscribeGalleryHeroContent,
-
-  subscribeBookingTripTypesContent,
-
-  subscribeBookingLocationsContent,
 
   subscribeContentRevision,
 
@@ -95,6 +85,7 @@ import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
 import { DEFAULT_TRAVEL_RESERVATIONS } from '../data/travelReservations';
 
 import { DEFAULT_HOME_SECTIONS, isSectionActive } from '../data/homeSections';
+import { emptyFleetShowcase, normalizeFleetShowcase } from '../data/adminFleetServices';
 
 import { readLocalCache, readPersistentCache, createThrottledCacheWriter } from '../utils/localCache';
 
@@ -161,14 +152,21 @@ function loadCachedContent() {
 
 const SiteContentContext = createContext(null);
 
-
+function pathNeedsPublicCms(pathname) {
+  if (!pathname || pathname.startsWith('/admin')) return false;
+  if (pathname === '/' || pathname === '/gallery') return true;
+  if (pathname.startsWith('/booking')) return true;
+  if (pathname.startsWith('/vehicles')) return true;
+  if (pathname.startsWith('/cars/')) return true;
+  if (pathname.startsWith('/checkout')) return true;
+  return false;
+}
 
 export function SiteContentProvider({ children }) {
 
   const { pathname } = useLocation();
-  // Home and gallery own public CMS loading. Other routes use the local snapshot
-  // or static defaults, preventing app-wide Firestore reads on navigation/login.
-  const needsLivePublicContent = pathname === '/' || pathname === '/gallery';
+  // Price-facing public routes load CMS once (cached). Auth/admin skip Firestore.
+  const needsLivePublicContent = pathNeedsPublicCms(pathname);
   const initialCache = useMemo(() => loadCachedContent(), []);
   const initialSnapshot = initialCache.snapshot;
   const hasFreshCacheRef = useRef(initialCache.isFresh);
@@ -190,6 +188,10 @@ export function SiteContentProvider({ children }) {
   const [socialLinks, setSocialLinks] = useState(initialSnapshot.socialLinks);
 
   const [sections, setSections] = useState(initialSnapshot.sections);
+
+  const [fleetShowcase, setFleetShowcase] = useState(
+    () => normalizeFleetShowcase(initialSnapshot.fleetShowcase),
+  );
 
   const [hero, setHero] = useState(initialSnapshot.hero);
 
@@ -263,7 +265,7 @@ export function SiteContentProvider({ children }) {
         activeSocialLinks,
         activeBlogs,
         activeGallery,
-        homeSections,
+        homeSettings,
         heroData,
         instantPriceData,
         religiousToursData,
@@ -281,7 +283,7 @@ export function SiteContentProvider({ children }) {
         getActiveContentCollection('socialLinks'),
         getActiveBlogs(),
         getActiveContentCollection('gallery'),
-        getHomeSections(),
+        getHomepageSettings(),
         getHeroContent(),
         getInstantPriceContent(),
         getReligiousToursContent(),
@@ -302,7 +304,8 @@ export function SiteContentProvider({ children }) {
       const nextGalleryItems = buildGalleryItemsFromFirestore(activeGallery);
       const nextTravelReservations = buildTravelReservationsFromFirestore(activeTravelReservations);
 
-      const nextSections = homeSections;
+      const nextSections = homeSettings.sections;
+      const nextFleetShowcase = normalizeFleetShowcase(homeSettings.fleetShowcase);
 
       const nextHero = buildHeroFromFirestore(heroData);
 
@@ -336,6 +339,7 @@ export function SiteContentProvider({ children }) {
       );
 
       setSections(nextSections);
+      setFleetShowcase(nextFleetShowcase);
 
       setHero(nextHero);
 
@@ -376,6 +380,8 @@ export function SiteContentProvider({ children }) {
           : (cacheRef.current.travelReservations || DEFAULT_TRAVEL_RESERVATIONS),
 
         sections: nextSections,
+
+        fleetShowcase: nextFleetShowcase,
 
         hero: nextHero,
 
@@ -660,97 +666,6 @@ export function SiteContentProvider({ children }) {
 
   }, [needsLivePublicContent, refresh]);
 
-
-
-  // Lightweight single-doc listeners for hero/background images on public pages.
-  // Cached CMS stays for fleet/products; only visual settings sync live (~2 reads on load).
-  useEffect(() => {
-
-    if (!needsLivePublicContent) return undefined;
-
-    const isHome = pathname === '/';
-    const isGallery = pathname === '/gallery';
-    if (!isHome && !isGallery) return undefined;
-
-    let cancelled = false;
-    const unsubs = [];
-
-    const start = () => {
-      if (cancelled) return;
-
-      if (isHome) {
-        unsubs.push(
-          subscribeHeroContent(
-            (data) => {
-              const nextHero = buildHeroFromFirestore(data);
-              setHero(nextHero);
-              persistCache({ hero: nextHero });
-            },
-            (err) => console.warn('Hero settings listener failed:', err.code || err.message),
-          ),
-          subscribeInstantPriceContent(
-            (data) => {
-              const nextInstantPrice = buildInstantPriceFromFirestore(data);
-              setInstantPrice(nextInstantPrice);
-              persistCache({ instantPrice: nextInstantPrice });
-            },
-            (err) => console.warn('Instant price settings listener failed:', err.code || err.message),
-          ),
-          subscribeBookingTripTypesContent(
-            (data) => {
-              const nextBookingTripTypes = buildBookingTripTypesFromFirestore(data);
-              setBookingTripTypes(nextBookingTripTypes);
-              persistCache({ bookingTripTypes: nextBookingTripTypes });
-            },
-            (err) => console.warn('Booking trip types listener failed:', err.code || err.message),
-          ),
-          subscribeBookingLocationsContent(
-            (data) => {
-              const nextBookingLocations = buildBookingLocationsFromFirestore(data);
-              setBookingLocations(nextBookingLocations);
-              persistCache({ bookingLocations: nextBookingLocations });
-            },
-            (err) => console.warn('Booking locations listener failed:', err.code || err.message),
-          ),
-        );
-      }
-
-      if (isGallery) {
-        unsubs.push(
-          subscribeGalleryHeroContent(
-            (data) => {
-              const nextGalleryHero = buildGalleryHeroFromFirestore(data);
-              setGalleryHero(nextGalleryHero);
-              persistCache({ galleryHero: nextGalleryHero });
-            },
-            (err) => console.warn('Gallery hero listener failed:', err.code || err.message),
-          ),
-        );
-      }
-    };
-
-    const isMobile = window.matchMedia('(max-width: 767px)').matches;
-    let idleId;
-    if (isMobile && 'requestIdleCallback' in window) {
-      idleId = window.requestIdleCallback(start, { timeout: 2000 });
-    } else {
-      idleId = window.setTimeout(start, isMobile ? 150 : 50);
-    }
-
-    return () => {
-      cancelled = true;
-      if (typeof window !== 'undefined' && 'cancelIdleCallback' in window && typeof idleId === 'number') {
-        window.cancelIdleCallback(idleId);
-      } else {
-        window.clearTimeout(idleId);
-      }
-      unsubs.forEach((unsub) => unsub && unsub());
-    };
-
-  }, [needsLivePublicContent, pathname, persistCache]);
-
-
-
   useEffect(() => {
 
     if (!needsLivePublicContent || typeof BroadcastChannel === 'undefined') return undefined;
@@ -894,6 +809,8 @@ export function SiteContentProvider({ children }) {
 
     sections,
 
+    fleetShowcase,
+
     hero,
 
     instantPrice,
@@ -941,6 +858,8 @@ export function SiteContentProvider({ children }) {
     blogs,
 
     sections,
+
+    fleetShowcase,
 
     hero,
 
@@ -1015,6 +934,8 @@ export function useSiteContent() {
       blogs: fallback.blogs,
 
       sections: fallback.sections,
+
+      fleetShowcase: fallback.fleetShowcase || emptyFleetShowcase(),
 
       hero: fallback.hero,
 

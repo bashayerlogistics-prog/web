@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Calculator, Zap, Landmark } from 'lucide-react';
+import { Calculator, Zap, Landmark, Heading, Layers, Save, Info, CheckCircle2 } from 'lucide-react';
 import {
   getBookingLocationsSettings,
   updateBookingLocationsSettings,
   getBookingTripTypesSettings,
   updateBookingTripTypesSettings,
+  getInstantPriceSettings,
+  updateInstantPriceSettings,
+  getReligiousToursSettings,
+  updateReligiousToursSettings,
 } from '../../firebase/admin';
 import {
   cloneBookingLocations,
@@ -16,19 +20,27 @@ import {
 } from '../../data/bookingLocations';
 import {
   DEFAULT_BOOKING_TRIP_TYPES,
+  DEFAULT_FORM_HEADINGS,
   MAX_TRIP_TYPE_OPTIONS,
   buildBookingTripTypesFromFirestore,
+  createTripTypeOption,
   sanitizeFormFields,
+  sanitizeFormHeadings,
 } from '../../data/bookingTripTypes';
+import { DEFAULT_INSTANT_PRICE } from '../../firebase/content';
+import { DEFAULT_RELIGIOUS_TOURS } from '../../data/religiousTours';
 import { useToast } from '../../context/ToastContext';
 import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import AdminApplyButton from '../../components/admin/AdminApplyButton';
 import GlassCard from '../../components/ui/GlassCard';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import {
-  PRIMARY_TRIP_SECTIONS,
+  AddSectionBar,
+  AdminAlertModal,
   TripSectionPanel,
-  ZiyaratFormPanel,
+  getSectionMeta,
+  inputClass,
   isFormOn,
 } from '../../components/admin/AdminBookingFormEditor';
 
@@ -37,36 +49,127 @@ const FORM_META = [
     id: 'booking',
     number: 1,
     Icon: Calculator,
-    ring: 'ring-brand/30 border-brand/25 bg-brand/5',
+    accent: 'from-brand to-brand-light',
     chipOn: 'bg-brand text-white border-brand',
-    chipOff: 'bg-white text-gray-500 border-gray-200',
-    headerBg: 'from-brand/10 dark:from-brand/30 to-transparent',
-    isPrimary: true,
+    chipOff: 'bg-white text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/60 dark:border-white/15',
+    ring: 'ring-brand/30 border-brand/20',
   },
   {
     id: 'instantPrice',
     number: 2,
     Icon: Zap,
-    ring: 'ring-violet-200 border-violet-200 bg-violet-50/50',
+    accent: 'from-violet-600 to-indigo-500',
     chipOn: 'bg-violet-700 text-white border-violet-700',
-    chipOff: 'bg-white text-gray-500 border-gray-200',
-    headerBg: 'from-violet-100/80 dark:from-violet-900/45 to-transparent',
-    isPrimary: true,
+    chipOff: 'bg-white text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/60 dark:border-white/15',
+    ring: 'ring-violet-200 border-violet-200',
   },
   {
     id: 'religiousTours',
     number: 3,
     Icon: Landmark,
-    ring: 'ring-gold/30 border-gold/30 bg-gold/5',
+    accent: 'from-amber-600 to-gold',
     chipOn: 'bg-amber-700 text-white border-amber-700',
-    chipOff: 'bg-white text-gray-500 border-gray-200',
-    headerBg: 'from-amber-50 dark:from-amber-950/55 to-transparent',
-    isPrimary: false,
+    chipOff: 'bg-white text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/60 dark:border-white/15',
+    ring: 'ring-gold/30 border-gold/30',
   },
 ];
 
-function findOptionByMode(options, mode) {
-  return options.find((o) => o.mode === mode || o.id === mode);
+function copyFromInstant(data) {
+  const src = { ...DEFAULT_INSTANT_PRICE, ...(data || {}) };
+  return {
+    titleEn: src.formTitleEn || '',
+    titleAr: src.formTitleAr || '',
+    subtitleEn: src.formSubtitleEn || '',
+    subtitleAr: src.formSubtitleAr || '',
+    headingEn: src.headingEn || '',
+    headingAr: src.headingAr || '',
+  };
+}
+
+function copyFromReligious(data) {
+  const src = { ...DEFAULT_RELIGIOUS_TOURS, ...(data || {}) };
+  return {
+    titleEn: src.formTitleEn || '',
+    titleAr: src.formTitleAr || '',
+    subtitleEn: src.formSubtitleEn || '',
+    subtitleAr: src.formSubtitleAr || '',
+    headingEn: src.headingEn || '',
+    headingAr: src.headingAr || '',
+  };
+}
+
+function HeadingEditor({ copy, onChange, showSectionHeading, t, lang }) {
+  const liveTitle = lang === 'ar' ? (copy.titleAr || copy.titleEn) : (copy.titleEn || copy.titleAr);
+  const liveSub = lang === 'ar' ? (copy.subtitleAr || copy.subtitleEn) : (copy.subtitleEn || copy.subtitleAr);
+
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100 dark:border-white/10 flex items-center gap-2 bg-gradient-to-r from-brand/[0.05] to-gold/[0.06]">
+        <Heading className="w-4 h-4 text-brand" />
+        <div>
+          <p className="text-sm font-black text-brand dark:text-white">{t('admin.bookingForms.headingBlock')}</p>
+          <p className="text-[11px] text-gray-500">{t('admin.bookingForms.headingHint')}</p>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        <div className="rounded-2xl bg-gradient-to-br from-brand via-brand-light to-brand-dark p-4 text-white shadow-inner">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-gold/90">{t('admin.bookingForms.livePreview')}</p>
+          <p className="mt-1.5 text-lg font-black leading-tight">{liveTitle || '—'}</p>
+          <p className="mt-1 text-xs text-white/75 leading-snug">{liveSub || '—'}</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-gray-500">
+              <span className="rounded-md bg-brand/10 text-brand px-1.5 py-0.5">EN</span>
+              {t('admin.bookingForms.titleEn')}
+            </label>
+            <input value={copy.titleEn} onChange={(e) => onChange({ titleEn: e.target.value })} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-gray-500">
+              <span className="rounded-md bg-gold/15 text-gold-dark px-1.5 py-0.5">AR</span>
+              {t('admin.bookingForms.titleAr')}
+            </label>
+            <input value={copy.titleAr} onChange={(e) => onChange({ titleAr: e.target.value })} className={inputClass} dir="rtl" />
+          </div>
+          <div>
+            <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-gray-500">
+              <span className="rounded-md bg-brand/10 text-brand px-1.5 py-0.5">EN</span>
+              {t('admin.bookingForms.subtitleEn')}
+            </label>
+            <input value={copy.subtitleEn} onChange={(e) => onChange({ subtitleEn: e.target.value })} className={inputClass} />
+          </div>
+          <div>
+            <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-gray-500">
+              <span className="rounded-md bg-gold/15 text-gold-dark px-1.5 py-0.5">AR</span>
+              {t('admin.bookingForms.subtitleAr')}
+            </label>
+            <input value={copy.subtitleAr} onChange={(e) => onChange({ subtitleAr: e.target.value })} className={inputClass} dir="rtl" />
+          </div>
+          {showSectionHeading && (
+            <>
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-gray-500">
+                  <span className="rounded-md bg-brand/10 text-brand px-1.5 py-0.5">EN</span>
+                  {t('admin.bookingForms.sectionHeadingEn')}
+                </label>
+                <input value={copy.headingEn} onChange={(e) => onChange({ headingEn: e.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-gray-500">
+                  <span className="rounded-md bg-gold/15 text-gold-dark px-1.5 py-0.5">AR</span>
+                  {t('admin.bookingForms.sectionHeadingAr')}
+                </label>
+                <input value={copy.headingAr} onChange={(e) => onChange({ headingAr: e.target.value })} className={inputClass} dir="rtl" />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function AdminBookingForms() {
@@ -80,18 +183,27 @@ export default function AdminBookingForms() {
   const tripInitial = buildBookingTripTypesFromFirestore(null);
   const [options, setOptions] = useState(tripInitial.options);
   const [formFields, setFormFields] = useState(tripInitial.formFields);
+  const [bookingCopy, setBookingCopy] = useState({ ...DEFAULT_FORM_HEADINGS.booking });
+  const [instantCopy, setInstantCopy] = useState(copyFromInstant(null));
+  const [religiousCopy, setReligiousCopy] = useState(copyFromReligious(null));
   const [syncing, setSyncing] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [focusForm, setFocusForm] = useState('booking');
+  const [newMode, setNewMode] = useState('between_cities');
+  const [openSectionId, setOpenSectionId] = useState(tripInitial.options[0]?.id || null);
+  const [confirm, setConfirm] = useState(null);
+  const [successOpen, setSuccessOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
       setSyncing(true);
       try {
-        const [locData, tripData] = await Promise.all([
+        const [locData, tripData, instantData, religiousData] = await Promise.all([
           getBookingLocationsSettings(),
           getBookingTripTypesSettings(),
+          getInstantPriceSettings(),
+          getReligiousToursSettings(),
         ]);
         const builtLoc = cloneBookingLocations(locData);
         const builtTrip = buildBookingTripTypesFromFirestore(tripData);
@@ -99,6 +211,10 @@ export default function AdminBookingForms() {
         setRoutes(builtLoc.routes);
         setOptions(builtTrip.options);
         setFormFields(builtTrip.formFields);
+        setBookingCopy({ ...DEFAULT_FORM_HEADINGS.booking, ...builtTrip.formHeadings?.booking });
+        setInstantCopy(copyFromInstant(instantData));
+        setReligiousCopy(copyFromReligious(religiousData));
+        setOpenSectionId(builtTrip.options[0]?.id || null);
       } catch {
         toast.error(t('common.error'));
         const builtLoc = cloneBookingLocations(null);
@@ -107,6 +223,9 @@ export default function AdminBookingForms() {
         setRoutes(builtLoc.routes);
         setOptions(builtTrip.options);
         setFormFields(builtTrip.formFields);
+        setBookingCopy({ ...DEFAULT_FORM_HEADINGS.booking });
+        setInstantCopy(copyFromInstant(null));
+        setReligiousCopy(copyFromReligious(null));
       } finally {
         setSyncing(false);
       }
@@ -158,15 +277,8 @@ export default function AdminBookingForms() {
     }));
   };
 
-  const removeCity = (id) => {
-    setCities((list) => list.filter((city) => city.id !== id || city.builtin));
-    setExpandedId(null);
-  };
-
-  const removeRoute = (id) => {
-    setRoutes((list) => list.filter((route) => route.id !== id || route.builtin));
-    setExpandedId(null);
-  };
+  const removeCity = (id) => setConfirm({ type: 'city', id });
+  const removeRoute = (id) => setConfirm({ type: 'route', id });
 
   const onAddCity = (formKey) => {
     const next = createBookingCity({
@@ -195,14 +307,73 @@ export default function AdminBookingForms() {
     toast.success(t('admin.bookingForms.routeAdded'));
   };
 
-  const resetDefaults = () => {
+  const onAddSection = () => {
+    if (options.length >= MAX_TRIP_TYPE_OPTIONS) {
+      toast.warning(t('admin.tripTypes.maxReached', { max: MAX_TRIP_TYPE_OPTIONS }));
+      return;
+    }
+    const next = createTripTypeOption({
+      mode: newMode,
+      labelEn: t('admin.bookingForms.newSectionEn'),
+      labelAr: t('admin.bookingForms.newSectionAr'),
+      order: options.length,
+      forms: {
+        booking: focusForm === 'booking',
+        instantPrice: focusForm === 'instantPrice',
+        religiousTours: focusForm === 'religiousTours',
+      },
+    });
+    setOptions((list) => [...list, next]);
+    setOpenSectionId(next.id);
+    toast.success(t('admin.bookingForms.sectionAdded'));
+  };
+
+  const onDeleteSection = (id) => setConfirm({ type: 'section', id });
+
+  const patchCopy = (formId, patch) => {
+    if (formId === 'booking') setBookingCopy((prev) => ({ ...prev, ...patch }));
+    if (formId === 'instantPrice') setInstantCopy((prev) => ({ ...prev, ...patch }));
+    if (formId === 'religiousTours') setReligiousCopy((prev) => ({ ...prev, ...patch }));
+  };
+
+  const activeCopy = focusForm === 'instantPrice'
+    ? instantCopy
+    : focusForm === 'religiousTours'
+      ? religiousCopy
+      : bookingCopy;
+
+  const applyReset = () => {
     const builtLoc = cloneBookingLocations(null);
     const builtTrip = buildBookingTripTypesFromFirestore(DEFAULT_BOOKING_TRIP_TYPES);
     setCities(builtLoc.cities);
     setRoutes(builtLoc.routes);
     setOptions(builtTrip.options);
     setFormFields(builtTrip.formFields);
+    setBookingCopy({ ...DEFAULT_FORM_HEADINGS.booking });
+    setInstantCopy(copyFromInstant(null));
+    setReligiousCopy(copyFromReligious(null));
     setExpandedId(null);
+    setOpenSectionId(builtTrip.options[0]?.id || null);
+    toast.info(t('admin.bookingForms.resetInfo'));
+  };
+
+  const runConfirm = () => {
+    if (confirm?.type === 'section') {
+      setOptions((list) => list.filter((opt) => opt.id !== confirm.id || opt.builtin));
+      toast.success(t('admin.bookingForms.sectionDeleted'));
+    }
+    if (confirm?.type === 'city') {
+      setCities((list) => list.filter((city) => city.id !== confirm.id || city.builtin));
+      setExpandedId(null);
+      toast.success(t('admin.bookingForms.cityDeleted'));
+    }
+    if (confirm?.type === 'route') {
+      setRoutes((list) => list.filter((route) => route.id !== confirm.id || route.builtin));
+      setExpandedId(null);
+      toast.success(t('admin.bookingForms.routeDeleted'));
+    }
+    if (confirm?.type === 'reset') applyReset();
+    setConfirm(null);
   };
 
   const handleSave = async (e) => {
@@ -220,6 +391,7 @@ export default function AdminBookingForms() {
             order: index,
             active: opt.active !== false,
             builtin: Boolean(opt.builtin),
+            extraFields: Array.isArray(opt.extraFields) ? opt.extraFields : [],
             forms: {
               booking: opt.forms?.booking !== false,
               instantPrice: opt.forms?.instantPrice !== false,
@@ -227,10 +399,28 @@ export default function AdminBookingForms() {
             },
           })),
           formFields: sanitizeFormFields(formFields),
+          formHeadings: sanitizeFormHeadings({ booking: bookingCopy }),
+        }),
+        updateInstantPriceSettings({
+          formTitleEn: instantCopy.titleEn,
+          formTitleAr: instantCopy.titleAr,
+          formSubtitleEn: instantCopy.subtitleEn,
+          formSubtitleAr: instantCopy.subtitleAr,
+          headingEn: instantCopy.headingEn,
+          headingAr: instantCopy.headingAr,
+        }),
+        updateReligiousToursSettings({
+          formTitleEn: religiousCopy.titleEn,
+          formTitleAr: religiousCopy.titleAr,
+          formSubtitleEn: religiousCopy.subtitleEn,
+          formSubtitleAr: religiousCopy.subtitleAr,
+          headingEn: religiousCopy.headingEn,
+          headingAr: religiousCopy.headingAr,
         }),
       ]);
       await publishSite();
       toast.success(t('admin.bookingForms.saved'));
+      setSuccessOpen(true);
     } catch {
       toast.error(t('common.error'));
     } finally {
@@ -240,66 +430,147 @@ export default function AdminBookingForms() {
 
   const activeMeta = FORM_META.find((f) => f.id === focusForm) || FORM_META[0];
 
+  const formStats = useMemo(() => Object.fromEntries(
+    FORM_META.map(({ id }) => {
+      const visible = options.filter((opt) => opt.active !== false && isFormOn(opt.forms, id)).length;
+      return [id, visible];
+    }),
+  ), [options]);
+
+  const selectForm = (id) => {
+    setFocusForm(id);
+    setOpenSectionId(options[0]?.id || null);
+  };
+
+  const confirmCopy = confirm?.type === 'reset'
+    ? {
+      type: 'warning',
+      title: t('admin.bookingForms.resetConfirmTitle'),
+      body: t('admin.bookingForms.resetConfirmBody'),
+      confirmLabel: t('admin.bookingForms.reset'),
+    }
+    : confirm
+      ? {
+        type: 'danger',
+        title: t('admin.bookingForms.deleteConfirmTitle'),
+        body: t('admin.bookingForms.deleteConfirmBody'),
+        confirmLabel: t('admin.bookingForms.deleteAction'),
+      }
+      : null;
+
+  if (syncing) return <LoadingSpinner />;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <AdminPageHeader
         title={t('admin.nav.bookingForms')}
-        subtitle={syncing ? t('admin.bookingForms.syncing') : t('admin.bookingForms.subtitle')}
+        purposeKey="bookingForms"
+        subtitle={t('admin.bookingForms.subtitle')}
       />
 
-      <GlassCard hover={false} className="bg-brand/5 border border-brand/10">
-        <p className="text-sm text-gray-700 leading-relaxed">{t('admin.bookingForms.howDesc')}</p>
-      </GlassCard>
-
-      {/* Form toggle */}
-      <div className="flex flex-wrap gap-2">
-        {FORM_META.map(({ id, number, Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setFocusForm(id)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold border transition-colors ${
-              focusForm === id
-                ? 'bg-brand text-white border-brand shadow-md'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            <Icon className="w-4 h-4" />
-            {t('admin.bookingForms.formToggle', {
-              number,
-              name: t(`admin.tripTypes.forms.${id}`),
-            })}
-          </button>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {[
+          { n: '1', icon: Heading, text: t('admin.bookingForms.stepHeading') },
+          { n: '2', icon: Layers, text: t('admin.bookingForms.stepSections') },
+          { n: '3', icon: Save, text: t('admin.bookingForms.stepSave') },
+        ].map((step) => (
+          <div key={step.n} className="flex items-center gap-3 rounded-2xl border border-brand/10 bg-white dark:bg-white/5 px-3.5 py-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand text-white text-xs font-black">{step.n}</span>
+            <step.icon className="w-4 h-4 text-gold shrink-0" />
+            <p className="text-xs font-bold text-brand dark:text-white leading-snug">{step.text}</p>
+          </div>
         ))}
       </div>
 
-      <form onSubmit={handleSave} className="space-y-5">
+      <div className="flex items-start gap-2.5 rounded-2xl border border-sky-200/80 bg-sky-50/80 dark:bg-sky-950/30 dark:border-sky-800 px-4 py-3">
+        <Info className="w-4 h-4 text-sky-600 mt-0.5 shrink-0" />
+        <p className="text-sm text-sky-900 dark:text-sky-100 leading-relaxed">{t('admin.bookingForms.howDesc')}</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {FORM_META.map(({ id, number, Icon, accent }) => {
+          const copy = id === 'instantPrice' ? instantCopy : id === 'religiousTours' ? religiousCopy : bookingCopy;
+          const title = lang === 'ar' ? (copy.titleAr || copy.titleEn) : (copy.titleEn || copy.titleAr);
+          const active = focusForm === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => selectForm(id)}
+              className={`text-start rounded-2xl border p-4 transition-all ${
+                active
+                  ? `ring-2 ${FORM_META.find((f) => f.id === id).ring} bg-white dark:bg-dark-800 shadow-lg`
+                  : 'border-gray-200 dark:border-white/10 bg-white/70 dark:bg-white/5 hover:border-brand/30'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className={`flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br ${accent} text-white shadow-md`}>
+                  <Icon className="w-5 h-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">
+                    {t('admin.bookingForms.formToggle', { number, name: t(`admin.tripTypes.forms.${id}`) })}
+                  </p>
+                  <p className="text-sm font-black text-brand dark:text-white truncate">{title}</p>
+                </div>
+              </div>
+              <p className="mt-3 text-[11px] font-bold text-gray-500">
+                {t('admin.bookingForms.visibleTabs', { count: formStats[id] || 0 })}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-4">
         <GlassCard hover={false} className={`border ${activeMeta.ring} overflow-hidden`}>
-          <div className={`-mx-1 -mt-1 mb-5 rounded-xl bg-gradient-to-r ${activeMeta.headerBg} px-4 py-3`}>
-            <div className="flex items-center gap-2">
-              <activeMeta.Icon className="w-5 h-5 text-brand" />
-              <h2 className="text-lg font-black text-brand">
-                {t('admin.tripTypes.formLabel', {
-                  number: activeMeta.number,
-                  name: t(`admin.tripTypes.forms.${activeMeta.id}`),
-                })}
+          <div className="flex items-center gap-3 mb-5">
+            <span className={`flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br ${activeMeta.accent} text-white`}>
+              <activeMeta.Icon className="w-5 h-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg font-black text-brand dark:text-white truncate">
+                {lang === 'ar' ? (activeCopy.titleAr || activeCopy.titleEn) : (activeCopy.titleEn || activeCopy.titleAr)}
               </h2>
+              <p className="text-xs text-gray-500 truncate">
+                {lang === 'ar' ? (activeCopy.subtitleAr || activeCopy.subtitleEn) : (activeCopy.subtitleEn || activeCopy.subtitleAr)}
+              </p>
             </div>
-            <p className="text-xs text-gray-600 mt-1 pl-7">
-              {activeMeta.isPrimary
-                ? t('admin.bookingForms.primaryFormHint')
-                : t('admin.bookingForms.ziyaratFormHint')}
-            </p>
           </div>
 
-          {activeMeta.isPrimary ? (
-            <div className="space-y-4">
-              {PRIMARY_TRIP_SECTIONS.map((section) => (
+          <div className="space-y-4">
+            <HeadingEditor
+              copy={activeCopy}
+              onChange={(patch) => patchCopy(focusForm, patch)}
+              showSectionHeading={focusForm !== 'booking'}
+              t={t}
+              lang={lang}
+            />
+
+            <div className="flex items-center gap-2 pt-1">
+              <Layers className="w-4 h-4 text-brand" />
+              <p className="text-sm font-black text-brand dark:text-white">{t('admin.bookingForms.sectionsTitle')}</p>
+              <span className="text-[11px] font-bold text-gray-400">
+                {t('admin.bookingForms.sectionCount', { count: options.length, max: MAX_TRIP_TYPE_OPTIONS })}
+              </span>
+            </div>
+
+            <AddSectionBar
+              t={t}
+              disabled={options.length >= MAX_TRIP_TYPE_OPTIONS}
+              newMode={newMode}
+              setNewMode={setNewMode}
+              onAdd={onAddSection}
+            />
+
+            {options.map((opt, index) => {
+              const section = getSectionMeta(focusForm, opt.mode);
+              return (
                 <TripSectionPanel
-                  key={`${activeMeta.id}-${section.mode}`}
+                  key={`${focusForm}-${opt.id}`}
                   section={section}
-                  formId={activeMeta.id}
-                  tripOption={findOptionByMode(options, section.mode)}
+                  formId={focusForm}
+                  tripOption={opt}
                   cities={cities}
                   routes={routes}
                   formFields={formFields}
@@ -319,45 +590,55 @@ export default function AdminBookingForms() {
                   onAddCity={onAddCity}
                   onAddRoute={onAddRoute}
                   updateField={updateField}
+                  onDeleteSection={onDeleteSection}
+                  expanded={openSectionId === opt.id}
+                  onToggle={() => setOpenSectionId((id) => (id === opt.id ? null : opt.id))}
+                  index={index}
                 />
-              ))}
-            </div>
-          ) : (
-            <ZiyaratFormPanel
-              formId={activeMeta.id}
-              options={options}
-              cities={cities}
-              formFields={formFields}
-              lang={lang}
-              t={t}
-              chipOn={activeMeta.chipOn}
-              chipOff={activeMeta.chipOff}
-              expandedId={expandedId}
-              setExpandedId={setExpandedId}
-              toggleTripOnForm={toggleTripOnForm}
-              toggleLocationForm={toggleLocationForm}
-              updateCity={updateCity}
-              removeCity={removeCity}
-              onAddCity={onAddCity}
-              updateField={updateField}
-            />
-          )}
+              );
+            })}
+          </div>
         </GlassCard>
 
-        <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-3 rounded-2xl border border-brand/15 bg-white/95 backdrop-blur px-4 py-3 shadow-lg">
-          <AdminApplyButton type="submit" loading={saving} label={t('common.save')} />
+        <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-3 rounded-2xl border border-brand/15 bg-white/95 dark:bg-dark-800/95 backdrop-blur px-4 py-3 shadow-lg">
+          <AdminApplyButton type="submit" loading={saving} label={t('admin.bookingForms.savePublish')} />
           <button
             type="button"
-            onClick={resetDefaults}
-            className="px-4 py-2.5 rounded-xl border border-gray-200 font-bold text-sm text-gray-600 hover:bg-gray-50"
+            onClick={() => setConfirm({ type: 'reset' })}
+            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/15 font-bold text-sm text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5"
           >
             {t('admin.bookingForms.reset')}
           </button>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs font-semibold text-gray-400">
             {t('admin.bookingForms.counts', { cities: cities.length, routes: routes.length })}
+          </span>
+          <span className="ms-auto hidden sm:inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {t('admin.bookingForms.saveHint')}
           </span>
         </div>
       </form>
+
+      <AdminAlertModal
+        open={Boolean(confirmCopy)}
+        type={confirmCopy?.type || 'warning'}
+        title={confirmCopy?.title}
+        body={confirmCopy?.body}
+        confirmLabel={confirmCopy?.confirmLabel}
+        cancelLabel={t('common.cancel')}
+        onConfirm={runConfirm}
+        onClose={() => setConfirm(null)}
+      />
+
+      <AdminAlertModal
+        open={successOpen}
+        type="success"
+        title={t('admin.bookingForms.savedTitle')}
+        body={t('admin.bookingForms.savedBody')}
+        confirmLabel={t('admin.bookingForms.ok')}
+        onConfirm={() => setSuccessOpen(false)}
+        onClose={() => setSuccessOpen(false)}
+      />
     </div>
   );
 }

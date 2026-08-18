@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 const SEG_TO_KEY = {
   '': 'overview',
+  overview: 'overview',
   'booking-forms': 'bookingForms',
   orders: 'orders',
   users: 'users',
@@ -13,6 +14,7 @@ const SEG_TO_KEY = {
   activity: 'activity',
   categories: 'categories',
   cars: 'cars',
+  fleet: 'homeFleet',
   'city-to-city': 'cityToCity',
   airport: 'airport',
   train: 'train',

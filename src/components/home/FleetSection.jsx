@@ -84,12 +84,18 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
             <span className="fleet-card__discount">-{discount}%</span>
           )}
 
-          <div className="fleet-card__price-chip">
-            <span className="fleet-card__price-current">
-              {vehicle.price}
-              <span className="fleet-card__price-currency">{t('booking.sar')}</span>
-            </span>
-          </div>
+          {vehicle.hidePrice ? (
+            <div className="fleet-card__price-chip">
+              <span className="fleet-card__price-current text-xs">{t('catalog.whatsappInquiry')}</span>
+            </div>
+          ) : (
+            <div className="fleet-card__price-chip">
+              <span className="fleet-card__price-current">
+                {vehicle.price}
+                <span className="fleet-card__price-currency">{t('booking.sar')}</span>
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="fleet-card__body">
@@ -191,8 +197,11 @@ function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
 export default function FleetSection() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
-  const { fleetRoutes, carCatalog } = useSiteContent();
-  const homeSections = useMemo(() => buildHomeFleetSections(fleetRoutes), [fleetRoutes, carCatalog]);
+  const { fleetRoutes, carCatalog, fleetShowcase } = useSiteContent();
+  const homeSections = useMemo(
+    () => buildHomeFleetSections(fleetRoutes, fleetShowcase),
+    [fleetRoutes, carCatalog, fleetShowcase],
+  );
 
   const byId = useMemo(() => {
     const map = {};

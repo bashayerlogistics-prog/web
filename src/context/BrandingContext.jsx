@@ -8,15 +8,41 @@ import { loadGoogleFont } from '../utils/fontUtils';
 
 const BrandingContext = createContext(null);
 const BRANDING_CACHE_KEY = 'rafiq_branding';
+const BRANDING_AT_KEY = 'rafiq_branding_at';
+const BRANDING_TTL_MS = 30 * 60 * 1000;
 const USE_BRANDING_REALTIME = import.meta.env.VITE_ENABLE_BRANDING_REALTIME === 'true';
+const BRANDING_SYNC_CHANNEL = 'bashayer-site-content';
 
 function readCachedBranding() {
   try {
     const raw = localStorage.getItem(BRANDING_CACHE_KEY);
     if (!raw) return DEFAULT_BRANDING;
-    return { ...DEFAULT_BRANDING, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    if (parsed?.data && parsed.at && typeof parsed.data === 'object' && !parsed.primaryColor) {
+      return { ...DEFAULT_BRANDING, ...parsed.data };
+    }
+    return { ...DEFAULT_BRANDING, ...parsed };
   } catch {
     return DEFAULT_BRANDING;
+  }
+}
+
+function isBrandingCacheFresh() {
+  if (import.meta.env.DEV) return false;
+  try {
+    const at = Number(localStorage.getItem(BRANDING_AT_KEY) || 0);
+    return at > 0 && Date.now() - at < BRANDING_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+function persistBrandingCache(branding) {
+  try {
+    localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify(branding));
+    localStorage.setItem(BRANDING_AT_KEY, String(Date.now()));
+  } catch {
+    // ignore quota errors
   }
 }
 
@@ -60,7 +86,7 @@ function applyBrandingToDom(branding, isAdminRoute) {
 
 export function BrandingProvider({ children }) {
   const [branding, setBranding] = useState(initialBranding);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isBrandingCacheFresh());
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
   const brandingRef = useRef(branding);
@@ -71,52 +97,70 @@ export function BrandingProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // Admin panel uses local edits + debounced saves; skip live listener unless env flag set.
     if (isAdminRoute && !USE_BRANDING_REALTIME) {
       setLoading(false);
       return undefined;
     }
 
-    const isMobile = window.matchMedia('(max-width: 767px)').matches;
-    let unsubscribe = () => {};
+    if (USE_BRANDING_REALTIME) {
+      const unsub = subscribeBrandingSettings((data) => {
+        setBranding(data);
+        setLoading(false);
+      });
+      return unsub;
+    }
 
+    if (isBrandingCacheFresh()) {
+      setLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
     const start = () => {
-      unsubscribe = subscribeBrandingSettings((data) => {
+      getBrandingSettings().then((data) => {
+        if (cancelled) return;
         setBranding(data);
         setLoading(false);
       });
     };
 
+    const isMobile = window.matchMedia('(max-width: 767px)').matches;
     if (isMobile && 'requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(start, { timeout: 3500 });
+      const id = window.requestIdleCallback(start, { timeout: 2500 });
       return () => {
+        cancelled = true;
         window.cancelIdleCallback(id);
-        unsubscribe();
       };
     }
 
-    const timeout = window.setTimeout(start, isMobile ? 600 : 80);
+    const timeout = window.setTimeout(start, isMobile ? 400 : 60);
     return () => {
+      cancelled = true;
       window.clearTimeout(timeout);
-      unsubscribe();
     };
   }, [isAdminRoute]);
 
   useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return undefined;
+    const channel = new BroadcastChannel(BRANDING_SYNC_CHANNEL);
+    channel.onmessage = (event) => {
+      const type = event?.data?.type;
+      if (type !== 'branding' && type !== 'invalidate') return;
+      getBrandingSettings().then(setBranding);
+    };
+    return () => channel.close();
+  }, []);
+
+  useEffect(() => {
     applyBrandingToDom(branding, isAdminRoute);
-    try {
-      localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify(branding));
-    } catch {
-      // ignore quota errors
-    }
+    persistBrandingCache(branding);
   }, [branding, isAdminRoute]);
 
   useEffect(() => {
     const onLangChange = () => {
-      // Fonts already preloaded — only swap active family (cheap).
-      const branding = brandingRef.current;
+      const current = brandingRef.current;
       const lang = document.documentElement.lang === 'en' ? 'en' : 'ar';
-      const userFontKey = resolveUserFont(branding, lang);
+      const userFontKey = resolveUserFont(current, lang);
       const root = document.documentElement;
       root.style.setProperty('--font-user-active', getFontFamily(userFontKey));
       if (!isAdminRoute) {

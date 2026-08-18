@@ -38,7 +38,7 @@ import { useToast } from '../../context/ToastContext';
 import { useSiteContent } from '../../context/SiteContentContext';
 import { usePublicTripTypes } from '../../hooks/usePublicTripTypes';
 import { useBookingLocations } from '../../hooks/useBookingLocations';
-import { consumePendingTripType } from '../../data/bookingTripTypes';
+import { consumePendingTripType, getFormHeading } from '../../data/bookingTripTypes';
 import BookingTripDetails from './BookingTripDetails';
 import CustomSelect from '../ui/CustomSelect';
 import { getCarTypesForForm } from '../../utils/carCatalogHelpers';
@@ -57,7 +57,7 @@ export default function BookingForm({ overlapHero = true }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { carCatalog, fleetRoutes } = useSiteContent();
+  const { carCatalog, fleetRoutes, bookingTripTypes } = useSiteContent();
   const {
     betweenCities: betweenCityOptions,
     hourlyCities: hourlyCityOptions,
@@ -68,6 +68,7 @@ export default function BookingForm({ overlapHero = true }) {
   } = useBookingLocations();
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
   const { tripTypes: TRIP_TYPES, tripType, setTripType, formFields } = usePublicTripTypes('booking', lang);
+  const formHeading = getFormHeading(bookingTripTypes, lang);
 
   const fieldLabel = (key, fallbackKey) =>
     formFields?.[key]?.label || t(fallbackKey);
@@ -366,10 +367,10 @@ export default function BookingForm({ overlapHero = true }) {
             </div>
             <div className="min-w-0">
               <h2 className="text-base sm:text-lg md:text-xl font-extrabold text-brand tracking-tight leading-tight">
-                {t('booking.calculatorTitle')}
+                {formHeading.title}
               </h2>
               <p className="mt-0.5 text-xs sm:text-sm text-gray-500 leading-snug line-clamp-2">
-                {t('booking.badge')}
+                {formHeading.subtitle}
               </p>
             </div>
           </div>

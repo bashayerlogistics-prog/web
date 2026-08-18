@@ -45,4 +45,13 @@ export async function updateBrandingSettings(data) {
     ...data,
     updatedAt: serverTimestamp(),
   }, { merge: true });
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel('bashayer-site-content');
+      channel.postMessage({ type: 'branding' });
+      channel.close();
+    }
+  } catch {
+    // ignore
+  }
 }
