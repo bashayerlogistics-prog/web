@@ -41,6 +41,7 @@ export default defineConfig({
           if (id.includes('firebase/auth')) return 'firebase-auth';
           if (id.includes('firebase/firestore') || id.includes('firebase/app')) return 'firebase-db';
           if (id.includes('firebase')) return 'firebase';
+          if (id.includes('xlsx')) return 'xlsx';
           if (id.includes('swiper')) return 'swiper';
           if (id.includes('lucide-react')) return 'icons';
           if (id.includes('i18next') || id.includes('react-i18next')) return 'i18n';
@@ -57,6 +58,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', 'i18next', 'react-i18next', 'lucide-react'],
+    include: ['react', 'react-dom', 'react-router-dom', 'i18next', 'react-i18next', 'lucide-react', 'xlsx'],
   },
 })

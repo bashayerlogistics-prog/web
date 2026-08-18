@@ -56,7 +56,7 @@ function makeFormFields(overrides = {}) {
 
 /** Default field visibility / labels for each of the 3 homepage forms. */
 export const DEFAULT_FORM_FIELDS = {
-  booking: makeFormFields({ price: { show: false } }),
+  booking: makeFormFields(),
   instantPrice: makeFormFields({ location: { show: false } }),
   religiousTours: makeFormFields({
     from: { show: false },
@@ -175,7 +175,17 @@ export function sanitizeFormFields(rawFields) {
     const incoming = rawFields?.[formId] || {};
     result[formId] = {};
     BOOKING_FORM_FIELD_KEYS.forEach((key) => {
-      result[formId][key] = sanitizeField(incoming[key], defaults[key]);
+      const field = sanitizeField(incoming[key], defaults[key]);
+      // Old default hid Price on Form 1; show it unless the admin renamed the field.
+      if (
+        key === 'price'
+        && field.show === false
+        && (!field.labelEn || field.labelEn === FIELD_LABEL_DEFAULTS.price.labelEn)
+        && (!field.labelAr || field.labelAr === FIELD_LABEL_DEFAULTS.price.labelAr)
+      ) {
+        field.show = true;
+      }
+      result[formId][key] = field;
     });
   });
   return result;

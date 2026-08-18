@@ -17,19 +17,20 @@ import {
   CONTACT,
   getCarDisplayName,
   BOOKING_PASSENGER_OPTIONS,
-  BOOKING_CAR_TYPES,
   DEFAULT_BOOKING_PASSENGERS,
   DEFAULT_BOOKING_CAR_TYPE,
 } from '../../data/staticData';
 import { DEFAULT_RELIGIOUS_TOURS } from '../../data/religiousTours';
-import { resolveHourlyRouteId, getHourlyDurationsForCity } from '../../utils/bookingHelpers';
+import { resolveHourlyRouteId } from '../../utils/bookingHelpers';
 import { getDefaultBookingCities } from '../../data/bookingLocations';
 import {
   getBookingPreviewVehicle,
   resolveBookingSearchRouteId,
+  formatBookingPriceDisplay,
+  bookingHourSelectOptions,
 } from '../../utils/bookingSearchNav';
 import { prefetchRoute } from '../../utils/prefetchRoutes';
-import { getCarTypesForForm } from '../../utils/carCatalogHelpers';
+import { getCarTypesForTripSection } from '../../utils/carCatalogHelpers';
 import { useSiteContent } from '../../context/SiteContentContext';
 import { useToast } from '../../context/ToastContext';
 import { usePublicTripTypes } from '../../hooks/usePublicTripTypes';
@@ -41,21 +42,6 @@ import CustomSelect from '../ui/CustomSelect';
 function shortVehicleName(vehicle, lang) {
   const key = String(vehicle?.id || '').split('-')[0];
   return getCarDisplayName(key, lang) || vehicle?.name?.[lang] || vehicle?.name?.ar || '';
-}
-
-function priceRange(vehicle) {
-  if (vehicle?.hidePrice) return null;
-  const low = Number(vehicle?.price) || 0;
-  const high = Number(vehicle?.originalPrice) || low;
-  return { low, high: Math.max(high, low) };
-}
-
-function formatPriceDisplay(vehicle, currency) {
-  if (!vehicle || vehicle.hidePrice) return null;
-  const range = priceRange(vehicle);
-  if (!range) return null;
-  if (range.low === range.high) return `${range.low} ${currency}`;
-  return `${range.low} - ${range.high} ${currency}`;
 }
 
 function pick(cms, key, lang) {
@@ -109,8 +95,8 @@ export default function ReligiousToursSection() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { religiousTours: cmsRaw, carCatalog, fleetRoutes, fleet } = useSiteContent();
-  const { ziyaratCities: ziyaratCitiesRaw, cityName: resolveCityName } = useBookingLocations();
+  const { religiousTours: cmsRaw, carCatalog, fleetRoutes, fleet, fleetShowcase } = useSiteContent();
+  const { ziyaratCities: ziyaratCitiesRaw, cityName: resolveCityName } = useBookingLocations('religiousTours');
   const ziyaratCities = ziyaratCitiesRaw.length
     ? ziyaratCitiesRaw
     : getDefaultBookingCities()
@@ -207,10 +193,7 @@ export default function ReligiousToursSection() {
   );
 
   const hourOptions = useMemo(
-    () => getHourlyDurationsForCity(from, fleetRoutes).map((h) => ({
-      value: String(h),
-      label: `${h} ${h === 1 ? t('booking.hour') : t('booking.hours_plural')}`,
-    })),
+    () => bookingHourSelectOptions(from, fleetRoutes, t),
     [from, fleetRoutes, t],
   );
 
@@ -220,8 +203,13 @@ export default function ReligiousToursSection() {
   );
 
   const carTypes = useMemo(
-    () => getCarTypesForForm(carCatalog, 'religiousTours'),
-    [carCatalog],
+    () => getCarTypesForTripSection({
+      carCatalog,
+      formId: 'religiousTours',
+      tripType,
+      fleetShowcase,
+    }),
+    [carCatalog, tripType, fleetShowcase],
   );
 
   const carOptions = useMemo(
@@ -259,7 +247,11 @@ export default function ReligiousToursSection() {
   );
 
   const previewVehicle = useMemo(
-    () => getBookingPreviewVehicle(fleet, previewRouteId, carType),
+    () => getBookingPreviewVehicle(fleet, previewRouteId, carType, {
+      formId: 'religiousTours',
+      tripType: 'hourly',
+      hourlyDest: 'internal',
+    }),
     [fleet, previewRouteId, carType],
   );
 
@@ -269,11 +261,11 @@ export default function ReligiousToursSection() {
 
   const tripDetailRows = useMemo(() => {
     if (!isHourlyTrip) return [];
-    const priceValue = previewVehicle
-      ? (previewVehicle.hidePrice
-        ? t('booking.contactForPrice')
-        : formatPriceDisplay(previewVehicle, t('booking.sar')))
-      : '';
+    const priceValue = formatBookingPriceDisplay(
+      previewVehicle,
+      t('booking.sar'),
+      t('booking.contactForPrice'),
+    ) || t('booking.contactForPrice');
     const carValue = previewVehicle
       ? shortVehicleName(previewVehicle, lang)
       : (carType ? shortVehicleName({ id: carType }, lang) : '');
@@ -338,6 +330,8 @@ export default function ReligiousToursSection() {
       cars: '1',
       hours: String(hours),
       hourly_dest: 'internal',
+      fleet_service: 'ziyarat',
+      form: 'religiousTours',
     });
     if (carType) params.set('car_type', carType);
     if (vehicleId) params.set('vehicle_key', vehicleId);
@@ -354,9 +348,11 @@ export default function ReligiousToursSection() {
   };
 
   const handleWhatsAppOrder = () => {
-    const priceText = previewVehicle
-      ? formatPriceDisplay(previewVehicle, t('booking.sar')) || t('booking.contactForPrice')
-      : '—';
+    const priceText = formatBookingPriceDisplay(
+      previewVehicle,
+      t('booking.sar'),
+      t('booking.contactForPrice'),
+    ) || '—';
     const car = previewVehicle ? shortVehicleName(previewVehicle, lang) : '—';
     const msg =
       lang === 'ar'

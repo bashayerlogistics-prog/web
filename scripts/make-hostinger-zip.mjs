@@ -14,6 +14,7 @@ const { ZipArchive } = require('archiver');
 
 if (fs.existsSync('hostinger-upload.zip')) fs.unlinkSync('hostinger-upload.zip');
 fs.copyFileSync('hostinger/resend-send.php', 'dist/resend-send.php');
+fs.copyFileSync('hostinger/moyasar-verify.php', 'dist/moyasar-verify.php');
 
 const out = createWriteStream('hostinger-upload.zip');
 const archive = new ZipArchive({ zlib: { level: 9 } });

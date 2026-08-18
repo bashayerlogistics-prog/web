@@ -12,17 +12,14 @@ import {
 import { auth } from '../firebase/auth';
 import { logActivity } from '../firebase/admin';
 import { ADMIN_SESSION_KEY } from '../constants/adminSession';
-const DEFAULT_USERNAME = 'superadmin';
-const ADMIN_EMAIL = (import.meta.env.VITE_SUPERADMIN_EMAIL || 'sulemanmr551@gmail.com').trim().toLowerCase();
-const ADMIN_UID = import.meta.env.VITE_SUPERADMIN_UID || '';
+import {
+  ADMIN_EMAIL,
+  isFirebaseAdminUser,
+  subscribeAdminSessionCleared,
+} from '../firebase/adminIdentity';
 
-function readSessionHint() {
-  try {
-    return localStorage.getItem(ADMIN_SESSION_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
+const DEFAULT_USERNAME = 'superadmin';
+const ADMIN_UID = String(import.meta.env.VITE_SUPERADMIN_UID || '').trim();
 
 const AdminAuthContext = createContext(null);
 
@@ -43,58 +40,57 @@ function resolveAdminEmail(username) {
   return isAdminEmail(username) ? username.trim().toLowerCase() : ADMIN_EMAIL;
 }
 
-function isFirebaseAdmin(user) {
-  if (!user?.email) return false;
-  if (user.email.toLowerCase() !== ADMIN_EMAIL) return false;
-  if (ADMIN_UID && user.uid !== ADMIN_UID) return false;
-  return true;
+function applyAdminUser(firebaseUser, setAdminUser) {
+  if (isFirebaseAdminUser(firebaseUser)) {
+    localStorage.setItem(ADMIN_SESSION_KEY, 'true');
+    setAdminUser({
+      username: DEFAULT_USERNAME,
+      email: firebaseUser.email,
+      uid: firebaseUser.uid,
+    });
+    return true;
+  }
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+  setAdminUser(null);
+  return false;
 }
 
 export function AdminAuthProvider({ children }) {
-  const sessionHint = readSessionHint();
-  const [adminUser, setAdminUser] = useState(() => (
-    sessionHint
-      ? { username: DEFAULT_USERNAME, email: ADMIN_EMAIL, uid: ADMIN_UID || '' }
-      : null
-  ));
-  const [loading, setLoading] = useState(!sessionHint);
+  const [adminUser, setAdminUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let settled = false;
-    const finish = (firebaseUser) => {
-      if (settled) return;
-      settled = true;
-      if (isFirebaseAdmin(firebaseUser)) {
-        localStorage.setItem(ADMIN_SESSION_KEY, 'true');
-        setAdminUser({
-          username: DEFAULT_USERNAME,
-          email: firebaseUser.email,
-          uid: firebaseUser.uid,
-        });
-      } else if (!sessionHint) {
-        localStorage.removeItem(ADMIN_SESSION_KEY);
-        setAdminUser(null);
-      }
+    let cancelled = false;
+
+    const apply = (firebaseUser) => {
+      if (cancelled) return;
+      applyAdminUser(firebaseUser, setAdminUser);
       setLoading(false);
     };
 
     const unsubscribe = onAuthStateChanged(
       auth,
-      (firebaseUser) => finish(firebaseUser),
+      (firebaseUser) => apply(firebaseUser),
       (err) => {
         console.warn('Admin auth listener failed:', err?.message || err);
-        finish(auth.currentUser);
+        apply(auth.currentUser);
       },
     );
 
-    const timeoutId = window.setTimeout(() => finish(auth.currentUser), 4000);
+    const unsubscribeCleared = subscribeAdminSessionCleared(() => {
+      if (cancelled) return;
+      if (!isFirebaseAdminUser(auth.currentUser)) {
+        setAdminUser(null);
+        setLoading(false);
+      }
+    });
 
     return () => {
-      settled = true;
-      window.clearTimeout(timeoutId);
+      cancelled = true;
       unsubscribe();
+      unsubscribeCleared();
     };
-  }, [sessionHint]);
+  }, []);
 
   const login = useCallback(async (username, password) => {
     const trimmed = username.trim();
@@ -115,7 +111,7 @@ export function AdminAuthProvider({ children }) {
       }
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
-      if (!isFirebaseAdmin(cred.user)) {
+      if (!isFirebaseAdminUser(cred.user)) {
         await signOut(auth);
         throw new Error('invalid-credentials');
       }
@@ -153,7 +149,7 @@ export function AdminAuthProvider({ children }) {
   const changePassword = useCallback(async (currentPassword, newPassword) => {
     const user = auth.currentUser;
 
-    if (!isFirebaseAdmin(user)) {
+    if (!isFirebaseAdminUser(user)) {
       throw new Error('not-authenticated');
     }
 
@@ -186,7 +182,7 @@ export function AdminAuthProvider({ children }) {
     }
   }, []);
 
-  const isAdmin = !!adminUser && localStorage.getItem(ADMIN_SESSION_KEY) === 'true';
+  const isAdmin = Boolean(adminUser);
 
   return (
     <AdminAuthContext.Provider

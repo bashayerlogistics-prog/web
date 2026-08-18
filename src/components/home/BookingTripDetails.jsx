@@ -3,7 +3,11 @@
  * Renders only rows that have a value and whose field is enabled.
  */
 export default function BookingTripDetails({ rows = [], className = '', tone = 'light' }) {
-  const visible = rows.filter((row) => row?.show !== false && row?.value);
+  const visible = rows.filter((row) => {
+    if (row?.show === false) return false;
+    if (row?.key === 'price') return true;
+    return Boolean(row?.value);
+  });
 
   if (!visible.length) return null;
 
@@ -36,7 +40,7 @@ export default function BookingTripDetails({ rows = [], className = '', tone = '
               dir={row.ltr ? 'ltr' : undefined}
               title={String(row.value)}
             >
-              {row.value}
+              {row.value || (row.key === 'price' ? '—' : '')}
             </dd>
           </div>
         ))}

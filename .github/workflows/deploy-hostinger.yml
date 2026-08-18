@@ -45,14 +45,21 @@ jobs:
           VITE_EMAIL_WEBHOOK_SECRET: ${{ secrets.VITE_EMAIL_WEBHOOK_SECRET }}
           VITE_RESEND_FROM_EMAIL: ${{ secrets.VITE_RESEND_FROM_EMAIL }}
           VITE_MOYASAR_PUBLISHABLE_KEY: ${{ secrets.VITE_MOYASAR_PUBLISHABLE_KEY }}
+          VITE_MOYASAR_VERIFY_URL: ${{ secrets.VITE_MOYASAR_VERIFY_URL }}
         run: npm run build
 
       - name: Prepare Hostinger package
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           WEBHOOK_SECRET: ${{ secrets.VITE_EMAIL_WEBHOOK_SECRET }}
+          MOYASAR_SECRET_KEY: ${{ secrets.MOYASAR_SECRET_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
         run: |
           cp hostinger/resend-send.php dist/resend-send.php
+          cp hostinger/moyasar-verify.php dist/moyasar-verify.php
           cp hostinger/.htaccess dist/.htaccess
           if [ -n "$RESEND_API_KEY" ]; then
             sed -i "s|__RESEND_API_KEY__|${RESEND_API_KEY}|g" dist/resend-send.php
@@ -60,6 +67,7 @@ jobs:
           if [ -n "$WEBHOOK_SECRET" ]; then
             sed -i "s|__WEBHOOK_SECRET__|${WEBHOOK_SECRET}|g" dist/resend-send.php
           fi
+          python3 scripts/inject-hostinger-php.py
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5

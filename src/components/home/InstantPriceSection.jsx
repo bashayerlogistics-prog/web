@@ -40,9 +40,8 @@ import {
   resolveRouteId,
   resolveHourlyRouteId,
   getHourlyDestinationsForCity,
-  getHourlyDurationsForCity,
 } from '../../utils/bookingHelpers';
-import { getCarTypesForForm } from '../../utils/carCatalogHelpers';
+import { getCarTypesForTripSection } from '../../utils/carCatalogHelpers';
 import { useSiteContent } from '../../context/SiteContentContext';
 import { useToast } from '../../context/ToastContext';
 import { DEFAULT_INSTANT_PRICE } from '../../firebase/content';
@@ -54,6 +53,8 @@ import CustomSelect from '../ui/CustomSelect';
 import {
   getBookingPreviewVehicle,
   resolveBookingSearchRouteId,
+  formatBookingPriceDisplay,
+  bookingHourSelectOptions,
 } from '../../utils/bookingSearchNav';
 import { prefetchRoute } from '../../utils/prefetchRoutes';
 
@@ -80,14 +81,6 @@ function priceRange(vehicle) {
   const low = Number(vehicle?.price) || 0;
   const high = Number(vehicle?.originalPrice) || low;
   return { low, high: Math.max(high, low) };
-}
-
-function formatPriceDisplay(vehicle, currency) {
-  if (!vehicle || vehicle.hidePrice) return null;
-  const range = priceRange(vehicle);
-  if (!range) return null;
-  if (range.low === range.high) return `${range.low} ${currency}`;
-  return `${range.low} - ${range.high} ${currency}`;
 }
 
 function buildSearchParams({
@@ -125,6 +118,7 @@ function buildSearchParams({
     passengers: String(passengers),
     cars: '1',
   });
+  params.set('form', 'instantPrice');
   if (carType) params.set('car_type', carType);
   if (isRound) {
     params.set('return_date', returnDate);
@@ -133,6 +127,7 @@ function buildSearchParams({
   if (isHourly) {
     params.set('hours', hours);
     params.set('hourly_dest', hourlyDest || 'internal');
+    params.set('fleet_service', (hourlyDest || 'internal') === 'internal' ? 'withinCity' : 'hourly');
   }
   if (vehicleId) params.set('vehicle_key', vehicleId);
   return params;
@@ -185,7 +180,7 @@ export default function InstantPriceSection() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { instantPrice: cmsRaw, fleet, carCatalog, fleetRoutes } = useSiteContent();
+  const { instantPrice: cmsRaw, fleet, carCatalog, fleetRoutes, fleetShowcase } = useSiteContent();
   const {
     betweenCities: betweenCityOptions,
     hourlyCities: hourlyCityOptions,
@@ -193,7 +188,7 @@ export default function InstantPriceSection() {
     dropoffOptions,
     findRoute,
     cityName: resolveCityName,
-  } = useBookingLocations();
+  } = useBookingLocations('instantPrice');
   const cms = cmsRaw || DEFAULT_INSTANT_PRICE;
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
   const { tripTypes: TRIP_TYPES, tripType, setTripType, formFields } = usePublicTripTypes('instantPrice', lang);
@@ -221,22 +216,31 @@ export default function InstantPriceSection() {
   const [suggestedPrice, setSuggestedPrice] = useState('');
   const [tripDetails, setTripDetails] = useState('');
 
-  const carTypes = useMemo(
-    () => getCarTypesForForm(carCatalog, 'instantPrice'),
-    [carCatalog],
-  );
+  const routeCategory = useMemo(() => {
+    if (tripType !== 'round_trip' && tripType !== 'one_way') return undefined;
+    const category = findRoute(rtRoute)?.category;
+    return category === 'airport' || category === 'train' ? category : undefined;
+  }, [tripType, findRoute, rtRoute]);
 
-  const hourOptions = useMemo(
-    () => getHourlyDurationsForCity(from, fleetRoutes),
-    [from, fleetRoutes],
+  const carTypes = useMemo(
+    () => getCarTypesForTripSection({
+      carCatalog,
+      formId: 'instantPrice',
+      tripType,
+      fleetShowcase,
+      hourlyDest,
+      routeCategory,
+    }),
+    [carCatalog, tripType, fleetShowcase, hourlyDest, routeCategory],
   );
 
   const hourSelectOptions = useMemo(
-    () => hourOptions.map((h) => ({
-      value: String(h),
-      label: `${h} ${h === 1 ? t('booking.hour') : t('booking.hours_plural')}`,
-    })),
-    [hourOptions, t],
+    () => bookingHourSelectOptions(from, fleetRoutes, t),
+    [from, fleetRoutes, t],
+  );
+  const hourOptions = useMemo(
+    () => hourSelectOptions.map((o) => o.value),
+    [hourSelectOptions],
   );
 
   const isCustom = tripType === 'custom_price';
@@ -341,8 +345,12 @@ export default function InstantPriceSection() {
   );
 
   const previewVehicle = useMemo(
-    () => getBookingPreviewVehicle(fleet, previewRouteId, carType),
-    [fleet, previewRouteId, carType],
+    () => getBookingPreviewVehicle(fleet, previewRouteId, carType, {
+      formId: 'instantPrice',
+      tripType,
+      hourlyDest,
+    }),
+    [fleet, previewRouteId, carType, tripType, hourlyDest],
   );
 
   const cityName = (id) => resolveCityName(id, lang);
@@ -385,11 +393,12 @@ export default function InstantPriceSection() {
       : isOneWay || isHourly
         ? ''
         : cityName(to);
-    const priceValue = previewVehicle
-      ? (previewVehicle.hidePrice
-        ? t('booking.contactForPrice')
-        : formatPriceDisplay(previewVehicle, t('booking.sar')))
-      : '';
+    const priceValue = formatBookingPriceDisplay(
+      previewVehicle,
+      t('booking.sar'),
+      t('booking.contactForPrice'),
+      tripType,
+    ) || t('booking.contactForPrice');
 
     return [
       {

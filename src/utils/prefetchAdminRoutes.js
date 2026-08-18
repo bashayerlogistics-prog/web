@@ -4,6 +4,7 @@ const ADMIN_ROUTE_LOADERS = {
   '/admin': () => import('../pages/admin/AdminOverview'),
   '/admin/booking-forms': () => import('../pages/admin/AdminBookingForms'),
   '/admin/fleet': () => import('../pages/admin/AdminHomeFleet'),
+  '/admin/ziyarat': () => import('../pages/admin/AdminZiyarat'),
   '/admin/orders': () => import('../pages/admin/AdminOrders'),
   '/admin/users': () => import('../pages/admin/AdminUsers'),
   '/admin/price-requests': () => import('../pages/admin/AdminPriceRequests'),

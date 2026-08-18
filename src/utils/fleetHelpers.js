@@ -41,12 +41,19 @@ export function filterVehiclesByCarType(vehicles, carType) {
   return vehicles.slice(0, 1);
 }
 
+function localizedTitle(title, lang = 'ar') {
+  if (!title) return '';
+  if (typeof title === 'string') return title;
+  const code = String(lang || '').startsWith('ar') ? 'ar' : 'en';
+  return title[code] || title[lang] || title.ar || title.en || '';
+}
+
 export function getRouteLabel(fleetRoutes, routeId, lang = 'ar') {
   const routes = fleetRoutes?.length ? fleetRoutes : ALL_FLEET_ROUTES;
   const fleetRoute = routes.find((r) => r.id === routeId);
-  if (fleetRoute) return fleetRoute.title[lang] || fleetRoute.title.ar;
+  if (fleetRoute) return localizedTitle(fleetRoute.title, lang) || routeId;
   const card = ROUTE_CARDS.find((r) => r.id === routeId);
-  if (card) return card.title[lang] || card.title.ar;
+  if (card) return localizedTitle(card.title, lang) || routeId;
   return routeId;
 }
 

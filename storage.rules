@@ -1,11 +1,11 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Must match VITE_SUPERADMIN_EMAIL / VITE_SUPERADMIN_UID
+    // Must match firestore.rules isAdmin() / VITE_SUPERADMIN_EMAIL (email only — UID drift must not block uploads).
     function isAdmin() {
       return request.auth != null
-        && request.auth.token.email == 'sulemanmr551@gmail.com'
-        && request.auth.uid == '3BKWyktwaNOvhmDKoJf6yRye9FP2';
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() == 'sulemanmr551@gmail.com';
     }
 
     function isSignedIn() {

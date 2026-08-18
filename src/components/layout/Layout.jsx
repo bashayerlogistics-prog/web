@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 
 import Header from './Header';
 
@@ -12,6 +12,7 @@ import WhatsAppButton from './WhatsAppButton';
 
 import ScrollManager from './ScrollManager';
 import ScrollReveal from '../ui/ScrollReveal';
+import RouteErrorBoundary from '../ui/RouteErrorBoundary';
 
 
 
@@ -68,6 +69,7 @@ function DeferredLiveChat() {
 
 
 export default function Layout() {
+  const { pathname, search } = useLocation();
 
   return (
 
@@ -80,11 +82,13 @@ export default function Layout() {
 
       <main className="relative min-h-screen pb-[var(--mobile-bottom-nav-offset)] lg:pb-0">
 
-        <Suspense fallback={null}>
+        <RouteErrorBoundary resetKey={`${pathname}${search}`}>
+          <Suspense fallback={null}>
 
-          <Outlet />
+            <Outlet />
 
-        </Suspense>
+          </Suspense>
+        </RouteErrorBoundary>
 
       </main>
 

@@ -131,9 +131,12 @@ function carTypeOfVehicleId(vehicleId) {
   return String(vehicleId || '').split('-')[0]?.trim() || '';
 }
 
-export function buildFleetRoutesFromProducts(activeProducts) {
+export function buildFleetRoutesFromProducts(activeProducts, extraRoutes = []) {
   const staticRoutes = [...FLEET_ROUTES, ...ROUND_TRIP_FLEET_ROUTES, ...HOURLY_FLEET_ROUTES];
   const staticById = new Map(staticRoutes.map((r) => [r.id, r]));
+  (Array.isArray(extraRoutes) ? extraRoutes : []).forEach((route) => {
+    if (route?.id && !staticById.has(route.id)) staticById.set(route.id, route);
+  });
 
   // No SuperAdmin packages → empty live catalog (do not resurrect static seed when all inactive)
   if (!Array.isArray(activeProducts)) {
@@ -174,8 +177,11 @@ export function buildFleetRoutesFromProducts(activeProducts) {
 
     const vehicleId = p.vehicleKey || p.id;
     const car = carTypeOfVehicleId(vehicleId);
-    if (!car || routeMap[routeId]._cars.has(car)) continue;
-    routeMap[routeId]._cars.add(car);
+    const serviceTag = String(p.fleetServiceId || '').trim();
+    const formTag = String(p.bookingFormId || '').trim();
+    const uniq = [car, serviceTag, formTag].filter(Boolean).join('::') || car;
+    if (!car || routeMap[routeId]._cars.has(uniq)) continue;
+    routeMap[routeId]._cars.add(uniq);
 
     routeMap[routeId].vehicles.push({
       id: vehicleId,
@@ -192,6 +198,8 @@ export function buildFleetRoutesFromProducts(activeProducts) {
       hours: p.hours,
       hidePrice: p.hidePrice ?? false,
       tripType: p.tripType || staticRoute.tripType || 'one_way',
+      fleetServiceId: p.fleetServiceId || '',
+      bookingFormId: p.bookingFormId || '',
       vip: p.vip || false,
       description: { ar: p.descriptionAr || '', en: p.descriptionEn || '' },
     });

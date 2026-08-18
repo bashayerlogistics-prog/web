@@ -14,7 +14,7 @@ import { syncContentImagesFromDefaults } from '../../firebase/admin';
 import { getContentCounts, seedAllSiteContent } from '../../firebase/seedContent';
 import { extractColorsFromImage } from '../../utils/extractImageColors';
 import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
-import { clearSiteContentCacheKeys } from '../../utils/siteContentRefresh';
+import { clearAllAppCaches } from '../../utils/siteContentRefresh';
 import BrandLogo from '../../components/ui/BrandLogo';
 import MediaUpload from '../../components/admin/MediaUpload';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
@@ -214,13 +214,13 @@ export default function AdminSettings() {
   };
 
   const handleClearSiteCache = async () => {
-    clearSiteContentCacheKeys();
+    clearAllAppCaches();
     try {
       sessionStorage.removeItem('bashayer-seed-once');
     } catch {
       // ignore
     }
-    await publishSite();
+    await publishSite('full');
     toast.success(t('admin.settings.cacheCleared'));
   };
 

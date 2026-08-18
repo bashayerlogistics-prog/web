@@ -6,6 +6,7 @@ import {
   getCarDisplayName,
   resolveCarThumb,
 } from './staticData';
+import { extraFleetRoutesForService } from './bookingLocations';
 import { AIRPORT_TRANSFER_ROUTES } from './airportPricing';
 import {
   HOURLY_FLEET_ROUTES,
@@ -67,7 +68,10 @@ function isInternalRoute(routeId) {
 
 function isZiyaratRoute(routeId) {
   const rid = String(routeId || '');
-  return rid.includes('-mecca-internal') || rid.includes('-medina-internal');
+  return rid.includes('-mecca-internal')
+    || rid.includes('-medina-internal')
+    || rid.includes('-makkah-internal')
+    || rid.includes('-madinah-internal');
 }
 
 function isOneWayProduct(p) {
@@ -264,6 +268,37 @@ export function getFleetService(serviceId) {
   return FLEET_SERVICES[serviceId] || FLEET_SERVICES.cityToCity;
 }
 
+/** Live SuperAdmin packages for one service, filled with the same sheet defaults the homepage uses. */
+export function productsForFleetService(liveProducts, serviceId) {
+  const service = FLEET_SERVICES[serviceId];
+  if (!service) return [];
+  const liveHits = (liveProducts || []).filter(service.matchProduct);
+  const seen = new Set();
+  liveHits.forEach((product) => {
+    const car = carKeyOf(product);
+    if (product.routeId && car) seen.add(`${product.routeId}::${car}`);
+  });
+  const extras = (service.getDefaults?.() || [])
+    .filter((product) => {
+      const car = carKeyOf(product);
+      return product.routeId && car && !seen.has(`${product.routeId}::${car}`);
+    })
+    .map((product) => ({ ...product, fleetServiceId: serviceId }));
+  return [...liveHits, ...extras];
+}
+
+/** All live packages plus missing homepage defaults (no Firestore id until SuperAdmin saves). */
+export function catalogProductsWithDefaults(liveProducts) {
+  const live = liveProducts || [];
+  const extra = [];
+  HOME_FLEET_SERVICE_IDS.forEach((id) => {
+    productsForFleetService(live, id).forEach((product) => {
+      if (!product.id) extra.push(product);
+    });
+  });
+  return extra.length ? [...live, ...extra] : live;
+}
+
 export function carOptionList(cars = FLEET_CARS) {
   return cars.map((c) => ({
     id: c,
@@ -310,11 +345,52 @@ export const HOME_FLEET_SERVICE_COUNTS = {
 
 export const HOME_FLEET_SERVICE_IDS = Object.keys(HOME_FLEET_SERVICE_COUNTS);
 
+/** SuperAdmin fleet services whose SAR prices feed a homepage booking-form section. */
+export function fleetServiceIdsForBookingSection(formId, mode) {
+  if (mode === 'between_cities') return ['cityToCity'];
+  if (mode === 'one_way') return ['airport'];
+  if (mode === 'round_trip') return ['train', 'airport'];
+  if (mode === 'hourly') {
+    return formId === 'religiousTours' ? ['ziyarat'] : ['hourly', 'withinCity'];
+  }
+  return [];
+}
+
 export const HOME_FLEET_PAIRS = [
   ['train', 'airport'],
   ['cityToCity', 'hourly'],
   ['ziyarat', 'withinCity'],
 ];
+
+/** All routes for one of the 6 fleet services: sheet defaults + booking-form extras + live packages. */
+export function collectFleetServiceRoutes(serviceId, locations = {}, products = []) {
+  const service = FLEET_SERVICES[serviceId];
+  if (!service) return [];
+  const seen = new Set();
+  const out = [];
+  const push = (route) => {
+    const id = String(route?.id || '').trim();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    out.push({
+      id,
+      label: route.label || { en: id, ar: id },
+    });
+  };
+  (service.getRoutes?.() || []).forEach(push);
+  extraFleetRoutesForService(serviceId, locations).forEach(push);
+  (products || []).forEach((product) => {
+    if (!service.matchProduct(product) || !product.routeId) return;
+    push({
+      id: product.routeId,
+      label: {
+        en: product.nameEn || product.routeId,
+        ar: product.nameAr || product.nameEn || product.routeId,
+      },
+    });
+  });
+  return out;
+}
 
 export function normalizeFleetShowcase(raw = {}) {
   const out = {};
@@ -390,12 +466,25 @@ function routeAsProduct(route) {
     tripType: route.tripType,
     routeId: route.id,
     category: route.category,
+    fleetServiceId: route.fleetServiceId,
   };
 }
 
-function uniqueCarsOnRoute(route, cars) {
+function routeMatchesService(route, serviceId) {
+  const service = FLEET_SERVICES[serviceId];
+  if (!service || !route) return false;
+  const vehicles = route.vehicles || [];
+  const tagged = vehicles.filter((v) => String(v.fleetServiceId || '').trim());
+  if (tagged.some((v) => String(v.fleetServiceId).trim() === serviceId)) return true;
+  if (tagged.length && tagged.length === vehicles.length) return false;
+  return service.matchProduct(routeAsProduct(route));
+}
+
+function uniqueCarsOnRoute(route, cars, serviceId) {
   const byCar = new Map();
   for (const vehicle of route.vehicles || []) {
+    const tag = String(vehicle.fleetServiceId || '').trim();
+    if (serviceId && tag && tag !== serviceId) continue;
     const key = carKeyOf({ vehicleKey: vehicle.id });
     if (!key || byCar.has(key)) continue;
     byCar.set(key, vehicle);
@@ -406,7 +495,7 @@ function uniqueCarsOnRoute(route, cars) {
 }
 
 function scoreRouteForHome(route, service) {
-  const cars = uniqueCarsOnRoute(route, service.cars);
+  const cars = uniqueCarsOnRoute(route, service.cars, service.id);
   let score = cars.length * 10;
   if (route.id === service.defaultRouteId) score += 50;
   // Keep Within City distinct from Ziyarat on the homepage
@@ -418,14 +507,61 @@ function scoreRouteForHome(route, service) {
   return { route, cars, score };
 }
 
+function routesFromDefaultProducts(service) {
+  const defaults = service?.getDefaults?.() || [];
+  const metaById = new Map((service.getRoutes?.() || []).map((r) => [r.id, r]));
+  const map = {};
+  for (const product of defaults) {
+    const routeId = String(product.routeId || '').trim();
+    if (!routeId) continue;
+    if (!map[routeId]) {
+      const meta = metaById.get(routeId);
+      map[routeId] = {
+        id: routeId,
+        title: meta?.label || meta?.title || {
+          en: product.nameEn || routeId,
+          ar: product.nameAr || product.nameEn || routeId,
+        },
+        tripType: product.tripType || service.tripType,
+        category: service.id === 'airport' ? 'airport' : service.id === 'train' ? 'train' : undefined,
+        fleetServiceId: service.id,
+        vehicles: [],
+      };
+    }
+    map[routeId].vehicles.push({
+      id: product.vehicleKey || product.id,
+      name: { ar: product.nameAr, en: product.nameEn },
+      image: product.imageUrl,
+      passengers: product.passengers || 4,
+      badge: { ar: product.badgeAr || service.badgeAr, en: product.badgeEn || service.badgeEn },
+      price: product.price,
+      originalPrice: product.originalPrice ?? product.price,
+      pickupPrice: product.pickupPrice,
+      dropoffPrice: product.dropoffPrice,
+      hourlyRate: product.hourlyRate,
+      hours: product.hours,
+      hidePrice: product.hidePrice ?? false,
+      tripType: product.tripType || service.tripType,
+      fleetServiceId: service.id,
+    });
+  }
+  return Object.values(map).filter((route) => route.vehicles.length);
+}
+
+function rankRoutesForHome(routes, service) {
+  return (routes || [])
+    .map((route) => scoreRouteForHome(route, service))
+    .filter((entry) => entry.cars.length > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
 /**
- * Build homepage fleet groups from live SuperAdmin packages.
- * Per-service car counts — one real route each, no dummy / no duplicates.
- * Optional showcase pins which route + 2 cars appear on the homepage.
+ * Build homepage fleet groups — always 6 services in 3 paired rows when SuperAdmin has them on.
+ * Live packages first; sheet defaults fill any service that has no matching live route yet.
  */
 export function buildHomeFleetSections(fleetRoutes = [], showcase = {}) {
-  if (!fleetRoutes.length) return [];
   const pins = normalizeFleetShowcase(showcase);
+  const live = Array.isArray(fleetRoutes) ? fleetRoutes : [];
 
   return HOME_FLEET_SERVICE_IDS.map((serviceId) => {
     const service = FLEET_SERVICES[serviceId];
@@ -434,21 +570,23 @@ export function buildHomeFleetSections(fleetRoutes = [], showcase = {}) {
     const pin = pins[serviceId] || { routeId: '', carIds: [], active: true };
     if (pin.active === false) return null;
 
-    const matching = fleetRoutes.filter((route) =>
-      service.matchProduct(routeAsProduct(route)),
+    let ranked = rankRoutesForHome(
+      live.filter((route) => routeMatchesService(route, serviceId)),
+      service,
     );
-    if (!matching.length) return null;
-
-    const ranked = matching
-      .map((route) => scoreRouteForHome(route, service))
-      .filter((entry) => entry.cars.length > 0)
-      .sort((a, b) => b.score - a.score);
+    if (!ranked.length) {
+      ranked = rankRoutesForHome(routesFromDefaultProducts(service), service);
+    }
 
     const pinned = pin.routeId
       ? ranked.find((entry) => entry.route.id === pin.routeId)
       : null;
-    const best = pinned || ranked[0];
-    if (!best) return null;
+    let best = pinned || ranked[0];
+    if (!best && pin.routeId) {
+      const seed = routesFromDefaultProducts(service).find((route) => route.id === pin.routeId);
+      if (seed) best = scoreRouteForHome(seed, service);
+    }
+    if (!best?.cars?.length) return null;
 
     // One real route only — never mix cars from other routes (avoids fake/dummy cards)
     const byCar = new Map(
@@ -500,10 +638,12 @@ export function buildCarCategorySections(fleetRoutes = [], carId) {
     const seen = new Set();
 
     for (const route of fleetRoutes) {
-      if (!service.matchProduct(routeAsProduct(route))) continue;
-      const vehicle = (route.vehicles || []).find(
-        (v) => carKeyOf({ vehicleKey: v.id }) === key,
-      );
+      if (!routeMatchesService(route, serviceId)) continue;
+      const vehicle = (route.vehicles || []).find((v) => {
+        const tag = String(v.fleetServiceId || '').trim();
+        if (tag && tag !== serviceId) return false;
+        return carKeyOf({ vehicleKey: v.id }) === key;
+      });
       if (!vehicle) continue;
 
       const dedupe = `${route.id}|${vehicle.id}|${vehicle.price}|${vehicle.durationHours || ''}`;

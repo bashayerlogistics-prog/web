@@ -90,6 +90,24 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, resolvedCacheKey, ...deps]);
 
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    let last = 0;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - last < 20_000) return;
+      last = now;
+      refresh({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [isAdmin, refresh]);
+
   return {
     data,
     loading: loading && data == null,

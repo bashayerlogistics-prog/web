@@ -10,6 +10,15 @@ import {
   Landmark,
   Package,
   Trash2,
+  Info,
+  Heading,
+  Layers,
+  FileSpreadsheet,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   getProductsByTripType,
@@ -22,8 +31,9 @@ import {
   updateHomeSection,
   getAllCars,
   createCarWithPackages,
-  getReligiousToursSettings,
-  updateReligiousToursSettings,
+  getBookingLocationsSettings,
+  updateBookingLocationsSettings,
+  upsertCar,
 } from '../../firebase/admin';
 import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
 import { useAdminDataLoader } from '../../hooks/useAdminDataLoader';
@@ -37,20 +47,39 @@ import {
   carOptionList,
   getFleetService,
   buildNewFleetProduct,
+  collectFleetServiceRoutes,
   normalizeFleetShowcase,
   emptyFleetShowcase,
   hoursFromRouteId,
+  productsForFleetService,
+  catalogProductsWithDefaults,
 } from '../../data/adminFleetServices';
 import { getCarDisplayName, resolveCarThumb } from '../../data/staticData';
-import { DEFAULT_RELIGIOUS_TOURS } from '../../data/religiousTours';
-import { dedupeFleetProducts } from '../../utils/productDedupe';
+import { mergeCarCatalog, liveFleetCarCount, MAX_FLEET_CARS, MIN_FLEET_CARS, DEFAULT_CAR_FORMS, carCatalogLabel } from '../../utils/carCatalogHelpers';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import AdminSelect from '../../components/admin/AdminSelect';
 import AdminApplyButton from '../../components/admin/AdminApplyButton';
-import AddCarModal from '../../components/admin/AddCarModal';
 import MediaUpload from '../../components/admin/MediaUpload';
 import GlassCard from '../../components/ui/GlassCard';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import AdminPriceSheetPanel from '../../components/admin/AdminPriceSheetPanel';
+import AdminFleetPricesTable from '../../components/admin/AdminFleetPricesTable';
+import AdminFleetCarsBar from '../../components/admin/AdminFleetCarsBar';
+import { CityRow, RouteRow, AdminAlertModal } from '../../components/admin/AdminBookingFormEditor';
+import {
+  cloneBookingLocations,
+  createBookingCity,
+  createPickupRoute,
+} from '../../data/bookingLocations';
+
+const SERVICE_SECTION_META = {
+  cityToCity: { dataType: 'cities', locationKey: 'betweenCities', formId: 'booking' },
+  airport: { dataType: 'routes', locationKey: 'oneWay', formId: 'booking' },
+  train: { dataType: 'routes', locationKey: 'roundTrip', formId: 'booking' },
+  hourly: { dataType: 'cities', locationKey: 'hourly', formId: 'booking' },
+  withinCity: { dataType: 'cities', locationKey: 'hourly', formId: 'booking' },
+  ziyarat: { dataType: 'cities', locationKey: 'ziyarat', formId: 'religiousTours' },
+};
 
 const SERVICE_ICONS = {
   cityToCity: MapPin,
@@ -61,12 +90,44 @@ const SERVICE_ICONS = {
   ziyarat: Landmark,
 };
 
-const ZIYARAT_CITIES = [
-  { key: 'makkah', en: 'Makkah', ar: 'مكة المكرمة' },
-  { key: 'madinah', en: 'Madinah', ar: 'المدينة المنورة' },
-  { key: 'jeddah', en: 'Jeddah', ar: 'جدة' },
-  { key: 'riyadh', en: 'Riyadh', ar: 'الرياض' },
-];
+const SERVICE_META = {
+  train: {
+    accent: 'from-brand to-brand-light',
+    ring: 'ring-brand/30 border-brand/20',
+    chipOn: 'bg-brand text-white border-brand',
+    chipOff: 'bg-white text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/60 dark:border-white/15',
+  },
+  airport: {
+    accent: 'from-sky-600 to-blue-500',
+    ring: 'ring-sky-200 border-sky-200',
+    chipOn: 'bg-sky-700 text-white border-sky-700',
+    chipOff: 'bg-white text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/60 dark:border-white/15',
+  },
+  cityToCity: {
+    accent: 'from-emerald-600 to-teal-500',
+    ring: 'ring-emerald-200 border-emerald-200',
+    chipOn: 'bg-emerald-700 text-white border-emerald-700',
+    chipOff: 'bg-white text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/60 dark:border-white/15',
+  },
+  hourly: {
+    accent: 'from-violet-600 to-indigo-500',
+    ring: 'ring-violet-200 border-violet-200',
+    chipOn: 'bg-violet-700 text-white border-violet-700',
+    chipOff: 'bg-white text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/60 dark:border-white/15',
+  },
+  ziyarat: {
+    accent: 'from-amber-600 to-gold',
+    ring: 'ring-gold/30 border-gold/30',
+    chipOn: 'bg-amber-700 text-white border-amber-700',
+    chipOff: 'bg-white text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/60 dark:border-white/15',
+  },
+  withinCity: {
+    accent: 'from-teal-600 to-cyan-500',
+    ring: 'ring-teal-200 border-teal-200',
+    chipOn: 'bg-teal-700 text-white border-teal-700',
+    chipOff: 'bg-white text-gray-500 border-gray-200 dark:bg-white/5 dark:text-white/60 dark:border-white/15',
+  },
+};
 
 function productOnRoute(products, routeId, car) {
   return products.find(
@@ -125,6 +186,7 @@ function ToggleSwitch({ on, onClick, disabled, label }) {
 
 export default function AdminHomeFleet({
   embedded = false,
+  compact = false,
   serviceIds = HOME_FLEET_SERVICE_IDS,
 }) {
   const { t, i18n } = useTranslation();
@@ -134,55 +196,69 @@ export default function AdminHomeFleet({
   const [savingKey, setSavingKey] = useState('');
   const [addFor, setAddFor] = useState(null);
   const [addForm, setAddForm] = useState({ car: '', routeId: '', price: '', nameEn: '', nameAr: '', imageUrl: '' });
-  const [addCarOpen, setAddCarOpen] = useState(false);
   const [addingCar, setAddingCar] = useState(false);
-  const [cityImages, setCityImages] = useState(DEFAULT_RELIGIOUS_TOURS.cityImages);
+  const [togglingCarId, setTogglingCarId] = useState('');
+  const [focusServiceId, setFocusServiceId] = useState(HOME_FLEET_SERVICE_IDS[0]);
+  const [openIds, setOpenIds] = useState([HOME_FLEET_SERVICE_IDS[0]]);
+  const [publishing, setPublishing] = useState(false);
 
   const { data: tripBundles, loading, refresh } = useAdminDataLoader(
     async () => {
-      const [oneWay, roundTrip, hourly, showcase, sections, cars, ziyarat] = await Promise.all([
+      const [oneWay, roundTrip, hourly, showcase, sections, cars, locations] = await Promise.all([
         getProductsByTripType('one_way'),
         getProductsByTripType('round_trip'),
         getProductsByTripType('hourly'),
         getAdminHomeFleetShowcase(),
         getAdminHomeSections(),
         getAllCars(),
-        getReligiousToursSettings(),
+        getBookingLocationsSettings(),
       ]);
       return {
         products: [...(oneWay || []), ...(roundTrip || []), ...(hourly || [])],
         showcase: normalizeFleetShowcase(showcase),
         sectionActive: sections?.fleet?.active !== false,
         cars: cars || [],
-        cityImages: ziyarat?.cityImages || {},
+        locations: locations || { cities: [], routes: [] },
       };
     },
     [],
     { cacheKey: 'admin:home-fleet' },
   );
 
-  const allProducts = tripBundles?.products || [];
-  const liveCars = tripBundles?.cars || [];
+  const [carCatalog, setCarCatalog] = useState(() => mergeCarCatalog([]));
+  const [localProducts, setLocalProducts] = useState(null);
   const [localShowcase, setLocalShowcase] = useState(null);
+  const [localCities, setLocalCities] = useState([]);
+  const [localRoutes, setLocalRoutes] = useState([]);
   const [sectionOn, setSectionOn] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const allProducts = localProducts || tripBundles?.products || [];
   const showcase = localShowcase || tripBundles?.showcase || emptyFleetShowcase();
+  const cities = localCities;
+  const routes = localRoutes;
+  const locations = { cities, routes };
 
   useEffect(() => {
+    if (tripBundles?.products) setLocalProducts(tripBundles.products);
     if (tripBundles?.showcase) setLocalShowcase(tripBundles.showcase);
     if (typeof tripBundles?.sectionActive === 'boolean') setSectionOn(tripBundles.sectionActive);
-    if (tripBundles?.cityImages) {
-      setCityImages({ ...DEFAULT_RELIGIOUS_TOURS.cityImages, ...tripBundles.cityImages });
+    if (tripBundles?.cars) setCarCatalog(mergeCarCatalog(tripBundles.cars));
+    if (tripBundles?.locations) {
+      const built = cloneBookingLocations(tripBundles.locations);
+      setLocalCities(built.cities);
+      setLocalRoutes(built.routes);
     }
-  }, [tripBundles?.showcase, tripBundles?.sectionActive, tripBundles?.cityImages]);
+  }, [tripBundles?.products, tripBundles?.showcase, tripBundles?.sectionActive, tripBundles?.cars, tripBundles?.locations]);
 
   const carChoices = useMemo(() => {
     const ids = [...FLEET_CARS];
-    for (const car of liveCars) {
+    for (const car of carCatalog) {
       const id = String(car.id || '').split('-')[0];
       if (id && !ids.includes(id) && car.active !== false) ids.push(id);
     }
     return carOptionList(ids);
-  }, [liveCars]);
+  }, [carCatalog]);
 
   const visibleServiceIds = useMemo(
     () => HOME_FLEET_SERVICE_IDS.filter((id) => serviceIds.includes(id)),
@@ -192,12 +268,15 @@ export default function AdminHomeFleet({
   const byService = useMemo(() => {
     const map = {};
     for (const id of HOME_FLEET_SERVICE_IDS) {
-      const service = FLEET_SERVICES[id];
-      const { unique } = dedupeFleetProducts((allProducts || []).filter(service.matchProduct));
-      map[id] = unique;
+      map[id] = productsForFleetService(allProducts, id);
     }
     return map;
   }, [allProducts]);
+
+  const catalogProducts = useMemo(
+    () => catalogProductsWithDefaults(allProducts),
+    [allProducts],
+  );
 
   const persistShowcase = async (serviceId, slot) => {
     const merged = {
@@ -220,34 +299,71 @@ export default function AdminHomeFleet({
     const key = `${serviceId}:${slotIndex}`;
     setSavingKey(key);
     try {
-      const { car, routeId, price, nameEn, nameAr, imageUrl } = payload;
+      const { car, routeId, price, nameEn, nameAr, imageUrl, pickupPrice, dropoffPrice } = payload;
       const existing = productOnRoute(products, routeId, car);
-      const numericPrice = Number(price);
+      const pickup = Number(pickupPrice);
+      const dropoff = Number(dropoffPrice);
+      const numericPrice = Number(price)
+        || ((Number.isFinite(pickup) ? pickup : 0) + (Number.isFinite(dropoff) ? dropoff : 0));
       if (!Number.isFinite(numericPrice) || numericPrice < 0) {
-        toast.error(t('common.error'));
+        toast.error(t('admin.fleet.invalidPrice'));
         return;
       }
-      if (existing) {
+      const safeNameEn = String(nameEn || existing?.nameEn || getCarDisplayName(car, 'en') || '').trim();
+      const safeNameAr = String(nameAr || existing?.nameAr || getCarDisplayName(car, 'ar') || '').trim();
+      const safeImage = String(imageUrl || existing?.imageUrl || resolveCarThumb(car, '') || '').trim();
+
+      if (existing?.id) {
         const patch = {
           price: numericPrice,
-          originalPrice: existing.originalPrice || numericPrice,
+          originalPrice: Number(existing.originalPrice) || numericPrice,
           active: true,
-          nameEn: nameEn || existing.nameEn,
-          nameAr: nameAr || existing.nameAr,
-          imageUrl: imageUrl || existing.imageUrl,
+          nameEn: safeNameEn,
+          nameAr: safeNameAr,
         };
-        if (service.layout === 'hourly' && existing.hours) {
-          patch.hourlyRate = Math.round(numericPrice / Number(existing.hours));
+        if (safeImage) patch.imageUrl = safeImage;
+        if (service.layout === 'round_trip') {
+          patch.pickupPrice = Number.isFinite(pickup) ? pickup : (Number(existing.pickupPrice) || numericPrice);
+          patch.dropoffPrice = Number.isFinite(dropoff) ? dropoff : (Number(existing.dropoffPrice) || 0);
+          patch.price = patch.pickupPrice + patch.dropoffPrice || numericPrice;
+          patch.originalPrice = patch.price;
         }
-        await updateProduct(existing.id, patch);
+        if (service.layout === 'hourly') {
+          const hours = Number(existing.hours) || hoursFromRouteId(routeId, 4);
+          if (hours > 0) {
+            patch.hours = hours;
+            patch.hourlyRate = Math.round(numericPrice / hours);
+          }
+        }
+        try {
+          await updateProduct(existing.id, patch);
+        } catch (err) {
+          if (err?.code === 'not-found') {
+            const created = buildNewFleetProduct(service, { car, routeId, price: numericPrice });
+            await createProduct({
+              ...created,
+              nameEn: safeNameEn || created.nameEn,
+              nameAr: safeNameAr || created.nameAr,
+              imageUrl: safeImage || created.imageUrl,
+            });
+          } else {
+            throw err;
+          }
+        }
         toast.success(t('admin.fleet.updated'));
       } else {
         const created = buildNewFleetProduct(service, { car, routeId, price: numericPrice });
+        if (service.layout === 'round_trip') {
+          created.pickupPrice = Number.isFinite(pickup) ? pickup : (created.pickupPrice || numericPrice);
+          created.dropoffPrice = Number.isFinite(dropoff) ? dropoff : (created.dropoffPrice || 0);
+          created.price = created.pickupPrice + created.dropoffPrice || numericPrice;
+          created.originalPrice = created.price;
+        }
         await createProduct({
           ...created,
-          nameEn: nameEn || created.nameEn,
-          nameAr: nameAr || created.nameAr,
-          imageUrl: imageUrl || created.imageUrl,
+          nameEn: safeNameEn || created.nameEn,
+          nameAr: safeNameAr || created.nameAr,
+          imageUrl: safeImage || created.imageUrl,
         });
         toast.success(t('admin.fleet.created'));
       }
@@ -256,14 +372,29 @@ export default function AdminHomeFleet({
       const currentCars = [...(showcase[serviceId]?.carIds || [])];
       while (currentCars.length < limit) currentCars.push('');
       currentCars[slotIndex] = car;
-      await persistShowcase(serviceId, {
-        routeId,
-        carIds: currentCars.filter(Boolean),
-        active: showcase[serviceId]?.active !== false,
-      });
+      try {
+        await persistShowcase(serviceId, {
+          routeId,
+          carIds: currentCars.filter(Boolean),
+          active: showcase[serviceId]?.active !== false,
+        });
+      } catch (err) {
+        console.warn('Fleet showcase pin failed after price save', err);
+        try {
+          await publishSite('soft');
+        } catch {
+          /* price is already saved */
+        }
+      }
       refresh();
-    } catch {
-      toast.error(t('common.error'));
+    } catch (err) {
+      console.error('Fleet price save failed', err);
+      const code = err?.code || err?.message || '';
+      if (code === 'permission-denied' || code === 'unauthenticated') {
+        toast.error(t('admin.fleet.permissionDenied'));
+      } else {
+        toast.error(t('admin.fleet.saveFailed'));
+      }
     } finally {
       setSavingKey('');
     }
@@ -338,8 +469,9 @@ export default function AdminHomeFleet({
       await updateProduct(product.id, { [field]: next });
       await publishSite('soft');
       refresh();
-    } catch {
-      toast.error(t('common.error'));
+    } catch (err) {
+      console.error('Fleet product toggle failed', err);
+      toast.error(t('admin.fleet.saveFailed'));
     } finally {
       setSavingKey('');
     }
@@ -400,41 +532,232 @@ export default function AdminHomeFleet({
   };
 
   const handleAddCar = async (payload) => {
+    if (liveFleetCarCount(carCatalog) >= MAX_FLEET_CARS) {
+      toast.warning(t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }));
+      return false;
+    }
     setAddingCar(true);
     try {
       const result = await createCarWithPackages(payload);
+      const dbCars = await getAllCars();
+      setCarCatalog(mergeCarCatalog(dbCars));
       await publishSite('soft');
       await refresh();
-      setAddCarOpen(false);
       toast.success(t('admin.cars.addNewSuccess', { id: result.id, count: result.packagesCreated }));
+      return true;
     } catch (err) {
       toast.error(err?.message || t('admin.cars.addNewFailed'));
+      return false;
     } finally {
       setAddingCar(false);
     }
   };
 
-  const saveZiyaratImages = async () => {
-    setSavingKey('ziyarat-images');
+  const onToggleCar = async (car, nextActive) => {
+    const liveCount = liveFleetCarCount(carCatalog);
+    if (!nextActive && liveCount <= MIN_FLEET_CARS) {
+      toast.warning(t('admin.bookingForms.carsBarMinReached', { min: MIN_FLEET_CARS }));
+      return;
+    }
+    if (nextActive && liveCount >= MAX_FLEET_CARS) {
+      toast.warning(t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }));
+      return;
+    }
+    setTogglingCarId(car.id);
     try {
-      await updateReligiousToursSettings({ cityImages });
-      await publishSite('soft');
-      toast.success(t('admin.homeFleet.ziyaratImagesSaved'));
+      await upsertCar(car.id, {
+        nameEn: car.nameEn,
+        nameAr: car.nameAr,
+        modelEn: car.modelEn || car.nameEn,
+        modelAr: car.modelAr || car.nameAr,
+        imageUrl: car.imageUrl,
+        passengers: Number(car.passengers) || 4,
+        vip: Boolean(car.vip),
+        sortOrder: Number(car.sortOrder) || 0,
+        forms: car.forms || DEFAULT_CAR_FORMS,
+        active: nextActive,
+      });
+      setCarCatalog((list) => list.map((item) => (
+        item.id === car.id ? { ...item, active: nextActive } : item
+      )));
+      await publishSite();
+      const name = carCatalogLabel(car, lang);
+      toast.success(nextActive
+        ? t('admin.bookingForms.carsBarShownToast', { name })
+        : t('admin.bookingForms.carsBarHiddenToast', { name }));
     } catch {
       toast.error(t('common.error'));
     } finally {
-      setSavingKey('');
+      setTogglingCarId('');
     }
   };
 
+  const handlePublish = async () => {
+    setPublishing(true);
+    try {
+      await updateBookingLocationsSettings({ cities, routes });
+      await publishSite();
+      toast.success(t('admin.bookingForms.saved'));
+    } catch {
+      toast.error(t('common.error'));
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const updateCity = (id, patch) => {
+    setLocalCities((list) => list.map((city) => (city.id === id ? { ...city, ...patch } : city)));
+  };
+  const updateRoute = (id, patch) => {
+    setLocalRoutes((list) => list.map((route) => (route.id === id ? { ...route, ...patch } : route)));
+  };
+  const toggleLocationForm = (kind, id, formKey) => {
+    if (kind === 'city') {
+      setLocalCities((list) => list.map((city) => {
+        if (city.id !== id) return city;
+        const on = city.forms?.[formKey] !== false;
+        return { ...city, forms: { ...city.forms, [formKey]: !on } };
+      }));
+    } else {
+      setLocalRoutes((list) => list.map((route) => {
+        if (route.id !== id) return route;
+        const on = route.forms?.[formKey] !== false;
+        return { ...route, forms: { ...route.forms, [formKey]: !on } };
+      }));
+    }
+  };
+  const toggleSiteForm = (kind, id, siteFormId) => {
+    const flip = (item) => {
+      const on = item.siteForms?.[siteFormId] !== false;
+      return {
+        ...item,
+        siteForms: {
+          booking: true,
+          instantPrice: true,
+          religiousTours: true,
+          ...item.siteForms,
+          [siteFormId]: !on,
+        },
+      };
+    };
+    if (kind === 'city') setLocalCities((list) => list.map((city) => (city.id === id ? flip(city) : city)));
+    else setLocalRoutes((list) => list.map((route) => (route.id === id ? flip(route) : route)));
+  };
+  const onAddCity = (formKey) => {
+    const next = createBookingCity({
+      en: t('admin.bookingForms.newCityEn'),
+      ar: t('admin.bookingForms.newCityAr'),
+      forms: {
+        betweenCities: formKey === 'betweenCities',
+        hourly: formKey === 'hourly',
+        ziyarat: formKey === 'ziyarat',
+      },
+    }, cities);
+    if (!next) return;
+    setLocalCities((list) => [...list, next]);
+    setExpandedId(`city:${next.id}:${formKey}`);
+    toast.success(t('admin.bookingForms.cityAdded'));
+  };
+  const onAddRoute = (formKey) => {
+    const next = createPickupRoute({
+      pickupLabelEn: t('admin.bookingForms.newRouteEn'),
+      pickupLabelAr: t('admin.bookingForms.newRouteAr'),
+      category: formKey === 'oneWay' ? 'airport' : 'train',
+      forms: {
+        oneWay: formKey === 'oneWay',
+        roundTrip: formKey === 'roundTrip',
+      },
+    }, routes);
+    if (!next) return;
+    setLocalRoutes((list) => [...list, next]);
+    setExpandedId(`route:${next.id}:${formKey}`);
+    toast.success(t('admin.bookingForms.routeAdded'));
+  };
+  const runConfirm = () => {
+    if (confirm?.type === 'city') {
+      setLocalCities((list) => list.filter((city) => city.id !== confirm.id || city.builtin));
+      setExpandedId(null);
+      toast.success(t('admin.bookingForms.cityDeleted'));
+    }
+    if (confirm?.type === 'route') {
+      setLocalRoutes((list) => list.filter((route) => route.id !== confirm.id || route.builtin));
+      setExpandedId(null);
+      toast.success(t('admin.bookingForms.routeDeleted'));
+    }
+    setConfirm(null);
+  };
+
+  const serviceStats = useMemo(() => Object.fromEntries(
+    HOME_FLEET_SERVICE_IDS.map((id) => [
+      id,
+      collectFleetServiceRoutes(id, locations, catalogProducts).length,
+    ]),
+  ), [locations, catalogProducts]);
+
+  const activeServiceId = visibleServiceIds.includes(focusServiceId)
+    ? focusServiceId
+    : (visibleServiceIds[0] || HOME_FLEET_SERVICE_IDS[0]);
+  const activeMeta = SERVICE_META[activeServiceId] || SERVICE_META.train;
+  const activeService = getFleetService(activeServiceId);
+  const ActiveIcon = SERVICE_ICONS[activeServiceId] || Package;
+  const selectService = (id) => {
+    setFocusServiceId(id);
+    setOpenIds((ids) => (ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]));
+  };
+
+  const renderServiceEditor = (serviceId, index, editorCompact = false) => (
+    <ServiceEditor
+      key={serviceId}
+      serviceId={serviceId}
+      index={index}
+      meta={SERVICE_META[serviceId] || SERVICE_META.train}
+      lang={lang}
+      t={t}
+      compact={editorCompact}
+      expanded={editorCompact || openIds.includes(serviceId)}
+      onToggle={() => selectService(serviceId)}
+      products={byService[serviceId] || []}
+      pin={showcase[serviceId]}
+      carChoices={carChoices}
+      locations={locations}
+      allProducts={catalogProducts}
+      carCatalog={carCatalog}
+      onProductsChange={setLocalProducts}
+      savingKey={savingKey}
+      addOpen={addFor === serviceId}
+      addForm={addForm}
+      setAddForm={setAddForm}
+      onChangeRoute={(routeId) => changeRoute(serviceId, routeId)}
+      onToggleService={() => toggleService(serviceId)}
+      onSaveSlot={(slotIndex, payload) => saveSlot(serviceId, slotIndex, payload)}
+      onToggleProduct={toggleProduct}
+      onDeleteProduct={removeProduct}
+      onOpenAdd={(routeId) => openAdd(serviceId, routeId)}
+      onCloseAdd={() => setAddFor(null)}
+      onSubmitAdd={submitAdd}
+      cities={cities}
+      routes={routes}
+      expandedId={expandedId}
+      setExpandedId={setExpandedId}
+      toggleLocationForm={toggleLocationForm}
+      toggleSiteForm={toggleSiteForm}
+      updateCity={updateCity}
+      updateRoute={updateRoute}
+      removeCity={(id) => setConfirm({ type: 'city', id })}
+      removeRoute={(id) => setConfirm({ type: 'route', id })}
+      onAddCity={onAddCity}
+      onAddRoute={onAddRoute}
+    />
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5" data-fleet-ui="booking-forms">
       {!embedded && (
         <>
           <AdminPageHeader
             title={t('fleet.title')}
-            subtitle={t('fleet.subtitle')}
             purposeKey="homeFleet"
+            subtitle={t('admin.homeFleet.pageSubtitle')}
           >
             <ToggleSwitch
               on={sectionOn}
@@ -442,91 +765,192 @@ export default function AdminHomeFleet({
               onClick={toggleSection}
               label={sectionOn ? t('admin.homeFleet.sectionOn') : t('admin.homeFleet.sectionOff')}
             />
-            <button
-              type="button"
-              onClick={() => setAddCarOpen(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-brand text-white text-sm font-bold"
-            >
-              <Plus className="w-4 h-4" />
-              {t('admin.cars.addNew')}
-            </button>
+            {loading ? (
+              <span className="text-xs font-semibold text-gray-500">{t('common.loading')}</span>
+            ) : null}
           </AdminPageHeader>
-          <p className="text-[11px] font-black uppercase tracking-widest text-brand/70 dark:text-gold/70 px-1">
-            {t('fleet.badge')}
-          </p>
+
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { n: '1', icon: Layers, text: t('admin.homeFleet.stepService') },
+              { n: '2', icon: Heading, text: t('admin.homeFleet.stepHomepage') },
+              { n: '3', icon: Save, text: t('admin.homeFleet.stepTable') },
+            ].map((step) => (
+              <div key={step.n} className="flex items-center gap-2 rounded-2xl border border-brand/10 bg-white dark:bg-white/5 px-2.5 py-2.5 sm:px-3.5 sm:py-3">
+                <span className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-xl bg-brand text-white text-[10px] sm:text-xs font-black shrink-0">{step.n}</span>
+                <p className="text-[10px] sm:text-xs font-bold text-brand dark:text-white leading-snug">{step.text}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-start gap-2.5 rounded-2xl border border-sky-200/80 bg-sky-50/80 dark:bg-sky-950/30 dark:border-sky-800 px-4 py-3">
+            <Info className="w-4 h-4 text-sky-600 mt-0.5 shrink-0" />
+            <p className="text-sm text-sky-900 dark:text-sky-100 leading-relaxed">{t('admin.homeFleet.howDesc')}</p>
+          </div>
+
+          <details className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 dark:bg-emerald-950/15 dark:border-emerald-800 group">
+            <summary className="cursor-pointer list-none px-4 py-3 flex items-center gap-2 text-sm font-black text-brand dark:text-white [&::-webkit-details-marker]:hidden">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              {t('admin.bookingForms.excelTitle')}
+              <span className="ms-auto text-[11px] font-bold text-gray-500 group-open:hidden">
+                {t('admin.bookingForms.excelToggle')}
+              </span>
+            </summary>
+            <div className="px-2 pb-3">
+              <AdminPriceSheetPanel />
+            </div>
+          </details>
+
+          <AdminFleetCarsBar
+            cars={carCatalog}
+            lang={lang}
+            t={t}
+            togglingId={togglingCarId}
+            adding={addingCar}
+            onToggle={onToggleCar}
+            onAdd={handleAddCar}
+          />
         </>
       )}
 
-      {embedded && (
+      {embedded && !compact && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-black text-brand dark:text-white">{t('admin.bookingForms.pricesTitle')}</p>
             <p className="text-[11px] text-gray-500 mt-0.5">{t('admin.bookingForms.pricesHint')}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setAddCarOpen(true)}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-brand text-white text-sm font-bold"
-          >
-            <Plus className="w-4 h-4" />
-            {t('admin.cars.addNew')}
-          </button>
         </div>
       )}
 
       {loading && !tripBundles ? (
         <LoadingSpinner />
-      ) : (
-        <div className="flex flex-col gap-6 lg:gap-8">
-          {visibleServiceIds.map((serviceId) => (
-            <ServiceEditor
-              key={serviceId}
-              serviceId={serviceId}
-              lang={lang}
-              t={t}
-              products={byService[serviceId] || []}
-              pin={showcase[serviceId]}
-              carChoices={carChoices}
-              savingKey={savingKey}
-              addOpen={addFor === serviceId}
-              addForm={addForm}
-              setAddForm={setAddForm}
-              onChangeRoute={(routeId) => changeRoute(serviceId, routeId)}
-              onToggleService={() => toggleService(serviceId)}
-              onSaveSlot={(slotIndex, payload) => saveSlot(serviceId, slotIndex, payload)}
-              onToggleProduct={toggleProduct}
-              onDeleteProduct={removeProduct}
-              onOpenAdd={(routeId) => openAdd(serviceId, routeId)}
-              onCloseAdd={() => setAddFor(null)}
-              onSubmitAdd={submitAdd}
-              cityImages={cityImages}
-              setCityImages={setCityImages}
-              onSaveZiyaratImages={saveZiyaratImages}
-            />
-          ))}
+      ) : compact ? (
+        <div className={`grid grid-cols-1 gap-4 ${visibleServiceIds.length > 1 ? 'md:grid-cols-2' : ''}`}>
+          {visibleServiceIds.map((serviceId, index) => renderServiceEditor(serviceId, index, true))}
         </div>
-      )}
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {visibleServiceIds.map((id, index) => {
+              const service = FLEET_SERVICES[id];
+              const meta = SERVICE_META[id] || SERVICE_META.train;
+              const Icon = SERVICE_ICONS[id] || Package;
+              const title = lang === 'ar' ? service.badgeAr : service.badgeEn;
+              const active = activeServiceId === id;
+              const on = showcase[id]?.active !== false;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => selectService(id)}
+                  className={`text-start rounded-2xl border p-4 transition-all ${
+                    active
+                      ? `ring-2 ${meta.ring} bg-white dark:bg-dark-800 shadow-lg`
+                      : 'border-gray-200 dark:border-white/10 bg-white/70 dark:bg-white/5 hover:border-brand/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br ${meta.accent} text-white shadow-md`}>
+                      <Icon className="w-5 h-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">
+                        {t('admin.homeFleet.serviceCard', { number: index + 1 })}
+                      </p>
+                      <p className="text-sm font-black text-brand dark:text-white truncate">{title}</p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-[11px] font-bold text-gray-500">
+                    {t('admin.homeFleet.visibleRoutes', { count: serviceStats[id] || 0 })}
+                    {' · '}
+                    {on ? t('admin.bookingForms.tabShow') : t('admin.bookingForms.tabHide')}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
 
-      <AddCarModal
-        open={addCarOpen}
-        onClose={() => setAddCarOpen(false)}
-        onSave={handleAddCar}
-        saving={addingCar}
-        cars={liveCars}
-        lang={lang}
-        t={t}
-      />
+          <GlassCard hover={false} className={`border ${activeMeta.ring} overflow-hidden`}>
+            <div className="flex items-center gap-3 mb-5">
+              <span className={`flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br ${activeMeta.accent} text-white`}>
+                <ActiveIcon className="w-5 h-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-lg font-black text-brand dark:text-white truncate">
+                  {lang === 'ar' ? activeService.badgeAr : activeService.badgeEn}
+                </h2>
+                <p className="text-xs text-gray-500 truncate">
+                  {t('admin.homeFleet.panelHint')}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pt-1">
+                <Layers className="w-4 h-4 text-brand" />
+                <p className="text-sm font-black text-brand dark:text-white">{t('admin.bookingForms.sectionsTitle')}</p>
+                <span className="text-[11px] font-bold text-gray-400">
+                  {t('admin.bookingForms.sectionCount', {
+                    count: visibleServiceIds.length,
+                    max: HOME_FLEET_SERVICE_IDS.length,
+                  })}
+                </span>
+              </div>
+
+              {visibleServiceIds.map((serviceId, index) => renderServiceEditor(serviceId, index))}
+            </div>
+          </GlassCard>
+
+          <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-3 rounded-2xl border border-brand/15 bg-white/95 dark:bg-dark-800/95 backdrop-blur px-4 py-3 shadow-lg">
+            <AdminApplyButton
+              type="button"
+              loading={publishing}
+              onClick={handlePublish}
+              label={t('admin.bookingForms.savePublish')}
+            />
+            <span className="text-xs font-semibold text-gray-400">
+              {t('admin.homeFleet.visibleRoutes', {
+                count: HOME_FLEET_SERVICE_IDS.reduce((sum, id) => sum + (serviceStats[id] || 0), 0),
+              })}
+            </span>
+            <span className="ms-auto hidden sm:inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {t('admin.homeFleet.saveHint')}
+            </span>
+          </div>
+
+          <AdminAlertModal
+            open={Boolean(confirm)}
+            type="danger"
+            title={t('admin.bookingForms.deleteConfirmTitle')}
+            body={t('admin.bookingForms.deleteConfirmBody')}
+            confirmLabel={t('admin.bookingForms.deleteAction')}
+            cancelLabel={t('common.cancel')}
+            onConfirm={runConfirm}
+            onClose={() => setConfirm(null)}
+          />
+        </>
+      )}
     </div>
   );
 }
 
 function ServiceEditor({
   serviceId,
+  index = 0,
+  meta,
   lang,
   t,
+  compact = false,
+  expanded = true,
+  onToggle,
   products,
   pin,
   carChoices,
+  locations,
+  allProducts,
+  carCatalog = [],
+  onProductsChange,
   savingKey,
   addOpen,
   addForm,
@@ -539,17 +963,29 @@ function ServiceEditor({
   onOpenAdd,
   onCloseAdd,
   onSubmitAdd,
-  cityImages,
-  setCityImages,
-  onSaveZiyaratImages,
+  cities = [],
+  routes = [],
+  expandedId,
+  setExpandedId,
+  toggleLocationForm,
+  toggleSiteForm,
+  updateCity,
+  updateRoute,
+  removeCity,
+  removeRoute,
+  onAddCity,
+  onAddRoute,
 }) {
   const service = getFleetService(serviceId);
-  const Icon = SERVICE_ICONS[service.id] || Package;
-  const routes = useMemo(() => service.getRoutes(), [service]);
+  const chipOn = meta?.chipOn || SERVICE_META.train.chipOn;
+  const chipOff = meta?.chipOff || SERVICE_META.train.chipOff;
+  const homepageRoutes = useMemo(
+    () => collectFleetServiceRoutes(serviceId, locations, allProducts || products),
+    [serviceId, locations, allProducts, products],
+  );
   const limit = HOME_FLEET_SERVICE_COUNTS[serviceId] || 2;
   const routeId = pin?.routeId || rankedRouteId(service, products);
   const visible = pin?.active !== false;
-  const heading = lang === 'ar' ? service.badgeAr : service.badgeEn;
 
   const slotCars = useMemo(() => {
     const pinned = (pin?.carIds || []).filter(Boolean);
@@ -565,172 +1001,291 @@ function ServiceEditor({
     return slots;
   }, [pin, products, routeId, service, limit, carChoices]);
 
+  const sectionMeta = SERVICE_SECTION_META[serviceId] || SERVICE_SECTION_META.cityToCity;
+  const { dataType, locationKey, formId } = sectionMeta;
+  const DataIcon = dataType === 'routes' ? TrainFront : MapPin;
+  const dataCount = dataType === 'cities'
+    ? cities.filter((c) => c.active !== false && c.forms?.[locationKey] !== false).length
+    : routes.filter((r) => r.active !== false && r.forms?.[locationKey] !== false).length;
+
   return (
-    <GlassCard className={`p-4 sm:p-5 md:p-6 space-y-4 h-full overflow-visible ${visible ? '' : 'opacity-70'}`}>
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-brand/10 pb-3">
-        <h3 className="font-black text-base sm:text-lg text-brand flex items-start gap-2 min-w-0">
-          <span className="w-2 h-5 bg-gradient-to-b from-gold to-gold-dark rounded-full shrink-0 mt-0.5" />
-          <Icon className="w-5 h-5 text-brand shrink-0 mt-0.5" />
-          <span className="break-words leading-snug">{heading}</span>
-        </h3>
-        <ToggleSwitch
-          on={visible}
-          disabled={savingKey === `${serviceId}:toggle`}
-          onClick={onToggleService}
-          label={visible ? t('admin.table.show') : t('admin.table.hide')}
-        />
-      </div>
+    <div className={`rounded-2xl border overflow-hidden transition-shadow ${
+      expanded
+        ? 'border-brand/25 shadow-lg shadow-brand/5 bg-white dark:bg-dark-800'
+        : 'border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 hover:border-brand/30'
+    }`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full px-4 py-3.5 flex flex-wrap items-center gap-3 text-start bg-gradient-to-r from-brand/[0.04] to-transparent"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand text-white text-xs font-black shrink-0">
+          {index + 1}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h4 className="text-sm font-black text-brand dark:text-white truncate">
+            {lang === 'ar' ? service.badgeAr : service.badgeEn}
+          </h4>
+          <p className="text-[11px] text-gray-500 dark:text-white/50 mt-0.5">
+            {t('admin.homeFleet.visibleRoutes', { count: homepageRoutes.length })}
+            {' · '}
+            {t('admin.homeFleet.homepageBlock')}
+          </p>
+        </div>
+        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${
+          visible ? 'bg-emerald-500/15 text-emerald-700' : 'bg-gray-100 text-gray-500'
+        }`}>
+          {visible ? t('admin.bookingForms.tabShow') : t('admin.bookingForms.tabHide')}
+        </span>
+        {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+      </button>
 
-      <label className="block space-y-1.5 min-w-0">
-        <span className="text-[11px] font-bold text-gray-500">{t('admin.homeFleet.homepageRoute')}</span>
-        <AdminSelect
-          className="admin-select--wrap w-full"
-          value={routeId}
-          onChange={(e) => onChangeRoute(e.target.value)}
-          disabled={savingKey === `${serviceId}:route`}
-        >
-          {routes.map((r) => (
-            <option key={r.id} value={r.id}>{r.label[lang] || r.label.ar}</option>
-          ))}
-        </AdminSelect>
-      </label>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
-        {slotCars.map((car, index) => (
-          <CarSlot
-            key={`${serviceId}-${index}-${routeId}`}
-            service={service}
-            lang={lang}
-            t={t}
-            cars={carChoices}
-            products={products}
-            routeId={routeId}
-            car={car}
-            saving={savingKey === `${serviceId}:${index}` || savingKey === productOnRoute(products, routeId, car)?.id}
-            onSave={(payload) => onSaveSlot(index, payload)}
-            onToggle={onToggleProduct}
-            onDelete={onDeleteProduct}
-          />
-        ))}
-      </div>
-
-      {addOpen ? (
-        <form onSubmit={onSubmitAdd} className="rounded-xl border border-brand/20 bg-brand/[0.04] p-3 space-y-3">
-          <p className="text-xs font-black">{t('admin.homeFleet.insertNew')}</p>
-          <AdminSelect
-            className="admin-select--wrap w-full"
-            value={addForm.routeId}
-            onChange={(e) => setAddForm({ ...addForm, routeId: e.target.value })}
-          >
-            {routes.map((r) => (
-              <option key={r.id} value={r.id}>{r.label[lang] || r.label.ar}</option>
-            ))}
-          </AdminSelect>
-          <AdminSelect
-            className="admin-select--wrap w-full"
-            value={addForm.car}
-            onChange={(e) => {
-              const car = e.target.value;
-              setAddForm({
-                ...addForm,
-                car,
-                nameEn: addForm.nameEn || getCarDisplayName(car, 'en'),
-                nameAr: addForm.nameAr || getCarDisplayName(car, 'ar'),
-                imageUrl: addForm.imageUrl || resolveCarThumb(car, ''),
-              });
-            }}
-          >
-            {carChoices.map((c) => (
-              <option key={c.id} value={c.id}>{c.name(lang)}</option>
-            ))}
-          </AdminSelect>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
-            <label className="block space-y-1 min-w-0">
-              <span className="text-[11px] font-bold text-gray-500">Name (EN)</span>
-              <textarea
-                rows={2}
-                value={addForm.nameEn}
-                onChange={(e) => setAddForm({ ...addForm, nameEn: e.target.value })}
-                placeholder="Name (EN)"
-                className="admin-input w-full min-h-[4.5rem] resize-y text-sm leading-relaxed"
-              />
-            </label>
-            <label className="block space-y-1 min-w-0">
-              <span className="text-[11px] font-bold text-gray-500">الاسم (AR)</span>
-              <textarea
-                rows={2}
-                dir="rtl"
-                value={addForm.nameAr}
-                onChange={(e) => setAddForm({ ...addForm, nameAr: e.target.value })}
-                placeholder="الاسم (AR)"
-                className="admin-input w-full min-h-[4.5rem] resize-y text-sm leading-relaxed"
-              />
-            </label>
-          </div>
-          <input
-            type="number"
-            min="0"
-            required
-            value={addForm.price}
-            onChange={(e) => setAddForm({ ...addForm, price: e.target.value })}
-            placeholder={t('admin.products.price')}
-            className="admin-input"
-          />
-          <MediaUpload
-            value={addForm.imageUrl}
-            onChange={(url) => setAddForm({ ...addForm, imageUrl: url })}
-            folder="products"
-            allowUrl
-          />
-          <div className="flex gap-2">
-            <AdminApplyButton
-              type="submit"
-              size="sm"
-              loading={savingKey === `${serviceId}:add`}
-              label={t('admin.homeFleet.insert')}
-            />
-            <button type="button" onClick={onCloseAdd} className="admin-btn-secondary text-xs px-3 py-1.5">
-              {t('common.cancel')}
+      {expanded && (
+        <div className="border-t border-gray-100 dark:border-white/10">
+          <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-white/10 bg-gray-50/50 dark:bg-white/[0.03]">
+            <button
+              type="button"
+              onClick={onToggleService}
+              disabled={savingKey === `${serviceId}:toggle`}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border disabled:cursor-not-allowed ${
+                visible ? chipOn : chipOff
+              }`}
+            >
+              {visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              {visible ? t('admin.bookingForms.tabShow') : t('admin.bookingForms.tabHide')}
             </button>
           </div>
-        </form>
-      ) : (
-        <button
-          type="button"
-          onClick={() => onOpenAdd(routeId)}
-          className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-brand/20 text-sm font-bold text-brand hover:bg-brand/5"
-        >
-          <Plus className="w-4 h-4" />
-          {t('admin.homeFleet.insertNew')}
-        </button>
-      )}
 
-      {serviceId === 'ziyarat' ? (
-        <div className="rounded-xl border border-brand/10 p-3 space-y-3">
-          <p className="text-xs font-black">{t('admin.homeFleet.ziyaratImages')}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {ZIYARAT_CITIES.map((city) => (
-              <div key={city.key} className="space-y-1">
-                <p className="text-[11px] font-bold text-gray-500">{lang === 'ar' ? city.ar : city.en}</p>
+          <div className="p-4 space-y-4">
+            <div className="rounded-2xl bg-gradient-to-br from-brand via-brand-light to-brand-dark p-4 text-white shadow-inner">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-gold/90">{t('admin.bookingForms.livePreview')}</p>
+              <p className="mt-1.5 text-lg font-black leading-tight">
+                {lang === 'ar' ? service.badgeAr : service.badgeEn}
+              </p>
+              <p className="mt-1 text-xs text-white/75 leading-snug">
+                {homepageRoutes.find((r) => r.id === routeId)?.label?.[lang]
+                  || homepageRoutes.find((r) => r.id === routeId)?.label?.ar
+                  || t('admin.homeFleet.visibleRoutes', { count: homepageRoutes.length })}
+              </p>
+            </div>
+
+            <label className="block space-y-1.5 min-w-0">
+              <span className="text-[11px] font-bold text-gray-500">{t('admin.homeFleet.homepageRoute')}</span>
+              <AdminSelect
+                className="admin-select--wrap w-full"
+                value={routeId}
+                onChange={(e) => onChangeRoute(e.target.value)}
+                disabled={savingKey === `${serviceId}:route`}
+              >
+                {homepageRoutes.map((r) => (
+                  <option key={r.id} value={r.id}>{r.label[lang] || r.label.ar}</option>
+                ))}
+              </AdminSelect>
+            </label>
+
+            <div className={`grid grid-cols-1 ${compact ? '' : 'xl:grid-cols-2'} gap-4 min-w-0`}>
+              {slotCars.map((car, slotIndex) => (
+                <CarSlot
+                  key={`${serviceId}-${slotIndex}-${routeId}`}
+                  service={service}
+                  lang={lang}
+                  t={t}
+                  cars={carChoices}
+                  products={products}
+                  routeId={routeId}
+                  car={car}
+                  saving={savingKey === `${serviceId}:${slotIndex}` || savingKey === productOnRoute(products, routeId, car)?.id}
+                  onSave={(payload) => onSaveSlot(slotIndex, payload)}
+                  onToggle={onToggleProduct}
+                  onDelete={onDeleteProduct}
+                />
+              ))}
+            </div>
+
+            {addOpen ? (
+              <form onSubmit={onSubmitAdd} className="rounded-xl border border-brand/20 bg-brand/[0.04] p-3 space-y-3">
+                <p className="text-xs font-black">{t('admin.homeFleet.insertNew')}</p>
+                <AdminSelect
+                  className="admin-select--wrap w-full"
+                  value={addForm.routeId}
+                  onChange={(e) => setAddForm({ ...addForm, routeId: e.target.value })}
+                >
+                  {homepageRoutes.map((r) => (
+                    <option key={r.id} value={r.id}>{r.label[lang] || r.label.ar}</option>
+                  ))}
+                </AdminSelect>
+                <AdminSelect
+                  className="admin-select--wrap w-full"
+                  value={addForm.car}
+                  onChange={(e) => {
+                    const car = e.target.value;
+                    setAddForm({
+                      ...addForm,
+                      car,
+                      nameEn: addForm.nameEn || getCarDisplayName(car, 'en'),
+                      nameAr: addForm.nameAr || getCarDisplayName(car, 'ar'),
+                      imageUrl: addForm.imageUrl || resolveCarThumb(car, ''),
+                    });
+                  }}
+                >
+                  {carChoices.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name(lang)}</option>
+                  ))}
+                </AdminSelect>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
+                  <label className="block space-y-1 min-w-0">
+                    <span className="text-[11px] font-bold text-gray-500">Name (EN)</span>
+                    <textarea
+                      rows={2}
+                      value={addForm.nameEn}
+                      onChange={(e) => setAddForm({ ...addForm, nameEn: e.target.value })}
+                      placeholder="Name (EN)"
+                      className="admin-input w-full min-h-[4.5rem] resize-y text-sm leading-relaxed"
+                    />
+                  </label>
+                  <label className="block space-y-1 min-w-0">
+                    <span className="text-[11px] font-bold text-gray-500">الاسم (AR)</span>
+                    <textarea
+                      rows={2}
+                      dir="rtl"
+                      value={addForm.nameAr}
+                      onChange={(e) => setAddForm({ ...addForm, nameAr: e.target.value })}
+                      placeholder="الاسم (AR)"
+                      className="admin-input w-full min-h-[4.5rem] resize-y text-sm leading-relaxed"
+                    />
+                  </label>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  value={addForm.price}
+                  onChange={(e) => setAddForm({ ...addForm, price: e.target.value })}
+                  placeholder={t('admin.products.price')}
+                  className="admin-input"
+                />
                 <MediaUpload
-                  value={cityImages?.[city.key] || ''}
-                  onChange={(url) => setCityImages((prev) => ({ ...prev, [city.key]: url }))}
-                  folder="ziyarat"
+                  value={addForm.imageUrl}
+                  onChange={(url) => setAddForm({ ...addForm, imageUrl: url })}
+                  folder="products"
                   allowUrl
                 />
+                <div className="flex gap-2">
+                  <AdminApplyButton
+                    type="submit"
+                    size="sm"
+                    loading={savingKey === `${serviceId}:add`}
+                    label={t('admin.homeFleet.insert')}
+                  />
+                  <button type="button" onClick={onCloseAdd} className="admin-btn-secondary text-xs px-3 py-1.5">
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onOpenAdd(routeId)}
+                className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-brand/20 text-sm font-bold text-brand hover:bg-brand/5"
+              >
+                <Plus className="w-4 h-4" />
+                {t('admin.homeFleet.insertNew')}
+              </button>
+            )}
+
+            <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-white/10">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gold/15 text-gold-dark">
+                    <DataIcon className="w-3.5 h-3.5" />
+                  </span>
+                  <div>
+                    <p className="text-xs font-black text-brand dark:text-white">
+                      {dataType === 'cities'
+                        ? t('admin.bookingForms.citiesData')
+                        : t('admin.bookingForms.routesData')}
+                    </p>
+                    <p className="text-[11px] text-gray-500">
+                      {t('admin.bookingForms.visibleCount', { count: dataCount })}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => (dataType === 'cities' ? onAddCity(locationKey) : onAddRoute(locationKey))}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-bold bg-brand/10 text-brand hover:bg-brand/15"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {dataType === 'cities'
+                    ? t('admin.bookingForms.addCity')
+                    : t('admin.bookingForms.addRoute')}
+                </button>
               </div>
-            ))}
+              <div className="px-3 py-3 space-y-2 max-h-[min(70vh,36rem)] overflow-y-auto pe-1">
+                {dataType === 'cities'
+                  ? cities.map((city) => (
+                    <CityRow
+                      key={`${serviceId}-${city.id}`}
+                      city={city}
+                      formKey={locationKey}
+                      formId={formId}
+                      lang={lang}
+                      t={t}
+                      chipOn={chipOn}
+                      chipOff={chipOff}
+                      expandedId={expandedId}
+                      setExpandedId={setExpandedId}
+                      toggleLocationForm={toggleLocationForm}
+                      toggleSiteForm={toggleSiteForm}
+                      updateCity={updateCity}
+                      removeCity={removeCity}
+                      cities={cities}
+                      products={allProducts}
+                      onProductsChange={onProductsChange}
+                      carCatalog={carCatalog}
+                    />
+                  ))
+                  : routes.map((route) => (
+                    <RouteRow
+                      key={`${serviceId}-${route.id}`}
+                      route={route}
+                      formKey={locationKey}
+                      formId={formId}
+                      lang={lang}
+                      t={t}
+                      chipOn={chipOn}
+                      chipOff={chipOff}
+                      expandedId={expandedId}
+                      setExpandedId={setExpandedId}
+                      toggleLocationForm={toggleLocationForm}
+                      toggleSiteForm={toggleSiteForm}
+                      updateRoute={updateRoute}
+                      removeRoute={removeRoute}
+                      products={allProducts}
+                      onProductsChange={onProductsChange}
+                      carCatalog={carCatalog}
+                    />
+                  ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <Layers className="w-4 h-4 text-brand" />
+              <p className="text-sm font-black text-brand dark:text-white">{t('admin.homeFleet.tableBlock')}</p>
+            </div>
+
+            <AdminFleetPricesTable
+              products={allProducts}
+              onProductsChange={onProductsChange}
+              carCatalog={carCatalog}
+              locations={locations}
+              activeServiceId={serviceId}
+              hideServiceTabs
+            />
           </div>
-          <AdminApplyButton
-            type="button"
-            size="sm"
-            loading={savingKey === 'ziyarat-images'}
-            onClick={onSaveZiyaratImages}
-            label={t('common.save')}
-          />
         </div>
-      ) : null}
-    </GlassCard>
+      )}
+    </div>
   );
 }
 
@@ -738,7 +1293,10 @@ function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSav
   const [carId, setCarId] = useState(car);
   const currentCar = carId || car;
   const live = productOnRoute(products, routeId, currentCar);
+  const isRound = service.layout === 'round_trip';
   const [price, setPrice] = useState(live?.price ?? '');
+  const [pickupPrice, setPickupPrice] = useState(live?.pickupPrice ?? live?.price ?? '');
+  const [dropoffPrice, setDropoffPrice] = useState(live?.dropoffPrice ?? '');
   const [nameEn, setNameEn] = useState(live?.nameEn || getCarDisplayName(currentCar, 'en'));
   const [nameAr, setNameAr] = useState(live?.nameAr || getCarDisplayName(currentCar, 'ar'));
   const [imageUrl, setImageUrl] = useState(live?.imageUrl || resolveCarThumb(currentCar, ''));
@@ -749,14 +1307,19 @@ function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSav
 
   useEffect(() => {
     setPrice(live?.price ?? '');
+    setPickupPrice(live?.pickupPrice ?? live?.price ?? '');
+    setDropoffPrice(live?.dropoffPrice ?? '');
     setNameEn(live?.nameEn || getCarDisplayName(currentCar, 'en'));
     setNameAr(live?.nameAr || getCarDisplayName(currentCar, 'ar'));
     setImageUrl(live?.imageUrl || resolveCarThumb(currentCar, ''));
-  }, [live?.id, live?.price, live?.nameEn, live?.nameAr, live?.imageUrl, currentCar, routeId]);
+  }, [live?.id, live?.price, live?.pickupPrice, live?.dropoffPrice, live?.nameEn, live?.nameAr, live?.imageUrl, currentCar, routeId]);
 
   const exists = Boolean(live);
   const hours = live?.hours || hoursFromRouteId(routeId);
   const isActive = live?.active !== false;
+  const canSave = isRound
+    ? pickupPrice !== '' || dropoffPrice !== ''
+    : price !== '';
 
   return (
     <div className={`rounded-xl border p-3 sm:p-4 space-y-3 min-w-0 overflow-visible ${isActive ? 'border-black/5 dark:border-white/10 bg-white/50 dark:bg-white/5' : 'border-amber-200/60 bg-amber-50/40 dark:bg-amber-500/10'}`}>
@@ -802,17 +1365,44 @@ function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSav
           className="admin-input w-full min-h-[4.5rem] resize-y py-2 text-sm leading-relaxed"
         />
       </label>
-      <label className="block space-y-1 min-w-0">
-        <span className="text-[11px] font-bold text-gray-500">{t('admin.products.price')}</span>
-        <input
-          type="number"
-          min="0"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          placeholder={t('admin.products.price')}
-          className="admin-input w-full py-2.5"
-        />
-      </label>
+      {isRound ? (
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block space-y-1 min-w-0">
+            <span className="text-[11px] font-bold text-gray-500">{t('admin.bookingForms.pickupCol')}</span>
+            <input
+              type="number"
+              min="0"
+              value={pickupPrice}
+              onChange={(e) => setPickupPrice(e.target.value)}
+              placeholder={t('admin.bookingForms.pickupCol')}
+              className="admin-input w-full py-2.5"
+            />
+          </label>
+          <label className="block space-y-1 min-w-0">
+            <span className="text-[11px] font-bold text-gray-500">{t('admin.bookingForms.dropoffCol')}</span>
+            <input
+              type="number"
+              min="0"
+              value={dropoffPrice}
+              onChange={(e) => setDropoffPrice(e.target.value)}
+              placeholder={t('admin.bookingForms.dropoffCol')}
+              className="admin-input w-full py-2.5"
+            />
+          </label>
+        </div>
+      ) : (
+        <label className="block space-y-1 min-w-0">
+          <span className="text-[11px] font-bold text-gray-500">{t('admin.products.price')}</span>
+          <input
+            type="number"
+            min="0"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder={t('admin.products.price')}
+            className="admin-input w-full py-2.5"
+          />
+        </label>
+      )}
       {service.layout === 'hourly' && hours ? (
         <p className="text-xs text-gray-500">
           {hours} {t('booking.hours_plural')}
@@ -839,8 +1429,17 @@ function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSav
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={saving || price === ''}
-          onClick={() => onSave({ car: currentCar, routeId, price, nameEn, nameAr, imageUrl })}
+          disabled={saving || !canSave}
+          onClick={() => onSave({
+            car: currentCar,
+            routeId,
+            price,
+            pickupPrice,
+            dropoffPrice,
+            nameEn,
+            nameAr,
+            imageUrl,
+          })}
           className="flex-1 min-w-[7.5rem] inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-brand text-white text-sm font-bold disabled:opacity-50"
         >
           <Save className="w-4 h-4 shrink-0" />

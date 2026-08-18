@@ -13,12 +13,10 @@ import {
   Phone,
   Mail,
   Info,
-  Clock,
 } from 'lucide-react';
 import {
   TIME_SLOTS,
   BOOKING_PASSENGER_OPTIONS,
-  BOOKING_CAR_TYPES,
   DEFAULT_BOOKING_PASSENGERS,
   DEFAULT_BOOKING_CAR_TYPE,
   DEFAULT_BOOKING_FROM,
@@ -32,7 +30,6 @@ import {
   resolveRouteId,
   resolveHourlyRouteId,
   getHourlyDestinationsForCity,
-  getHourlyDurationsForCity,
 } from '../../utils/bookingHelpers';
 import { useToast } from '../../context/ToastContext';
 import { useSiteContent } from '../../context/SiteContentContext';
@@ -41,8 +38,14 @@ import { useBookingLocations } from '../../hooks/useBookingLocations';
 import { consumePendingTripType, getFormHeading } from '../../data/bookingTripTypes';
 import BookingTripDetails from './BookingTripDetails';
 import CustomSelect from '../ui/CustomSelect';
-import { getCarTypesForForm } from '../../utils/carCatalogHelpers';
+import { getCarTypesForTripSection } from '../../utils/carCatalogHelpers';
 import { prefetchRoute } from '../../utils/prefetchRoutes';
+import {
+  getBookingPreviewVehicle,
+  resolveBookingSearchRouteId,
+  formatBookingPriceDisplay,
+  bookingHourSelectOptions,
+} from '../../utils/bookingSearchNav';
 
 const today = () => new Date().toISOString().split('T')[0];
 const tomorrow = () => {
@@ -57,7 +60,7 @@ export default function BookingForm({ overlapHero = true }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { carCatalog, fleetRoutes, bookingTripTypes } = useSiteContent();
+  const { carCatalog, fleetRoutes, fleet, bookingTripTypes, fleetShowcase } = useSiteContent();
   const {
     betweenCities: betweenCityOptions,
     hourlyCities: hourlyCityOptions,
@@ -65,7 +68,7 @@ export default function BookingForm({ overlapHero = true }) {
     dropoffOptions,
     findRoute,
     cityName: resolveCityName,
-  } = useBookingLocations();
+  } = useBookingLocations('booking');
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
   const { tripTypes: TRIP_TYPES, tripType, setTripType, formFields } = usePublicTripTypes('booking', lang);
   const formHeading = getFormHeading(bookingTripTypes, lang);
@@ -104,14 +107,31 @@ export default function BookingForm({ overlapHero = true }) {
   const [suggestedPrice, setSuggestedPrice] = useState('');
   const [tripDetails, setTripDetails] = useState('');
 
+  const routeCategory = useMemo(() => {
+    if (tripType !== 'round_trip' && tripType !== 'one_way') return undefined;
+    const category = findRoute(rtRoute)?.category;
+    return category === 'airport' || category === 'train' ? category : undefined;
+  }, [tripType, findRoute, rtRoute]);
+
   const carTypes = useMemo(
-    () => getCarTypesForForm(carCatalog, 'booking'),
-    [carCatalog],
+    () => getCarTypesForTripSection({
+      carCatalog,
+      formId: 'booking',
+      tripType,
+      fleetShowcase,
+      hourlyDest,
+      routeCategory,
+    }),
+    [carCatalog, tripType, fleetShowcase, hourlyDest, routeCategory],
   );
 
+  const hourSelectOptions = useMemo(
+    () => bookingHourSelectOptions(from, fleetRoutes, t),
+    [from, fleetRoutes, t],
+  );
   const hourOptions = useMemo(
-    () => getHourlyDurationsForCity(from, fleetRoutes),
-    [from, fleetRoutes],
+    () => hourSelectOptions.map((o) => o.value),
+    [hourSelectOptions],
   );
 
   const swapLocations = () => {
@@ -164,6 +184,7 @@ export default function BookingForm({ overlapHero = true }) {
         passengers: String(passengers),
         cars: '1',
         car_type: carType,
+        form: 'booking',
       });
       if (tripType === 'round_trip') {
         params.set('return_date', returnDate);
@@ -189,11 +210,13 @@ export default function BookingForm({ overlapHero = true }) {
       passengers: String(passengers),
       cars: '1',
       car_type: carType,
+      form: 'booking',
     });
 
     if (tripType === 'hourly') {
       params.set('hours', hours);
       params.set('hourly_dest', hourlyDest);
+      params.set('fleet_service', hourlyDest === 'internal' ? 'withinCity' : 'hourly');
     }
 
     navigate(`/booking/search?${params.toString()}`);
@@ -288,6 +311,27 @@ export default function BookingForm({ overlapHero = true }) {
 
   const cityName = (id) => resolveCityName(id, lang);
 
+  const previewRouteId = useMemo(
+    () => resolveBookingSearchRouteId({
+      tripType,
+      from,
+      to,
+      rtRoute,
+      hours,
+      hourlyDest,
+    }),
+    [tripType, from, to, rtRoute, hours, hourlyDest],
+  );
+
+  const previewVehicle = useMemo(
+    () => getBookingPreviewVehicle(fleet, previewRouteId, carType, {
+      formId: 'booking',
+      tripType,
+      hourlyDest,
+    }),
+    [fleet, previewRouteId, carType, tripType, hourlyDest],
+  );
+
   const tripDetailRows = useMemo(() => {
     if (isCustom) return [];
     const stationLabel = (isRound || isOneWay)
@@ -303,6 +347,12 @@ export default function BookingForm({ overlapHero = true }) {
         : isHourly
           ? ''
           : cityName(to);
+                const priceValue = formatBookingPriceDisplay(
+      previewVehicle,
+      t('booking.sar'),
+      t('booking.contactForPrice'),
+      tripType,
+    ) || t('booking.contactForPrice');
 
     return [
       {
@@ -344,10 +394,17 @@ export default function BookingForm({ overlapHero = true }) {
         label: fieldLabel('car', 'booking.cars'),
         value: carType ? getCarDisplayName(carType, lang) : '',
       },
+      {
+        key: 'price',
+        show: showField('price'),
+        label: fieldLabel('price', 'instantPrice.estimatedPrice'),
+        value: priceValue,
+        ltr: true,
+      },
     ];
   }, [
     isCustom, isRound, isOneWay, isHourly, from, to, rtRoute, date, time, hours,
-    passengers, carType, formFields, lang, t,
+    passengers, carType, formFields, lang, t, previewVehicle, rtPickupOptions, rtDropoffOptions,
   ]);
 
   return (
@@ -593,10 +650,7 @@ export default function BookingForm({ overlapHero = true }) {
                         value={hours}
                         onChange={setHours}
                         aria-label={fieldLabel('hours', 'booking.hours')}
-                        options={hourOptions.map((h) => ({
-                          value: String(h),
-                          label: `${h} ${h === 1 ? t('booking.hour') : t('booking.hours_plural')}`,
-                        }))}
+                        options={hourSelectOptions}
                       />
                     </div>
                   )}

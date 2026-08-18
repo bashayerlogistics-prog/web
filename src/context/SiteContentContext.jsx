@@ -78,7 +78,7 @@ import {
 import { FLEET_ROUTES, ROUND_TRIP_FLEET_ROUTES, SERVICES, BLOG_POSTS, ROUTE_CARDS, FAQ_ITEMS, SOCIAL_LINKS, DEFAULT_GALLERY_ITEMS, setLiveCarCatalog, getDefaultCarCatalog, getLiveCarCatalog, getCarImage } from '../data/staticData';
 
 import { HOURLY_FLEET_ROUTES, setExtraHourlyCities } from '../data/hourlyPricing';
-import { DEFAULT_BOOKING_LOCATIONS } from '../data/bookingLocations';
+import { DEFAULT_BOOKING_LOCATIONS, syntheticFleetRoutesFromLocations } from '../data/bookingLocations';
 
 import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
 
@@ -294,7 +294,9 @@ export function SiteContentProvider({ children }) {
         getActiveContentCollection('travelReservations'),
       ]);
 
-      const nextFleetRoutes = buildFleetRoutesFromProducts(activeProducts);
+      const nextBookingLocations = buildBookingLocationsFromFirestore(bookingLocationsData);
+      const extraRoutes = syntheticFleetRoutesFromLocations(nextBookingLocations);
+      const nextFleetRoutes = buildFleetRoutesFromProducts(activeProducts, extraRoutes);
       const nextCars = Array.isArray(cars) && cars.length ? cars : getDefaultCarCatalog();
       const nextServices = buildServicesFromFirestore(activeServices);
       const nextRoutes = buildRouteCardsFromFirestore(activeRoutes);
@@ -316,8 +318,6 @@ export function SiteContentProvider({ children }) {
       const nextGalleryHero = buildGalleryHeroFromFirestore(galleryHeroData);
 
       const nextBookingTripTypes = buildBookingTripTypesFromFirestore(bookingTripTypesData);
-
-      const nextBookingLocations = buildBookingLocationsFromFirestore(bookingLocationsData);
 
       const nextFooterCredit = buildFooterCreditFromFirestore(footerCreditData);
 
@@ -438,7 +438,8 @@ export function SiteContentProvider({ children }) {
 
         (products) => {
 
-          const nextFleetRoutes = buildFleetRoutesFromProducts(products);
+          const extraRoutes = syntheticFleetRoutesFromLocations(cacheRef.current.bookingLocations);
+          const nextFleetRoutes = buildFleetRoutesFromProducts(products, extraRoutes);
 
           // Live SuperAdmin truth: empty active packages stay empty (no static revive)
           const routes = Array.isArray(products)

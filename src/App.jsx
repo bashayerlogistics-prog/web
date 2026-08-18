@@ -37,6 +37,7 @@ const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
 const AdminPaymentSettings = lazy(() => import('./pages/admin/AdminPaymentSettings'));
 const AdminBackup = lazy(() => import('./pages/admin/AdminBackup'));
 const AdminHomeFleet = lazy(() => import('./pages/admin/AdminHomeFleet'));
+const AdminZiyarat = lazy(() => import('./pages/admin/AdminZiyarat'));
 const AdminCars = lazy(() => import('./pages/admin/AdminCars'));
 const AdminServices = lazy(() => import('./pages/admin/AdminServices'));
 const AdminBlogs = lazy(() => import('./pages/admin/AdminBlogs'));
@@ -116,12 +117,12 @@ export default function App() {
                   <Route path="users" element={<LazyRoute><AdminUsers /></LazyRoute>} />
                   <Route path="booking-forms" element={<LazyRoute><AdminBookingForms /></LazyRoute>} />
                   <Route path="fleet" element={<LazyRoute><AdminHomeFleet /></LazyRoute>} />
+                  <Route path="ziyarat" element={<LazyRoute><AdminZiyarat /></LazyRoute>} />
                   <Route path="city-to-city" element={<Navigate to="/admin/fleet" replace />} />
                   <Route path="airport" element={<Navigate to="/admin/fleet" replace />} />
                   <Route path="train" element={<Navigate to="/admin/fleet" replace />} />
                   <Route path="within-city" element={<Navigate to="/admin/fleet" replace />} />
                   <Route path="hourly" element={<Navigate to="/admin/fleet" replace />} />
-                  <Route path="ziyarat" element={<Navigate to="/admin/fleet" replace />} />
                   <Route path="categories" element={<LazyRoute><AdminCars /></LazyRoute>} />
                   <Route path="categories/:categoryId" element={<LazyRoute><AdminCars /></LazyRoute>} />
                   <Route path="cars" element={<LazyRoute><AdminCars /></LazyRoute>} />

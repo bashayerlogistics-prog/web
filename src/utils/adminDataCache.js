@@ -1,4 +1,5 @@
-const PREFIX = 'bashayer-admin-data-v2-';
+const PREFIX = 'bashayer-admin-data-v3-';
+const LEGACY_PREFIXES = ['bashayer-admin-data-v2-', 'bashayer-admin-data-v1-'];
 export const ADMIN_DATA_CACHE_TTL_MS = 15 * 60_000;
 
 function storage() {
@@ -48,11 +49,15 @@ export function clearAdminDataCache(key) {
     if (!store) return;
     if (key) {
       store.removeItem(PREFIX + key);
+      LEGACY_PREFIXES.forEach((prefix) => store.removeItem(prefix + key));
       return;
     }
     for (let i = store.length - 1; i >= 0; i -= 1) {
       const k = store.key(i);
-      if (k?.startsWith(PREFIX)) store.removeItem(k);
+      if (!k) continue;
+      if (k.startsWith(PREFIX) || LEGACY_PREFIXES.some((prefix) => k.startsWith(prefix))) {
+        store.removeItem(k);
+      }
     }
   } catch {
     // ignore

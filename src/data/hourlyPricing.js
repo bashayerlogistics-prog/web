@@ -280,8 +280,13 @@ export function getHourlyDurationsForCity(baseCityId, fleetRoutes = null) {
     }
   }
 
-  const matched = HOURLY_DURATIONS.filter((h) => hours.has(h));
-  return matched.length ? matched : [...HOURLY_DURATIONS];
+  const matched = HOURLY_DURATIONS.filter((h) => hours.has(h) || hours.has(String(h)));
+  if (matched.length) return matched;
+  const live = [...hours]
+    .map((h) => Number(h))
+    .filter((h) => Number.isFinite(h) && h > 0)
+    .sort((a, b) => a - b);
+  return live.length ? live : [...HOURLY_DURATIONS];
 }
 
 export function getHourlyDestinationsForCity(baseCityId, hours, lang = 'ar', fleetRoutes = null) {

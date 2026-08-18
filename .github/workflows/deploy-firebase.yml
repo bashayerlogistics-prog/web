@@ -41,5 +41,5 @@ jobs:
             exit 1
           fi
           # Cloud Functions need Blaze billing — this project uses Hostinger/Resend instead.
-          # Deploy only Firestore rules + indexes on free Spark plan.
-          npx firebase-tools@latest deploy --only firestore:rules,firestore:indexes --non-interactive --token "$FIREBASE_TOKEN"
+          # Deploy rules only on free Spark plan (no functions).
+          npx firebase-tools@latest deploy --only firestore:rules,firestore:indexes,storage --non-interactive --token "$FIREBASE_TOKEN"

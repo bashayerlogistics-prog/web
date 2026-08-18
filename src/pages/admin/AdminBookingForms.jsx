@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Calculator, Zap, Landmark, Heading, Layers, Save, Info, CheckCircle2 } from 'lucide-react';
+import { Calculator, Zap, Landmark, Heading, Layers, Save, Info, CheckCircle2, FileSpreadsheet } from 'lucide-react';
 import {
   getBookingLocationsSettings,
   updateBookingLocationsSettings,
@@ -10,6 +10,10 @@ import {
   updateInstantPriceSettings,
   getReligiousToursSettings,
   updateReligiousToursSettings,
+  getProductsByTripType,
+  getAllCars,
+  createCarWithPackages,
+  upsertCar,
 } from '../../firebase/admin';
 import {
   cloneBookingLocations,
@@ -43,6 +47,16 @@ import {
   inputClass,
   isFormOn,
 } from '../../components/admin/AdminBookingFormEditor';
+import AdminPriceSheetPanel from '../../components/admin/AdminPriceSheetPanel';
+import AdminFleetCarsBar from '../../components/admin/AdminFleetCarsBar';
+import {
+  DEFAULT_CAR_FORMS,
+  carCatalogLabel,
+  liveFleetCarCount,
+  mergeCarCatalog,
+  MIN_FLEET_CARS,
+  MAX_FLEET_CARS,
+} from '../../utils/carCatalogHelpers';
 
 const FORM_META = [
   {
@@ -194,18 +208,26 @@ export default function AdminBookingForms() {
   const [openSectionId, setOpenSectionId] = useState(tripInitial.options[0]?.id || null);
   const [confirm, setConfirm] = useState(null);
   const [successOpen, setSuccessOpen] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [carCatalog, setCarCatalog] = useState(() => mergeCarCatalog([]));
+  const [togglingCarId, setTogglingCarId] = useState('');
+  const [addingCar, setAddingCar] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setSyncing(true);
       try {
-        const [locData, tripData, instantData, religiousData] = await withTimeout(
+        const [locData, tripData, instantData, religiousData, oneWay, roundTrip, hourly, dbCars] = await withTimeout(
           Promise.all([
             getBookingLocationsSettings(),
             getBookingTripTypesSettings(),
             getInstantPriceSettings(),
             getReligiousToursSettings(),
+            getProductsByTripType('one_way'),
+            getProductsByTripType('round_trip'),
+            getProductsByTripType('hourly'),
+            getAllCars(),
           ]),
           8000,
           'booking-forms',
@@ -220,6 +242,8 @@ export default function AdminBookingForms() {
         setBookingCopy({ ...DEFAULT_FORM_HEADINGS.booking, ...builtTrip.formHeadings?.booking });
         setInstantCopy(copyFromInstant(instantData));
         setReligiousCopy(copyFromReligious(religiousData));
+        setProducts([...(oneWay || []), ...(roundTrip || []), ...(hourly || [])]);
+        setCarCatalog(mergeCarCatalog(dbCars));
         setOpenSectionId(builtTrip.options[0]?.id || null);
       } catch {
         if (!cancelled) toast.error(t('common.error'));
@@ -280,13 +304,41 @@ export default function AdminBookingForms() {
   const removeCity = (id) => setConfirm({ type: 'city', id });
   const removeRoute = (id) => setConfirm({ type: 'route', id });
 
+  const toggleSiteForm = (kind, id, siteFormId) => {
+    const flip = (item) => {
+      const on = item.siteForms?.[siteFormId] !== false;
+      return {
+        ...item,
+        siteForms: {
+          booking: true,
+          instantPrice: true,
+          religiousTours: true,
+          ...item.siteForms,
+          [siteFormId]: !on,
+        },
+      };
+    };
+    if (kind === 'city') {
+      setCities((list) => list.map((city) => (city.id === id ? flip(city) : city)));
+    } else {
+      setRoutes((list) => list.map((route) => (route.id === id ? flip(route) : route)));
+    }
+  };
+
   const onAddCity = (formKey) => {
     const next = createBookingCity({
       en: t('admin.bookingForms.newCityEn'),
       ar: t('admin.bookingForms.newCityAr'),
-      forms: Object.fromEntries(
-        ['betweenCities', 'hourly', 'ziyarat'].map((key) => [key, key === formKey]),
-      ),
+      forms: {
+        betweenCities: formKey === 'betweenCities',
+        hourly: formKey === 'hourly',
+        ziyarat: formKey === 'ziyarat',
+      },
+      siteForms: {
+        booking: focusForm === 'booking',
+        instantPrice: focusForm === 'instantPrice',
+        religiousTours: focusForm === 'religiousTours',
+      },
     }, cities);
     if (!next) return;
     setCities((list) => [...list, next]);
@@ -299,12 +351,90 @@ export default function AdminBookingForms() {
       pickupLabelEn: t('admin.bookingForms.newRouteEn'),
       pickupLabelAr: t('admin.bookingForms.newRouteAr'),
       category: formKey === 'oneWay' ? 'airport' : 'train',
-      forms: { oneWay: formKey === 'oneWay', roundTrip: formKey === 'roundTrip' },
+      forms: {
+        oneWay: formKey === 'oneWay',
+        roundTrip: formKey === 'roundTrip',
+      },
+      siteForms: {
+        booking: focusForm === 'booking',
+        instantPrice: focusForm === 'instantPrice',
+        religiousTours: focusForm === 'religiousTours',
+      },
     }, routes);
     if (!next) return;
     setRoutes((list) => [...list, next]);
     setExpandedId(`route:${next.id}:${formKey}`);
     toast.success(t('admin.bookingForms.routeAdded'));
+  };
+
+  const reloadPriceProducts = async () => {
+    const [oneWay, roundTrip, hourly] = await Promise.all([
+      getProductsByTripType('one_way'),
+      getProductsByTripType('round_trip'),
+      getProductsByTripType('hourly'),
+    ]);
+    setProducts([...(oneWay || []), ...(roundTrip || []), ...(hourly || [])]);
+  };
+
+  const onToggleCar = async (car, nextActive) => {
+    const liveCount = liveFleetCarCount(carCatalog);
+    if (!nextActive && liveCount <= MIN_FLEET_CARS) {
+      toast.warning(t('admin.bookingForms.carsBarMinReached', { min: MIN_FLEET_CARS }));
+      return;
+    }
+    if (nextActive && liveCount >= MAX_FLEET_CARS) {
+      toast.warning(t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }));
+      return;
+    }
+    setTogglingCarId(car.id);
+    try {
+      await upsertCar(car.id, {
+        nameEn: car.nameEn,
+        nameAr: car.nameAr,
+        modelEn: car.modelEn || car.nameEn,
+        modelAr: car.modelAr || car.nameAr,
+        imageUrl: car.imageUrl,
+        passengers: Number(car.passengers) || 4,
+        vip: Boolean(car.vip),
+        sortOrder: Number(car.sortOrder) || 0,
+        forms: car.forms || DEFAULT_CAR_FORMS,
+        active: nextActive,
+      });
+      setCarCatalog((list) => list.map((item) => (
+        item.id === car.id ? { ...item, active: nextActive } : item
+      )));
+      await publishSite();
+      const name = carCatalogLabel(car, lang);
+      toast.success(nextActive
+        ? t('admin.bookingForms.carsBarShownToast', { name })
+        : t('admin.bookingForms.carsBarHiddenToast', { name }));
+    } catch {
+      toast.error(t('common.error'));
+    } finally {
+      setTogglingCarId('');
+    }
+  };
+
+  const onAddCar = async (payload) => {
+    if (liveFleetCarCount(carCatalog) >= MAX_FLEET_CARS) {
+      toast.warning(t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }));
+      return false;
+    }
+    setAddingCar(true);
+    try {
+      const result = await createCarWithPackages(payload);
+      const dbCars = await getAllCars();
+      setCarCatalog(mergeCarCatalog(dbCars));
+      await reloadPriceProducts();
+      await publishSite();
+      toast.success(t('admin.cars.addNewSuccess', { id: result.id, count: result.packagesCreated }));
+      return true;
+    } catch (err) {
+      toast.error(err?.message || t('admin.cars.addNewFailed'));
+      return false;
+    } finally {
+      setAddingCar(false);
+    }
   };
 
   const onAddSection = () => {
@@ -470,16 +600,15 @@ export default function AdminBookingForms() {
         ) : null}
       </AdminPageHeader>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {[
           { n: '1', icon: Heading, text: t('admin.bookingForms.stepHeading') },
           { n: '2', icon: Layers, text: t('admin.bookingForms.stepSections') },
           { n: '3', icon: Save, text: t('admin.bookingForms.stepSave') },
         ].map((step) => (
-          <div key={step.n} className="flex items-center gap-3 rounded-2xl border border-brand/10 bg-white dark:bg-white/5 px-3.5 py-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand text-white text-xs font-black">{step.n}</span>
-            <step.icon className="w-4 h-4 text-gold shrink-0" />
-            <p className="text-xs font-bold text-brand dark:text-white leading-snug">{step.text}</p>
+          <div key={step.n} className="flex items-center gap-2 rounded-2xl border border-brand/10 bg-white dark:bg-white/5 px-2.5 py-2.5 sm:px-3.5 sm:py-3">
+            <span className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-xl bg-brand text-white text-[10px] sm:text-xs font-black shrink-0">{step.n}</span>
+            <p className="text-[10px] sm:text-xs font-bold text-brand dark:text-white leading-snug">{step.text}</p>
           </div>
         ))}
       </div>
@@ -488,6 +617,29 @@ export default function AdminBookingForms() {
         <Info className="w-4 h-4 text-sky-600 mt-0.5 shrink-0" />
         <p className="text-sm text-sky-900 dark:text-sky-100 leading-relaxed">{t('admin.bookingForms.howDesc')}</p>
       </div>
+
+      <details className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 dark:bg-emerald-950/15 dark:border-emerald-800 group">
+        <summary className="cursor-pointer list-none px-4 py-3 flex items-center gap-2 text-sm font-black text-brand dark:text-white [&::-webkit-details-marker]:hidden">
+          <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+          {t('admin.bookingForms.excelTitle')}
+          <span className="ms-auto text-[11px] font-bold text-gray-500 group-open:hidden">
+            {t('admin.bookingForms.excelToggle')}
+          </span>
+        </summary>
+        <div className="px-2 pb-3">
+          <AdminPriceSheetPanel />
+        </div>
+      </details>
+
+      <AdminFleetCarsBar
+        cars={carCatalog}
+        lang={lang}
+        t={t}
+        togglingId={togglingCarId}
+        adding={addingCar}
+        onToggle={onToggleCar}
+        onAdd={onAddCar}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {FORM_META.map(({ id, number, Icon, accent }) => {
@@ -585,6 +737,7 @@ export default function AdminBookingForms() {
                   toggleTripOnForm={toggleTripOnForm}
                   updateOption={updateOption}
                   toggleLocationForm={toggleLocationForm}
+                  toggleSiteForm={toggleSiteForm}
                   updateCity={updateCity}
                   updateRoute={updateRoute}
                   removeCity={removeCity}
@@ -596,6 +749,9 @@ export default function AdminBookingForms() {
                   expanded={openSectionId === opt.id}
                   onToggle={() => setOpenSectionId((id) => (id === opt.id ? null : opt.id))}
                   index={index}
+                  products={products}
+                  onProductsChange={setProducts}
+                  carCatalog={carCatalog}
                 />
               );
             })}

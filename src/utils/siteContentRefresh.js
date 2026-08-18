@@ -31,11 +31,18 @@ import {
   DEFAULT_GALLERY_HERO,
   DEFAULT_FOOTER_CREDIT,
 } from '../firebase/content';
+import { clearAdminDataCache } from './adminDataCache';
 
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v26';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v29';
+export const APP_CACHE_BUILD = '20260819a';
+const APP_CACHE_BUILD_KEY = 'bashayer-app-build';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
+  'bashayer-site-content-v28',
+  'bashayer-site-content-v27',
+  'bashayer-site-content-v26',
+  'bashayer-site-content-v25',
   'bashayer-site-content-v24',
   'bashayer-site-content-v23',
   'bashayer-site-content-v22',
@@ -134,6 +141,27 @@ export function defaultSiteContentSnapshot() {
 export function clearSiteContentCacheKeys() {
   try {
     LEGACY_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // ignore
+  }
+}
+
+/** Drop public + SuperAdmin browser caches so the next load is live Firestore. */
+export function clearAllAppCaches() {
+  clearSiteContentCacheKeys();
+  clearAdminDataCache();
+}
+
+/**
+ * One-shot per deploy: visitors and SuperAdmin drop old localStorage so new
+ * Hostinger JS + Firestore data paint immediately (hashed assets stay cached).
+ */
+export function purgeStaleBrowserCaches() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (localStorage.getItem(APP_CACHE_BUILD_KEY) === APP_CACHE_BUILD) return;
+    clearAllAppCaches();
+    localStorage.setItem(APP_CACHE_BUILD_KEY, APP_CACHE_BUILD);
   } catch {
     // ignore
   }

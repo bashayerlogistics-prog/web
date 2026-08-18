@@ -2,17 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Car, MapPin, Calendar, Clock, Users, ArrowLeft, MessageCircle } from 'lucide-react';
-import { CITIES, CONTACT, getCarDisplayName } from '../data/staticData';
+import { CITIES, CONTACT } from '../data/staticData';
 import { resolveRoundTripRouteId, resolveHourlyRouteId } from '../utils/bookingHelpers';
 import { filterVehiclesByCarType } from '../utils/fleetHelpers';
 import { useSiteContent } from '../context/SiteContentContext';
 import VehicleImage from '../components/ui/VehicleImage';
+import { shortVehicleName, vehiclePriceLabel, numericPriceForTrip, preferredFleetService, filterVehiclesForForm } from '../utils/bookingSearchNav';
 
 export default function BookingSearch() {
   const { t, i18n } = useTranslation();
   const { fleet } = useSiteContent();
   const [searchParams] = useSearchParams();
-  const lang = i18n.language;
+  const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
 
   const tripType = searchParams.get('trip_type') || 'one_way';
   const isRoundTrip = tripType === 'round_trip';
@@ -22,6 +23,12 @@ export default function BookingSearch() {
   const to = searchParams.get('to') || '';
   const hours = searchParams.get('hours') || '4';
   const hourlyDest = searchParams.get('hourly_dest') || 'internal';
+  const fleetService = searchParams.get('fleet_service')
+    || preferredFleetService({
+      formId: searchParams.get('form') || '',
+      tripType,
+      hourlyDest,
+    });
   if (isRoundTrip) {
     if (!String(routeId).startsWith('rt-') && from) {
       routeId = resolveRoundTripRouteId(from, to || from);
@@ -38,11 +45,17 @@ export default function BookingSearch() {
   const returnTime = searchParams.get('return_time') || '';
   const vehicleKeyFromUrl = searchParams.get('vehicle_key') || '';
   const carTypeFromUrl = searchParams.get('car_type') || '';
+  const formId = searchParams.get('form') || '';
 
   const vehicles = useMemo(() => {
-    let list = fleet.getVehiclesForRoute(routeId);
+    let list = fleet?.getVehiclesForRoute?.(routeId) || [];
+    if (fleetService) {
+      const matched = list.filter((v) => v.fleetServiceId === fleetService);
+      if (matched.length) list = matched;
+    }
+    list = filterVehiclesForForm(list, formId);
     if (vehicleKeyFromUrl) {
-      const exact = list.filter((v) => v.id === vehicleKeyFromUrl);
+      const exact = list.filter((v) => v?.id === vehicleKeyFromUrl);
       if (exact.length) return exact;
     }
     if (carTypeFromUrl) {
@@ -50,20 +63,20 @@ export default function BookingSearch() {
       if (filtered.length) return filtered;
     }
     return list;
-  }, [fleet, routeId, carTypeFromUrl, vehicleKeyFromUrl]);
+  }, [fleet, routeId, carTypeFromUrl, vehicleKeyFromUrl, fleetService, formId]);
 
   const preferredVehicleKey = useMemo(() => {
     if (vehicleKeyFromUrl) return vehicleKeyFromUrl;
     if (!carTypeFromUrl) return '';
     return (
-      vehicles.find((v) => String(v.id).startsWith(`${carTypeFromUrl}-`))?.id ||
-      vehicles.find((v) => String(v.id).split('-')[0] === carTypeFromUrl)?.id ||
+      vehicles.find((v) => String(v?.id).startsWith(`${carTypeFromUrl}-`))?.id ||
+      vehicles.find((v) => String(v?.id).split('-')[0] === carTypeFromUrl)?.id ||
       ''
     );
   }, [vehicleKeyFromUrl, carTypeFromUrl, vehicles]);
 
   const [selectedVehicleKey, setSelectedVehicleKey] = useState(
-    () => preferredVehicleKey || vehicles[0]?.id,
+    () => preferredVehicleKey || vehicles[0]?.id || '',
   );
 
   useEffect(() => {
@@ -75,30 +88,32 @@ export default function BookingSearch() {
   }, [preferredVehicleKey, vehicles]);
 
   const selectedVehicle =
-    vehicles.find((v) => v.id === selectedVehicleKey) ||
-    vehicles.find((v) => v.id === vehicleKeyFromUrl) ||
-    vehicles[0];
+    vehicles.find((v) => v?.id === selectedVehicleKey) ||
+    vehicles.find((v) => v?.id === vehicleKeyFromUrl) ||
+    vehicles[0] ||
+    null;
 
   const cityName = (id) => {
     const c = CITIES.find((x) => x.id === id);
-    return c ? c[lang] : id;
+    return c ? (c[lang] || c.ar || c.en || id) : id;
   };
 
   const routeLabel = useMemo(() => {
     if (isRoundTrip || String(routeId).startsWith('rt-')) {
-      return fleet.getRouteLabel(routeId, lang);
+      return fleet?.getRouteLabel?.(routeId, lang) || routeId;
     }
     if (isHourly && from) {
-      return fleet.getRouteLabel(routeId, lang);
+      return fleet?.getRouteLabel?.(routeId, lang) || routeId;
     }
     if (from && to) return `${cityName(from)} → ${cityName(to)}`;
-    return fleet.getRouteLabel(routeId, lang);
+    return fleet?.getRouteLabel?.(routeId, lang) || routeId;
   }, [from, to, routeId, lang, fleet, isHourly, isRoundTrip]);
 
-  const basePrice = selectedVehicle?.price || 190;
+  const basePrice = numericPriceForTrip(selectedVehicle, tripType);
   const total = basePrice;
+  const priceText = vehiclePriceLabel(selectedVehicle, t, tripType) || t('booking.contactForPrice');
 
-  const vehicleNumericId = vehicles.findIndex((v) => v.id === selectedVehicle?.id) + 1 || 1;
+  const vehicleNumericId = Math.max(vehicles.findIndex((v) => v?.id === selectedVehicle?.id) + 1, 1);
 
   const checkoutParams = new URLSearchParams({
     trip_type: tripType,
@@ -130,13 +145,8 @@ export default function BookingSearch() {
     hourly: t('booking.hourly'),
   }[tripType] || tripType;
 
-  const shortName = (vehicle) => {
-    const key = vehicle.id.split('-')[0];
-    return getCarDisplayName(key, lang) || vehicle.name[lang];
-  };
-
   const whatsappMsg = encodeURIComponent(
-    `${routeLabel}\n${shortName(selectedVehicle)}\n${date} ${time}\n${passengers} ${t('fleet.passengers')}\n${basePrice} ${t('booking.sar')}`
+    `${routeLabel}\n${shortVehicleName(selectedVehicle, lang) || '—'}\n${date} ${time}\n${passengers} ${t('fleet.passengers')}\n${priceText}`,
   );
 
   return (
@@ -151,7 +161,6 @@ export default function BookingSearch() {
         <p className="text-gray-500 text-sm mb-6 sm:mb-8">{routeLabel}</p>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-          {/* Summary sidebar */}
           <div className="lg:col-span-1 order-2 lg:order-1">
             <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-sm lg:sticky lg:top-28">
               <h2 className="text-base sm:text-lg font-black text-brand mb-4">{t('checkout.summary')}</h2>
@@ -179,16 +188,16 @@ export default function BookingSearch() {
                 {selectedVehicle && (
                   <div className="flex items-center gap-2 text-brand font-semibold pt-1 border-t border-gray-100">
                     <Car className="w-4 h-4 text-gold shrink-0" />
-                    <span>{shortName(selectedVehicle)}</span>
+                    <span>{shortVehicleName(selectedVehicle, lang)}</span>
                   </div>
                 )}
               </div>
 
               <div className="mt-6 pt-4 border-t border-gray-100 space-y-2 text-sm">
-                {!selectedVehicle?.hidePrice ? (
+                {!selectedVehicle?.hidePrice && basePrice > 0 ? (
                   <div className="flex justify-between font-black text-lg text-brand">
                     <span>{t('checkout.total')}</span>
-                    <span>{total} {t('booking.sar')}</span>
+                    <span>{priceText}</span>
                   </div>
                 ) : (
                   <p className="text-brand font-bold text-center py-2">{t('booking.contactForPrice')}</p>
@@ -214,7 +223,6 @@ export default function BookingSearch() {
             </div>
           </div>
 
-          {/* Vehicle grid */}
           <div className="lg:col-span-2 order-1 lg:order-2">
             <h2 className="text-base sm:text-lg font-black text-brand mb-4">{t('booking.chooseVehicle')}</h2>
             {vehicles.length === 0 ? (
@@ -223,13 +231,15 @@ export default function BookingSearch() {
               </div>
             ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-              {vehicles.map((vehicle) => {
-                const selected = selectedVehicleKey === vehicle.id;
+              {vehicles.map((vehicle, index) => {
+                const selected = selectedVehicleKey === vehicle?.id;
+                const badge = vehicle?.badge?.[lang] || vehicle?.badge?.ar || vehicle?.badge?.en || '';
+                const cardPrice = vehiclePriceLabel(vehicle, t);
                 return (
                   <button
-                    key={vehicle.id}
+                    key={vehicle?.id || `vehicle-${index}`}
                     type="button"
-                    onClick={() => setSelectedVehicleKey(vehicle.id)}
+                    onClick={() => vehicle?.id && setSelectedVehicleKey(vehicle.id)}
                     className={`text-start rounded-2xl sm:rounded-3xl overflow-hidden border-2 transition-all bg-white ${
                       selected
                         ? 'border-brand shadow-lg shadow-brand/15 ring-2 ring-brand/10'
@@ -238,8 +248,8 @@ export default function BookingSearch() {
                   >
                     <div className="relative">
                       <VehicleImage
-                        src={vehicle.image}
-                        alt={shortName(vehicle)}
+                        src={vehicle?.image}
+                        alt={shortVehicleName(vehicle, lang)}
                         className="aspect-[4/3] bg-[#EDEFF2]/40"
                       />
                       {selected && (
@@ -250,22 +260,15 @@ export default function BookingSearch() {
                     </div>
                     <div className="p-4">
                       <h3 className="font-black text-brand text-sm sm:text-base leading-snug line-clamp-2">
-                        {shortName(vehicle)}
+                        {shortVehicleName(vehicle, lang)}
                       </h3>
                       <p className="text-gray-400 text-[10px] sm:text-xs mt-1 line-clamp-1">
-                        {vehicle.passengers} {t('fleet.passengers')} · {vehicle.badge[lang]}
+                        {vehicle?.passengers || 4} {t('fleet.passengers')}{badge ? ` · ${badge}` : ''}
                       </p>
                       <div className="flex items-baseline gap-2 mt-2">
-                        {vehicle.hidePrice ? (
-                          <span className="text-brand font-bold text-sm">{t('booking.contactForPrice')}</span>
-                        ) : (
-                          <>
-                            <span className="text-brand font-black text-lg">{vehicle.price} {t('booking.sar')}</span>
-                            {vehicle.originalPrice && vehicle.originalPrice !== vehicle.price && (
-                              <span className="text-gray-400 text-xs line-through">{vehicle.originalPrice} {t('booking.sar')}</span>
-                            )}
-                          </>
-                        )}
+                        <span className="text-brand font-black text-lg">
+                          {cardPrice || t('booking.contactForPrice')}
+                        </span>
                       </div>
                     </div>
                   </button>

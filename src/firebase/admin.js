@@ -18,11 +18,13 @@ import {
   getCountFromServer,
 } from 'firebase/firestore';
 import { db } from './db';
+import { waitForAdminAuth } from './adminIdentity';
 import { getHomeSections as fetchHomeSections, getHomeFleetShowcase as fetchHomeFleetShowcase } from './content';
 import { mergeHomeSections } from '../data/homeSections';
 import { normalizeFleetShowcase } from '../data/adminFleetServices';
 import { getDefaultProducts, getDefaultServices, getDefaultBlogs } from '../data/contentSeeds';
 import { getDefaultCarCatalog, isPlaceholderSocialUrl, BOOKING_CAR_TYPES } from '../data/staticData';
+import { mergeCarCatalog, liveFleetCarCount, MAX_FLEET_CARS } from '../utils/carCatalogHelpers';
 
 export async function upsertUserDocument(userId, data) {
   await setDoc(doc(db, 'users', userId), { ...data, updatedAt: serverTimestamp() }, { merge: true });
@@ -283,6 +285,31 @@ export function invalidateProductsCache(tripType) {
   productsByTripTypeCache.clear();
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
+}
+
+/** Firestore rejects undefined / NaN — strip them before every write. */
+export function sanitizeFirestoreData(data) {
+  if (Array.isArray(data)) {
+    return data.map((item) => (isPlainObject(item) || Array.isArray(item)
+      ? sanitizeFirestoreData(item)
+      : item)).filter((item) => item !== undefined);
+  }
+  if (!isPlainObject(data)) return data;
+  const out = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) continue;
+    if (typeof value === 'number' && !Number.isFinite(value)) continue;
+    if (Array.isArray(value) || isPlainObject(value)) {
+      out[key] = sanitizeFirestoreData(value);
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
 // Products / Packages
 export async function getAllProducts(maxItems = 300) {
   const size = Math.max(1, Math.min(500, Number(maxItems) || 300));
@@ -333,27 +360,68 @@ export async function getProductsByTripType(tripType) {
 }
 
 export async function createProduct(data) {
-  const ref = await addDoc(collection(db, 'packages'), {
+  await waitForAdminAuth();
+  const payload = sanitizeFirestoreData({
     ...data,
     active: data.active ?? true,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  const ref = await addDoc(collection(db, 'packages'), payload);
   invalidateProductsCache();
   await logActivity('product_created', { productId: ref.id });
   return ref.id;
 }
 
 export async function updateProduct(productId, data) {
-  await updateDoc(doc(db, 'packages', productId), { ...data, updatedAt: serverTimestamp() });
+  await waitForAdminAuth();
+  const id = String(productId || '').trim();
+  if (!id) throw new Error('missing-product-id');
+  const payload = sanitizeFirestoreData({ ...data, updatedAt: serverTimestamp() });
+  await updateDoc(doc(db, 'packages', id), payload);
   invalidateProductsCache();
-  await logActivity('product_updated', { productId });
+  await logActivity('product_updated', { productId: id });
 }
 
 export async function deleteProduct(productId) {
+  await waitForAdminAuth();
   await deleteDoc(doc(db, 'packages', productId));
   invalidateProductsCache();
   await logActivity('product_deleted', { productId });
+}
+
+/** Apply Excel bulk price rows. Skips empty prices. Publishes via caller. */
+export async function applyBulkFleetPrices({ updates = [], creates = [] }) {
+  await waitForAdminAuth();
+  let updated = 0;
+  let created = 0;
+  const queue = [
+    ...updates.map((item) => async () => {
+      await updateDoc(doc(db, 'packages', item.id), sanitizeFirestoreData({
+        ...item.patch,
+        updatedAt: serverTimestamp(),
+      }));
+      updated += 1;
+    }),
+    ...creates.map((payload) => async () => {
+      await addDoc(collection(db, 'packages'), sanitizeFirestoreData({
+        ...payload,
+        active: payload.active ?? true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }));
+      created += 1;
+    }),
+  ];
+
+  const concurrency = 8;
+  for (let i = 0; i < queue.length; i += concurrency) {
+    await Promise.all(queue.slice(i, i + concurrency).map((fn) => fn()));
+  }
+
+  invalidateProductsCache();
+  await logActivity('prices_bulk_updated', { updated, created });
+  return { updated, created };
 }
 
 // Banners
@@ -1118,12 +1186,13 @@ export async function getAdminHomeFleetShowcase() {
 }
 
 export async function updateHomeFleetShowcase(patch) {
+  await waitForAdminAuth();
   const current = await fetchHomeFleetShowcase();
   const next = normalizeFleetShowcase({ ...current, ...patch });
-  await setDoc(doc(db, 'siteSettings', 'homepage'), {
+  await setDoc(doc(db, 'siteSettings', 'homepage'), sanitizeFirestoreData({
     fleetShowcase: next,
     updatedAt: serverTimestamp(),
-  }, { merge: true });
+  }), { merge: true });
   await logActivity('home_fleet_showcase_updated', {});
   return next;
 }
@@ -1326,6 +1395,11 @@ export async function createCarWithPackages(data) {
   const existing = await getDoc(doc(db, 'vehicles', id));
   if (existing.exists()) {
     throw new Error('A car with this ID already exists.');
+  }
+
+  const catalog = mergeCarCatalog(await getAllCars());
+  if (liveFleetCarCount(catalog) >= MAX_FLEET_CARS) {
+    throw new Error(`Maximum ${MAX_FLEET_CARS} cars.`);
   }
 
   const nameEn = String(data.nameEn || '').trim();

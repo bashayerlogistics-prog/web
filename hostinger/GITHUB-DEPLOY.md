@@ -46,6 +46,7 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **New re
 | `VITE_EMAIL_WEBHOOK_SECRET` |
 | `VITE_RESEND_FROM_EMAIL` |
 | `VITE_MOYASAR_PUBLISHABLE_KEY` |
+| `VITE_MOYASAR_VERIFY_URL` |
 
 **Email PHP on Hostinger**
 
@@ -53,7 +54,14 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **New re
 |--------|--------|
 | `RESEND_API_KEY` | from [resend.com](https://resend.com) (`re_...`) |
 
-`VITE_EMAIL_WEBHOOK_SECRET` is also injected into `resend-send.php` on deploy.
+`VITE_EMAIL_WEBHOOK_SECRET` is also injected into `resend-send.php` and `moyasar-verify.php` on deploy.
+
+**Moyasar auto-Paid (Hostinger PHP, no Blaze)**
+
+| Secret | Notes |
+|--------|--------|
+| `MOYASAR_SECRET_KEY` | Moyasar dashboard `sk_test_` / `sk_live_` — never use `VITE_` |
+| `FIREBASE_SERVICE_ACCOUNT` | Firebase Console → Project settings → Service accounts → Generate new private key (whole JSON) |
 
 **Firebase (rules + functions)**
 

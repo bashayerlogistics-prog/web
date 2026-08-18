@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Image } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import AdminFleetServicePage from '../../components/admin/AdminFleetServicePage';
+import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import AdminApplyButton from '../../components/admin/AdminApplyButton';
 import MediaUpload from '../../components/admin/MediaUpload';
 import GlassCard from '../../components/ui/GlassCard';
@@ -20,9 +20,9 @@ const CITIES = [
   { key: 'riyadh', en: 'Riyadh', ar: 'الرياض' },
 ];
 
-/** Ziyarat — Makkah & Madinah within-city hourly packages (real fleet prices). */
+/** Homepage Religious Tours city photos — not fleet car prices. */
 export default function AdminZiyarat() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const publishSite = usePublishSiteContent();
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
@@ -49,30 +49,34 @@ export default function AdminZiyarat() {
     try {
       await updateReligiousToursSettings({ cityImages });
       await publishSite();
-      toast.success(lang === 'ar' ? 'تم حفظ صور جولات المزارات' : 'Ziyarat images saved');
-    } catch (error) {
-      toast.error(error?.message || (lang === 'ar' ? 'تعذر حفظ الصور' : 'Could not save images'));
+      toast.success(t('admin.homeFleet.ziyaratImagesSaved'));
+    } catch {
+      toast.error(t('common.error'));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      <AdminPageHeader
+        title={t('admin.homeFleet.ziyaratImages')}
+        purposeKey="ziyaratImages"
+        subtitle={t('admin.homeFleet.ziyaratImagesHint')}
+      />
+
       <form onSubmit={handleSaveImages}>
-        <GlassCard>
+        <GlassCard hover={false} className="border border-gold/25 overflow-hidden">
           <div className="flex items-start gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center shrink-0">
-              <Image className="w-5 h-5 text-primary-600" />
-            </div>
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-gold to-amber-500 text-white shrink-0">
+              <Image className="w-5 h-5" />
+            </span>
             <div>
-              <h2 className="text-xl font-black text-brand dark:text-white">
-                {lang === 'ar' ? 'صور مدن جولات المزارات' : 'Ziyarat city images'}
+              <h2 className="text-lg font-black text-brand dark:text-white">
+                {t('admin.homeFleet.ziyaratImages')}
               </h2>
               <p className="mt-1 text-sm text-gray-500 dark:text-white/60">
-                {lang === 'ar'
-                  ? 'غيّر صور مكة والمدينة وجدة والرياض الظاهرة في الصفحة الرئيسية.'
-                  : 'Change the Makkah, Madinah, Jeddah and Riyadh images shown on the home page.'}
+                {t('admin.homeFleet.ziyaratImagesPageHint')}
               </p>
             </div>
           </div>
@@ -81,7 +85,7 @@ export default function AdminZiyarat() {
             {CITIES.map((city) => (
               <MediaUpload
                 key={city.key}
-                label={city[lang]}
+                label={lang === 'ar' ? city.ar : city.en}
                 value={cityImages[city.key] || ''}
                 onChange={(url) =>
                   setCityImages((current) => ({ ...current, [city.key]: url }))
@@ -95,21 +99,17 @@ export default function AdminZiyarat() {
           </div>
 
           <p className="mt-4 text-xs text-gray-500 dark:text-white/60">
-            {lang === 'ar'
-              ? 'المقاس المقترح 1280×720 بصيغة WebP، وحجم أقل من 200 KB.'
-              : 'Recommended: 1280×720 WebP, under 200 KB.'}
+            {t('admin.homeFleet.ziyaratImagesSize')}
           </p>
 
           <AdminApplyButton
             type="submit"
             loading={saving}
-            label={lang === 'ar' ? 'حفظ ونشر الصور' : 'Save and publish images'}
+            label={t('admin.homeFleet.ziyaratImagesSave')}
             className="mt-5 shadow-none"
           />
         </GlassCard>
       </form>
-
-      <AdminFleetServicePage serviceId="ziyarat" />
     </div>
   );
 }

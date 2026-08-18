@@ -66,20 +66,29 @@ export default function CustomerAuthGate({ children }) {
   const { pathname } = useLocation();
   const required = pathNeedsCustomerAuth(pathname) || hasClerkSessionHint();
   const [loadClerk, setLoadClerk] = useState(required);
+  // Must include `required` on this render — useState does not reset on route
+  // change. Homepage guests then tapping Cart/Login used to render Clerk hooks
+  // without ClerkProvider and the page went blank.
+  const shouldLoadClerk = loadClerk || required;
 
   useEffect(() => {
-    if (loadClerk) return;
-    if (pathNeedsCustomerAuth(pathname) || hasClerkSessionHint()) {
-      setLoadClerk(true);
-    }
-  }, [pathname, loadClerk]);
+    if (required) setLoadClerk(true);
+  }, [required]);
 
-  if (!loadClerk) {
+  if (!shouldLoadClerk) {
     return <GuestAuthProvider>{children}</GuestAuthProvider>;
   }
 
   return (
-    <Suspense fallback={<LoadingAuthProvider>{children}</LoadingAuthProvider>}>
+    <Suspense
+      fallback={
+        <LoadingAuthProvider>
+          <div className="min-h-[50svh] grid place-items-center" role="status" aria-label="Loading">
+            <div className="h-8 w-8 rounded-full border-2 border-brand/25 border-t-gold animate-spin" />
+          </div>
+        </LoadingAuthProvider>
+      }
+    >
       <ClerkAuthTree>{children}</ClerkAuthTree>
     </Suspense>
   );

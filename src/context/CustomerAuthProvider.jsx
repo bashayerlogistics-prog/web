@@ -11,13 +11,8 @@ import { auth } from '../firebase/auth';
 import { exchangeClerkSession } from '../firebase/clerkBridge';
 import { upsertUserDocument } from '../firebase/bookings';
 import { hasAdminSessionFlag } from '../constants/adminSession';
+import { isFirebaseAdminUser } from '../firebase/adminIdentity';
 import { AuthContext } from './AuthContext';
-
-const ADMIN_EMAIL = (import.meta.env.VITE_SUPERADMIN_EMAIL || 'sulemanmr551@gmail.com').trim().toLowerCase();
-
-function isAdminAccount(firebaseUser) {
-  return firebaseUser?.email?.toLowerCase() === ADMIN_EMAIL;
-}
 
 export default function CustomerAuthProvider({ children }) {
   const { isLoaded: clerkLoaded, isSignedIn, getToken } = useClerkAuth();
@@ -32,12 +27,12 @@ export default function CustomerAuthProvider({ children }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setAuthReady(true);
-      if (isAdminAccount(firebaseUser)) {
+      if (isFirebaseAdminUser(firebaseUser)) {
         setUser(null);
       } else {
         setUser(firebaseUser);
       }
-      if (firebaseUser && !isAdminAccount(firebaseUser)) {
+      if (firebaseUser && !isFirebaseAdminUser(firebaseUser)) {
         setLoading(false);
       } else if (clerkLoaded && !isSignedIn) {
         setLoading(false);
@@ -58,6 +53,7 @@ export default function CustomerAuthProvider({ children }) {
 
   const syncFirebaseSession = useCallback(async (profile = {}) => {
     if (!isSignedIn) return null;
+    if (isFirebaseAdminUser(auth.currentUser)) return null;
     const clerkToken = await getToken();
     if (!clerkToken) {
       const err = new Error('Missing Clerk token');
@@ -74,7 +70,7 @@ export default function CustomerAuthProvider({ children }) {
 
     await setPersistence(auth, browserLocalPersistence);
     const credential = await signInWithCustomToken(auth, token);
-    if (isAdminAccount(credential.user)) {
+    if (isFirebaseAdminUser(credential.user)) {
       await signOut(auth);
       await clerk.signOut();
       const err = new Error('Admin account cannot use customer login');
@@ -87,9 +83,14 @@ export default function CustomerAuthProvider({ children }) {
   useEffect(() => {
     if (!clerkLoaded || !authReady) return undefined;
 
+    if (isFirebaseAdminUser(auth.currentUser)) {
+      setLoading(false);
+      return undefined;
+    }
+
     if (!isSignedIn) {
       lastClerkIdRef.current = '';
-      if (isAdminAccount(auth.currentUser) || hasAdminSessionFlag()) {
+      if (isFirebaseAdminUser(auth.currentUser) || hasAdminSessionFlag()) {
         setLoading(false);
         return undefined;
       }
@@ -183,7 +184,7 @@ export default function CustomerAuthProvider({ children }) {
   const logout = async () => {
     lastClerkIdRef.current = '';
     const tasks = [clerk.signOut()];
-    if (!isAdminAccount(auth.currentUser) && !hasAdminSessionFlag()) {
+    if (!isFirebaseAdminUser(auth.currentUser) && !hasAdminSessionFlag()) {
       tasks.unshift(signOut(auth));
     }
     await Promise.allSettled(tasks);

@@ -25,6 +25,7 @@ const navGroups = [
       { to: '/admin', icon: LayoutDashboard, labelKey: 'admin.nav.overview', end: true },
       { to: '/admin/booking-forms', icon: ListOrdered, labelKey: 'admin.nav.bookingForms' },
       { to: '/admin/fleet', icon: Grid3x3, labelKey: 'admin.nav.homeFleet' },
+      { to: '/admin/ziyarat', icon: Image, labelKey: 'admin.nav.ziyaratImages' },
       { to: '/admin/orders', icon: ShoppingBag, labelKey: 'admin.nav.orders', badgeKey: 'pending' },
       { to: '/admin/users', icon: Users, labelKey: 'admin.nav.users' },
       { to: '/admin/price-requests', icon: FileText, labelKey: 'admin.nav.yourPrice', badgeKey: 'priceRequests' },

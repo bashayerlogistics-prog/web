@@ -1,9 +1,11 @@
 import { AIRPORT_TRANSFER_ROUTES } from './airportPricing';
-import { HOURLY_BASE_CITIES, HOURLY_DURATIONS } from './hourlyPricing';
+import { HOURLY_BASE_CITIES, HOURLY_DESTINATIONS_BY_CITY, HOURLY_DURATIONS } from './hourlyPricing';
 import { ROUND_TRIP_TRAIN_ONLY } from './staticData';
+import { buildBetweenCitiesRouteId } from './betweenCitiesPricing';
 
 export const CITY_FORM_KEYS = ['betweenCities', 'hourly', 'ziyarat'];
 export const ROUTE_FORM_KEYS = ['oneWay', 'roundTrip'];
+export const SITE_FORM_KEYS = ['booking', 'instantPrice', 'religiousTours'];
 
 const HOURLY_IDS = new Set(HOURLY_BASE_CITIES.map((c) => String(c.id)));
 const ZIYARAT_IDS = new Set(['1', '5', '2', '4']);
@@ -116,6 +118,11 @@ export function sanitizeBookingCity(raw, index = 0) {
     active: raw.active !== false,
     builtin: Boolean(raw.builtin),
     forms: sanitizeForms(raw.forms, CITY_FORM_KEYS, cityFormsForId(id)),
+    siteForms: sanitizeForms(raw.siteForms, SITE_FORM_KEYS, {
+      booking: true,
+      instantPrice: true,
+      religiousTours: true,
+    }),
   };
 }
 
@@ -144,6 +151,11 @@ export function sanitizePickupRoute(raw, index = 0) {
     active: raw.active !== false,
     builtin: Boolean(raw.builtin),
     forms: sanitizeForms(raw.forms, ROUTE_FORM_KEYS, { oneWay: true, roundTrip: true }),
+    siteForms: sanitizeForms(raw.siteForms, SITE_FORM_KEYS, {
+      booking: true,
+      instantPrice: true,
+      religiousTours: true,
+    }),
   };
 }
 
@@ -170,17 +182,26 @@ export function buildBookingLocationsFromFirestore(data) {
 export function cloneBookingLocations(data) {
   const built = buildBookingLocationsFromFirestore(data);
   return {
-    cities: built.cities.map((city) => ({ ...city, forms: { ...city.forms } })),
-    routes: built.routes.map((route) => ({ ...route, forms: { ...route.forms } })),
+    cities: built.cities.map((city) => ({
+      ...city,
+      forms: { ...city.forms },
+      siteForms: { ...city.siteForms },
+    })),
+    routes: built.routes.map((route) => ({
+      ...route,
+      forms: { ...route.forms },
+      siteForms: { ...route.siteForms },
+    })),
   };
 }
 
-export function getActiveCities(locations, formKey) {
+export function getActiveCities(locations, formKey, siteFormId) {
   const cities = locations?.cities || DEFAULT_BOOKING_LOCATIONS.cities;
   return cities.filter((city) => {
     if (city.active === false) return false;
-    if (!formKey) return true;
-    return city.forms?.[formKey] !== false;
+    if (formKey && city.forms?.[formKey] === false) return false;
+    if (siteFormId && city.siteForms?.[siteFormId] === false) return false;
+    return true;
   });
 }
 
@@ -201,17 +222,18 @@ function prefixForCategory(category, lang) {
   return lang === 'ar' ? 'محطة · ' : 'Train · ';
 }
 
-export function getActivePickupRoutes(locations, formKey) {
+export function getActivePickupRoutes(locations, formKey, siteFormId) {
   const routes = locations?.routes || DEFAULT_BOOKING_LOCATIONS.routes;
   return routes.filter((route) => {
     if (route.active === false) return false;
-    if (!formKey) return true;
-    return route.forms?.[formKey] !== false;
+    if (formKey && route.forms?.[formKey] === false) return false;
+    if (siteFormId && route.siteForms?.[siteFormId] === false) return false;
+    return true;
   });
 }
 
-export function getPickupSelectOptions(locations, lang = 'en', formKey = 'oneWay') {
-  return getActivePickupRoutes(locations, formKey).map((route) => ({
+export function getPickupSelectOptions(locations, lang = 'en', formKey = 'oneWay', siteFormId) {
+  return getActivePickupRoutes(locations, formKey, siteFormId).map((route) => ({
     id: route.id,
     category: route.category,
     label: `${prefixForCategory(route.category, lang)}${
@@ -220,8 +242,8 @@ export function getPickupSelectOptions(locations, lang = 'en', formKey = 'oneWay
   }));
 }
 
-export function getDropoffSelectOptions(locations, lang = 'en', formKey = 'roundTrip') {
-  return getActivePickupRoutes(locations, formKey).map((route) => ({
+export function getDropoffSelectOptions(locations, lang = 'en', formKey = 'roundTrip', siteFormId) {
+  return getActivePickupRoutes(locations, formKey, siteFormId).map((route) => ({
     id: route.id,
     category: route.category,
     label: `${prefixForCategory(route.category, lang)}${
@@ -267,8 +289,14 @@ export function createBookingCity(partial = {}, cities = []) {
     forms: {
       betweenCities: true,
       hourly: true,
-      ziyarat: false,
+      ziyarat: true,
       ...partial.forms,
+    },
+    siteForms: {
+      booking: true,
+      instantPrice: true,
+      religiousTours: true,
+      ...partial.siteForms,
     },
   }, cities.length);
 }
@@ -301,6 +329,12 @@ export function createPickupRoute(partial = {}, routes = []) {
       oneWay: true,
       roundTrip: true,
       ...partial.forms,
+    },
+    siteForms: {
+      booking: true,
+      instantPrice: true,
+      religiousTours: true,
+      ...partial.siteForms,
     },
   }, routes.length);
 }
@@ -341,20 +375,129 @@ export function extraFleetRoutesForService(serviceId, locations) {
     const cities = getActiveCities(loc, formKey);
     const known = new Set(HOURLY_BASE_CITIES.map((city) => city.key));
     const extra = [];
+    const push = (route) => {
+      if (!route?.id || extra.some((row) => row.id === route.id)) return;
+      extra.push(route);
+    };
     cities.forEach((city) => {
-      if (known.has(city.key)) return;
+      if (!city.key) return;
+      if (serviceId !== 'hourly' && known.has(city.key) && serviceId === 'withinCity') return;
       HOURLY_DURATIONS.forEach((hours) => {
-        extra.push({
-          id: `hr-${hours}-${city.key}-internal`,
-          label: {
-            en: `${hours}h · ${city.en} · within city`,
-            ar: `${hours} ساعة · ${city.ar} · داخل المدينة`,
-          },
-        });
+        if (serviceId === 'withinCity' || serviceId === 'ziyarat') {
+          if (serviceId === 'withinCity' && known.has(city.key)) return;
+          push({
+            id: `hr-${hours}-${city.key}-internal`,
+            label: {
+              en: `${hours}h · ${city.en} · within city`,
+              ar: `${hours} ساعة · ${city.ar} · داخل المدينة`,
+            },
+          });
+        }
+        if (serviceId === 'hourly' && !known.has(city.key)) {
+          const dests = (HOURLY_DESTINATIONS_BY_CITY[city.key] || [])
+            .filter((dest) => dest !== 'internal');
+          const fallbackDests = cities.map((item) => item.key).filter((key) => key && key !== city.key);
+          (dests.length ? dests : fallbackDests).forEach((dest) => {
+            push({
+              id: `hr-${hours}-${city.key}-${dest}`,
+              label: {
+                en: `${hours}h · ${city.en} → ${dest}`,
+                ar: `${hours} ساعة · ${city.ar} → ${dest}`,
+              },
+            });
+          });
+        }
       });
     });
     return extra;
   }
 
   return [];
+}
+
+/**
+ * Extra fleet route shells for SuperAdmin-added cities / pickups.
+ * Lets live packages (ow-6-2, hr-4-abha-internal, …) show on all 3 forms.
+ */
+export function syntheticFleetRoutesFromLocations(locations) {
+  const loc = buildBookingLocationsFromFirestore(locations);
+  const routes = [];
+  const seen = new Set();
+  const push = (route) => {
+    if (!route?.id || seen.has(route.id)) return;
+    seen.add(route.id);
+    routes.push(route);
+  };
+
+  const between = getActiveCities(loc, 'betweenCities');
+  between.forEach((from) => {
+    between.forEach((to) => {
+      if (from.id === to.id) return;
+      push({
+        id: buildBetweenCitiesRouteId(from.id, to.id),
+        title: {
+          en: `From ${from.en} to ${to.en}`,
+          ar: `من ${from.ar} إلى ${to.ar}`,
+        },
+        cityFrom: String(from.id),
+        cityTo: String(to.id),
+        tripType: 'one_way',
+        vehicles: [],
+      });
+    });
+  });
+
+  getActivePickupRoutes(loc).forEach((route) => {
+    push({
+      id: route.id,
+      title: { en: route.titleEn || route.pickupLabelEn, ar: route.titleAr || route.pickupLabelAr },
+      pickupLabel: { en: route.pickupLabelEn, ar: route.pickupLabelAr },
+      dropoffLabel: { en: route.dropoffLabelEn, ar: route.dropoffLabelAr },
+      cityFrom: route.cityFrom,
+      cityTo: route.cityTo,
+      category: route.category,
+      tripType: 'round_trip',
+      vehicles: [],
+    });
+  });
+
+  const hourlySeen = new Map();
+  ['hourly', 'ziyarat'].forEach((formKey) => {
+    getActiveCities(loc, formKey).forEach((city) => {
+      const cityKey = String(city.key || '').trim();
+      if (!cityKey) return;
+      const destKeys = new Set([
+        'internal',
+        ...(HOURLY_DESTINATIONS_BY_CITY[cityKey] || []),
+        ...getActiveCities(loc, 'hourly').map((item) => String(item.key || '').trim()).filter(Boolean),
+      ]);
+      destKeys.delete(cityKey);
+      destKeys.forEach((destinationKey) => {
+        HOURLY_DURATIONS.forEach((hours) => {
+          const id = `hr-${hours}-${cityKey}-${destinationKey}`;
+          if (hourlySeen.has(id)) return;
+          hourlySeen.set(id, true);
+          push({
+            id,
+            title: {
+              en: destinationKey === 'internal'
+                ? `${hours}-Hour · ${city.en} · within city`
+                : `${hours}-Hour · ${city.en} → ${destinationKey}`,
+              ar: destinationKey === 'internal'
+                ? `${hours} ساعة · ${city.ar} · داخل المدينة`
+                : `${hours} ساعة · ${city.ar} → ${destinationKey}`,
+            },
+            baseCityId: String(city.id),
+            baseCityKey: cityKey,
+            destinationKey,
+            hours,
+            tripType: 'hourly',
+            vehicles: [],
+          });
+        });
+      });
+    });
+  });
+
+  return routes;
 }

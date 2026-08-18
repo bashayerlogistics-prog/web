@@ -10,41 +10,17 @@ import {
 } from '../../firebase/admin';
 import MediaUpload from '../../components/admin/MediaUpload';
 import AddCarModal from '../../components/admin/AddCarModal';
-import { CAR_FORM_IDS, DEFAULT_CAR_FORMS } from '../../utils/carCatalogHelpers';
+import { CAR_FORM_IDS, DEFAULT_CAR_FORMS, mergeCarCatalog, liveFleetCarCount, MAX_FLEET_CARS } from '../../utils/carCatalogHelpers';
 import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
 import { useAdminDataLoader } from '../../hooks/useAdminDataLoader';
 import { useToast } from '../../context/ToastContext';
 import {
   BOOKING_CAR_TYPES,
-  getDefaultCarCatalog,
   getCarDisplayName,
 } from '../../data/staticData';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import GlassCard from '../../components/ui/GlassCard';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-
-function mergeCars(dbCars = []) {
-  const byId = new Map();
-  getDefaultCarCatalog().forEach((fallback) => {
-    const live = (dbCars || []).find((c) => c.id === fallback.id);
-    byId.set(fallback.id, live ? {
-      ...fallback,
-      ...live,
-      id: fallback.id,
-      forms: live.forms || fallback.forms || DEFAULT_CAR_FORMS,
-    } : { ...fallback });
-  });
-  (dbCars || []).forEach((live) => {
-    if (!byId.has(live.id)) {
-      byId.set(live.id, {
-        ...live,
-        forms: live.forms || DEFAULT_CAR_FORMS,
-        active: live.active !== false,
-      });
-    }
-  });
-  return [...byId.values()].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-}
 
 function useAdminFleetBase() {
   const location = useLocation();
@@ -56,7 +32,7 @@ function useAdminFleetBase() {
 }
 
 /** Index: car cards → separate admin pages */
-function AdminCarsIndex({ cars, seeding, onSeed, onAdd, lang, t, basePath, isCategories }) {
+function AdminCarsIndex({ cars, seeding, onSeed, onAdd, lang, t, basePath, isCategories, atMax }) {
   return (
     <div className="space-y-4 sm:space-y-6">
       <AdminPageHeader
@@ -70,7 +46,9 @@ function AdminCarsIndex({ cars, seeding, onSeed, onAdd, lang, t, basePath, isCat
         <button
           type="button"
           onClick={onAdd}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-brand text-white font-bold text-sm touch-target"
+          disabled={atMax}
+          title={atMax ? t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }) : undefined}
+          className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-brand text-white font-bold text-sm touch-target disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4" />
           <span className="hidden sm:inline">{t('admin.cars.addNew')}</span>
@@ -361,7 +339,8 @@ export default function AdminCars() {
   const [adding, setAdding] = useState(false);
 
   const { data: dbCars, loading, refresh } = useAdminDataLoader(getAllCars);
-  const cars = useMemo(() => mergeCars(dbCars), [dbCars]);
+  const cars = useMemo(() => mergeCarCatalog(dbCars), [dbCars]);
+  const atMaxCars = liveFleetCarCount(cars) >= MAX_FLEET_CARS;
 
   const selectedCar = activeKey ? cars.find((c) => c.id === activeKey) : null;
 
@@ -452,6 +431,10 @@ export default function AdminCars() {
   };
 
   const handleAddCar = async (payload) => {
+    if (liveFleetCarCount(cars) >= MAX_FLEET_CARS) {
+      toast.warning(t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }));
+      return;
+    }
     setAdding(true);
     try {
       const result = await createCarWithPackages(payload);
@@ -523,7 +506,14 @@ export default function AdminCars() {
         cars={cars}
         seeding={seeding}
         onSeed={handleSeed}
-        onAdd={() => setAddOpen(true)}
+        onAdd={() => {
+          if (atMaxCars) {
+            toast.warning(t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }));
+            return;
+          }
+          setAddOpen(true);
+        }}
+        atMax={atMaxCars}
         lang={lang}
         t={t}
         basePath={basePath}

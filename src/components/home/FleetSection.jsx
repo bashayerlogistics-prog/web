@@ -6,7 +6,7 @@ import {
   getVehicleSlug,
   getShortVehicleName,
 } from '../../data/staticData';
-import { buildHomeFleetSections } from '../../data/adminFleetServices';
+import { buildHomeFleetSections, HOME_FLEET_PAIRS } from '../../data/adminFleetServices';
 import { useSiteContent } from '../../context/SiteContentContext';
 import { useCart } from '../../context/CartContext';
 import AddToCartModal from '../ui/AddToCartModal';
@@ -211,13 +211,6 @@ export default function FleetSection() {
 
   if (!homeSections.length) return null;
 
-  const train = byId.train;
-  const airport = byId.airport;
-  const cityToCity = byId.cityToCity;
-  const hourly = byId.hourly;
-  const ziyarat = byId.ziyarat;
-  const withinCity = byId.withinCity;
-
   return (
     <section id="fleet" className="section-padding overflow-x-clip relative">
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -241,29 +234,17 @@ export default function FleetSection() {
           data-aos="fade-up"
           data-aos-delay="80"
         >
-          {/* Row 1: Train 2 + Airport 2 */}
-          {(train || airport) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5">
-              {train && <ServiceFleetGroup group={train} lang={lang} t={t} cols={2} />}
-              {airport && <ServiceFleetGroup group={airport} lang={lang} t={t} cols={2} />}
-            </div>
-          )}
-
-          {/* Row 2: City to City 2 + Hourly 2 */}
-          {(cityToCity || hourly) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5">
-              {cityToCity && <ServiceFleetGroup group={cityToCity} lang={lang} t={t} cols={2} />}
-              {hourly && <ServiceFleetGroup group={hourly} lang={lang} t={t} cols={2} />}
-            </div>
-          )}
-
-          {/* Row 3: Ziyarat 2 + Within City 2 */}
-          {(ziyarat || withinCity) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5">
-              {ziyarat && <ServiceFleetGroup group={ziyarat} lang={lang} t={t} cols={2} />}
-              {withinCity && <ServiceFleetGroup group={withinCity} lang={lang} t={t} cols={2} />}
-            </div>
-          )}
+          {HOME_FLEET_PAIRS.map(([leftId, rightId]) => {
+            const left = byId[leftId];
+            const right = byId[rightId];
+            if (!left && !right) return null;
+            return (
+              <div key={`${leftId}-${rightId}`} className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5">
+                {left ? <ServiceFleetGroup group={left} lang={lang} t={t} cols={2} /> : <div className="hidden md:block" />}
+                {right ? <ServiceFleetGroup group={right} lang={lang} t={t} cols={2} /> : <div className="hidden md:block" />}
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

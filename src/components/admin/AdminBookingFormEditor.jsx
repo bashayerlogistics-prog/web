@@ -18,12 +18,19 @@ import {
 import {
   CITY_FORM_KEYS,
   ROUTE_FORM_KEYS,
+  SITE_FORM_KEYS,
 } from '../../data/bookingLocations';
 import {
   BOOKING_FORM_FIELD_KEYS,
   BOOKING_TRIP_TYPE_MODES,
 } from '../../data/bookingTripTypes';
 import { useArabicAlertSound } from '../../hooks/useArabicAlertSound';
+import {
+  LocationPriceFields,
+  compactPricePreview,
+  priceGroupsForCity,
+  priceGroupsForRoute,
+} from './AdminSectionPriceGrid';
 
 export const inputClass = 'admin-input w-full text-sm py-2.5 px-3 rounded-xl';
 
@@ -42,10 +49,10 @@ export function optionLabel(opt, lang) {
 
 /** Fields shown under each trip section on the public form */
 export const FIELDS_BY_TRIP_MODE = {
-  between_cities: ['from', 'to', 'pickupTime', 'passengers', 'car'],
-  one_way: ['from', 'pickupTime', 'passengers', 'car'],
-  round_trip: ['from', 'to', 'pickupTime', 'passengers', 'car'],
-  hourly: ['from', 'hours', 'location', 'passengers', 'car'],
+  between_cities: ['from', 'to', 'pickupTime', 'passengers', 'car', 'price'],
+  one_way: ['from', 'pickupTime', 'passengers', 'car', 'price'],
+  round_trip: ['from', 'to', 'pickupTime', 'passengers', 'car', 'price'],
+  hourly: ['from', 'hours', 'location', 'passengers', 'car', 'price'],
   custom_price: ['passengers', 'car', 'price'],
 };
 
@@ -373,6 +380,7 @@ export function AddSectionBar({ t, disabled, newMode, setNewMode, onAdd }) {
 export function CityRow({
   city,
   formKey,
+  formId,
   lang,
   t,
   chipOn,
@@ -380,13 +388,21 @@ export function CityRow({
   expandedId,
   setExpandedId,
   toggleLocationForm,
+  toggleSiteForm,
   updateCity,
   removeCity,
+  cities = [],
+  products = [],
+  onProductsChange,
+  carCatalog = [],
 }) {
   const on = isOn(city.forms, formKey);
+  const onSite = isOn(city.siteForms, formId);
   const open = expandedId === `city:${city.id}:${formKey}`;
   const label = lang === 'ar' ? (city.ar || city.en) : (city.en || city.ar);
-  const visible = on && city.active !== false;
+  const visible = on && onSite && city.active !== false;
+  const priceGroups = priceGroupsForCity(city, formKey, cities, lang);
+  const preview = compactPricePreview(priceGroups, products, lang, carCatalog, formId);
 
   return (
     <div className={`rounded-xl border transition-colors ${
@@ -400,6 +416,11 @@ export function CityRow({
         <span className="text-[10px] font-black text-gray-400 shrink-0">#{city.id}</span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-brand dark:text-white truncate">{label}</p>
+          {preview ? (
+            <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 truncate">{preview} SAR</p>
+          ) : (
+            <p className="text-[10px] text-gray-400">{t('admin.bookingForms.tapEditPrices')}</p>
+          )}
         </div>
         <button
           type="button"
@@ -454,6 +475,7 @@ export function CityRow({
             </div>
           </div>
           <p className="text-[11px] font-bold text-gray-500">{t('admin.bookingForms.alsoShowIn')}</p>
+          <p className="text-[10px] text-gray-400 -mt-1">{t('admin.bookingForms.alsoShowInHint')}</p>
           <div className="flex flex-wrap gap-1.5">
             {CITY_FORM_KEYS.map((key) => (
               <button
@@ -468,6 +490,29 @@ export function CityRow({
               </button>
             ))}
           </div>
+          <p className="text-[11px] font-bold text-gray-500">{t('admin.bookingForms.alsoShowOnForms')}</p>
+          <p className="text-[10px] text-gray-400 -mt-1">{t('admin.bookingForms.alsoShowOnFormsHint')}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {SITE_FORM_KEYS.map((key, index) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => toggleSiteForm?.('city', city.id, key)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${
+                  isOn(city.siteForms, key) ? chipOn : chipOff
+                }`}
+              >
+                {t('admin.bookingForms.formChip', { number: index + 1, name: t(`admin.tripTypes.forms.${key}`) })}
+              </button>
+            ))}
+          </div>
+          <LocationPriceFields
+            groups={priceGroups}
+            products={products}
+            onProductsChange={onProductsChange}
+            carCatalog={carCatalog}
+            formId={formId}
+          />
         </div>
       )}
     </div>
@@ -477,6 +522,7 @@ export function CityRow({
 export function RouteRow({
   route,
   formKey,
+  formId,
   lang,
   t,
   chipOn,
@@ -484,15 +530,22 @@ export function RouteRow({
   expandedId,
   setExpandedId,
   toggleLocationForm,
+  toggleSiteForm,
   updateRoute,
   removeRoute,
+  products = [],
+  onProductsChange,
+  carCatalog = [],
 }) {
   const on = isOn(route.forms, formKey);
+  const onSite = isOn(route.siteForms, formId);
   const open = expandedId === `route:${route.id}:${formKey}`;
   const label = lang === 'ar'
     ? (route.pickupLabelAr || route.pickupLabelEn)
     : (route.pickupLabelEn || route.pickupLabelAr);
-  const visible = on && route.active !== false;
+  const visible = on && onSite && route.active !== false;
+  const priceGroups = priceGroupsForRoute(route, formKey);
+  const preview = compactPricePreview(priceGroups, products, lang, carCatalog, formId);
 
   return (
     <div className={`rounded-xl border transition-colors ${
@@ -509,6 +562,7 @@ export function RouteRow({
             {route.category === 'airport'
               ? t('admin.bookingForms.airport')
               : t('admin.bookingForms.train')}
+            {preview ? ` · ${preview} SAR` : ''}
           </p>
         </div>
         <button
@@ -576,6 +630,29 @@ export function RouteRow({
               </button>
             ))}
           </div>
+          <p className="text-[11px] font-bold text-gray-500">{t('admin.bookingForms.alsoShowOnForms')}</p>
+          <p className="text-[10px] text-gray-400 -mt-1">{t('admin.bookingForms.alsoShowOnFormsHint')}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {SITE_FORM_KEYS.map((key, index) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => toggleSiteForm?.('route', route.id, key)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${
+                  isOn(route.siteForms, key) ? chipOn : chipOff
+                }`}
+              >
+                {t('admin.bookingForms.formChip', { number: index + 1, name: t(`admin.tripTypes.forms.${key}`) })}
+              </button>
+            ))}
+          </div>
+          <LocationPriceFields
+            groups={priceGroups}
+            products={products}
+            onProductsChange={onProductsChange}
+            carCatalog={carCatalog}
+            formId={formId}
+          />
         </div>
       )}
     </div>
@@ -598,6 +675,7 @@ export function TripSectionPanel({
   toggleTripOnForm,
   updateOption,
   toggleLocationForm,
+  toggleSiteForm,
   updateCity,
   updateRoute,
   removeCity,
@@ -609,6 +687,9 @@ export function TripSectionPanel({
   expanded = true,
   onToggle,
   index = 0,
+  products = [],
+  onProductsChange,
+  carCatalog = [],
 }) {
   const { mode, locationKey, dataType } = section;
   const [tabOpen, setTabOpen] = useState(false);
@@ -768,7 +849,7 @@ export function TripSectionPanel({
                     : t('admin.bookingForms.addRoute')}
                 </button>
               </div>
-              <div className="space-y-2 max-h-[280px] overflow-y-auto pe-1">
+              <div className="space-y-2 max-h-[min(70vh,36rem)] overflow-y-auto pe-1">
                 {dataType === 'cities' ? (
                   cities.map((city) => (
                     <CityRow
@@ -782,8 +863,14 @@ export function TripSectionPanel({
                       expandedId={expandedId}
                       setExpandedId={setExpandedId}
                       toggleLocationForm={toggleLocationForm}
+                      toggleSiteForm={toggleSiteForm}
                       updateCity={updateCity}
                       removeCity={removeCity}
+                      cities={cities}
+                      products={products}
+                      onProductsChange={onProductsChange}
+                      carCatalog={carCatalog}
+                      formId={formId}
                     />
                   ))
                 ) : (
@@ -799,8 +886,13 @@ export function TripSectionPanel({
                       expandedId={expandedId}
                       setExpandedId={setExpandedId}
                       toggleLocationForm={toggleLocationForm}
+                      toggleSiteForm={toggleSiteForm}
                       updateRoute={updateRoute}
                       removeRoute={removeRoute}
+                      products={products}
+                      onProductsChange={onProductsChange}
+                      carCatalog={carCatalog}
+                      formId={formId}
                     />
                   ))
                 )}

@@ -20,7 +20,7 @@ const SEG_TO_KEY = {
   train: 'train',
   'within-city': 'withinCity',
   hourly: 'hourly',
-  ziyarat: 'ziyarat',
+  ziyarat: 'ziyaratImages',
   services: 'services',
   routes: 'routes',
   faq: 'faq',
