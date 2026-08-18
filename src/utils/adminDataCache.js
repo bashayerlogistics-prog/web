@@ -1,5 +1,13 @@
-const PREFIX = 'bashayer-admin-data-v1-';
-export const ADMIN_DATA_CACHE_TTL_MS = 3 * 60_000;
+const PREFIX = 'bashayer-admin-data-v2-';
+export const ADMIN_DATA_CACHE_TTL_MS = 15 * 60_000;
+
+function storage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
 
 export function adminCacheKey(parts) {
   return String(parts)
@@ -12,7 +20,7 @@ export function adminCacheKey(parts) {
 export function readAdminDataCache(key, ttlMs = ADMIN_DATA_CACHE_TTL_MS) {
   if (!key) return null;
   try {
-    const raw = sessionStorage.getItem(PREFIX + key);
+    const raw = storage()?.getItem(PREFIX + key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (Date.now() - (parsed.at || 0) > (parsed.ttl ?? ttlMs)) return null;
@@ -25,7 +33,7 @@ export function readAdminDataCache(key, ttlMs = ADMIN_DATA_CACHE_TTL_MS) {
 export function writeAdminDataCache(key, data, ttlMs = ADMIN_DATA_CACHE_TTL_MS) {
   if (!key) return;
   try {
-    sessionStorage.setItem(
+    storage()?.setItem(
       PREFIX + key,
       JSON.stringify({ at: Date.now(), ttl: ttlMs, data }),
     );
@@ -36,13 +44,15 @@ export function writeAdminDataCache(key, data, ttlMs = ADMIN_DATA_CACHE_TTL_MS) 
 
 export function clearAdminDataCache(key) {
   try {
+    const store = storage();
+    if (!store) return;
     if (key) {
-      sessionStorage.removeItem(PREFIX + key);
+      store.removeItem(PREFIX + key);
       return;
     }
-    for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
-      const k = sessionStorage.key(i);
-      if (k?.startsWith(PREFIX)) sessionStorage.removeItem(k);
+    for (let i = store.length - 1; i >= 0; i -= 1) {
+      const k = store.key(i);
+      if (k?.startsWith(PREFIX)) store.removeItem(k);
     }
   } catch {
     // ignore

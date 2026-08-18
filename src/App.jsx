@@ -69,6 +69,20 @@ function LazyRoute({ children }) {
   );
 }
 
+function AdminLazyRoute({ children }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="admin-lazy-fallback" role="status" aria-label="Loading">
+          <div className="admin-lazy-fallback-bar" />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
+
 export default function App() {
   if (!clerkPubKey) {
     return (

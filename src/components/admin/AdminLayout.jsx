@@ -14,6 +14,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { setLanguage } from '../../i18n';
 import BrandLogo from '../ui/BrandLogo';
 import AdminPageSearch from './AdminPageSearch';
+import { prefetchAdminRoute, warmAdminRoutes } from '../../utils/prefetchAdminRoutes';
 
 /** Grouped sidebar — categories / cars / products / services stay separate */
 const navGroups = [
@@ -149,6 +150,27 @@ function AdminLayoutInner() {
     document.documentElement.classList.add('admin-shell-active');
     return () => document.documentElement.classList.remove('admin-shell-active');
   }, []);
+
+  useEffect(() => {
+    const warm = () => warmAdminRoutes();
+    let idleId;
+    let timeoutId;
+    if (typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(warm, { timeout: 1200 });
+    } else {
+      timeoutId = window.setTimeout(warm, 400);
+    }
+    return () => {
+      if (idleId != null) window.cancelIdleCallback(idleId);
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, []);
+
+  useEffect(() => {
+    prefetchAdminRoute(location.pathname);
+    const timerId = window.setTimeout(() => warmAdminRoutes(), 280);
+    return () => window.clearTimeout(timerId);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!actionMenuOpen) return undefined;
@@ -331,6 +353,9 @@ function AdminLayoutInner() {
                     to={to}
                     end={end}
                     className={linkClass}
+                    onMouseEnter={() => prefetchAdminRoute(to)}
+                    onFocus={() => prefetchAdminRoute(to)}
+                    onPointerDown={() => prefetchAdminRoute(to)}
                     onClick={() => {
                       setSidebarOpen(false);
                       setPageQuery('');
@@ -399,6 +424,9 @@ function AdminLayoutInner() {
                             to={to}
                             end={end}
                             className={linkClass}
+                            onMouseEnter={() => prefetchAdminRoute(to)}
+                            onFocus={() => prefetchAdminRoute(to)}
+                            onPointerDown={() => prefetchAdminRoute(to)}
                             onClick={() => setSidebarOpen(false)}
                           >
                             <span

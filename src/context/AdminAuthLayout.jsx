@@ -7,8 +7,8 @@ export default function AdminAuthLayout() {
     <AdminAuthProvider>
       <Suspense
         fallback={
-          <div className="min-h-[40svh] grid place-items-center" role="status" aria-label="Loading">
-            <div className="h-8 w-8 rounded-full border-2 border-brand/25 border-t-gold animate-spin" />
+          <div className="admin-lazy-fallback" role="status" aria-label="Loading">
+            <div className="admin-lazy-fallback-bar" />
           </div>
         }
       >

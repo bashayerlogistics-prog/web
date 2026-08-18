@@ -33,12 +33,20 @@ const EMPTY_BOOKING_COUNTS = {
   },
 };
 
-const BOOKING_STATS_CACHE_KEY = 'bashayer-admin-booking-stats-v1';
+const BOOKING_STATS_CACHE_KEY = 'bashayer-admin-booking-stats-v2';
 const BOOKING_STATS_TTL_MS = 15 * 60_000;
+
+function statsStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
 
 function readBookingStatsCache() {
   try {
-    const raw = sessionStorage.getItem(BOOKING_STATS_CACHE_KEY);
+    const raw = statsStorage()?.getItem(BOOKING_STATS_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.value || Date.now() - (parsed.at || 0) > BOOKING_STATS_TTL_MS) return null;
@@ -50,7 +58,7 @@ function readBookingStatsCache() {
 
 function writeBookingStatsCache(value) {
   try {
-    sessionStorage.setItem(BOOKING_STATS_CACHE_KEY, JSON.stringify({ at: Date.now(), value }));
+    statsStorage()?.setItem(BOOKING_STATS_CACHE_KEY, JSON.stringify({ at: Date.now(), value }));
   } catch {
     // ignore quota errors
   }
@@ -74,6 +82,8 @@ export function AdminDataProvider({ children }) {
   const needsBookingStats = isOverview || isOrders;
   // Overview uses a live listener; Users page needs a bounded booking sample.
   const needsRecentBookings = isUsers;
+  const needsAnyAdminData = needsUsers || needsActivity || needsOverviewActivity
+    || needsPriceRequests || needsBookingStats || needsRecentBookings;
 
   const [bookings, setBookings] = useState([]);
   const [bookingCounts, setBookingCounts] = useState(cachedStatsOnBoot || EMPTY_BOOKING_COUNTS);
@@ -81,7 +91,7 @@ export function AdminDataProvider({ children }) {
   const [activity, setActivity] = useState([]);
   const [priceRequests, setPriceRequests] = useState([]);
   const [chatUnread, setChatUnread] = useState(0);
-  const [loading, setLoading] = useState(!cachedStatsOnBoot);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -126,8 +136,12 @@ export function AdminDataProvider({ children }) {
       return;
     }
 
-    if (silent) setRefreshing(true);
-    else setLoading(true);
+    const blockUi = !silent && (
+      (isUsers && fetchUsers)
+      || (isOverview && fetchBookingStats)
+    );
+    if (blockUi) setLoading(true);
+    else setRefreshing(true);
 
     const [usersResult, priceRequestsResult, countsResult, recentResult] = await Promise.allSettled([
       fetchUsers ? getAllUsers(isUsers ? 150 : (isOverview ? 15 : 40)) : Promise.resolve(null),
@@ -252,6 +266,23 @@ export function AdminDataProvider({ children }) {
     return unsub;
   }, [isAdmin, isOverview]);
 
+  // Orders table paints from its own listener; hydrate user names in the background.
+  useEffect(() => {
+    if (!isAdmin || !isOrders || loadedKeysRef.current.users) return undefined;
+    const timerId = window.setTimeout(() => {
+      getAllUsers(40)
+        .then((items) => {
+          loadedKeysRef.current.users = true;
+          loadedKeysRef.current.usersLimit = 40;
+          startTransition(() => {
+            setUsers((items || []).filter((x) => x.role !== 'superadmin'));
+          });
+        })
+        .catch((err) => console.warn('Admin order users load failed:', err?.code || err?.message));
+    }, 350);
+    return () => window.clearTimeout(timerId);
+  }, [isAdmin, isOrders]);
+
   useEffect(() => {
     if (!isAdmin) {
       setLoading(false);
@@ -274,6 +305,12 @@ export function AdminDataProvider({ children }) {
       };
       bookingStatsCacheRef.current = { at: 0, value: null };
       return;
+    }
+
+    if (!needsAnyAdminData) {
+      setLoading(false);
+      setRefreshing(false);
+      return undefined;
     }
 
     const run = () => refresh({ silent: hasLoadedRef.current });
@@ -299,7 +336,7 @@ export function AdminDataProvider({ children }) {
 
     run();
     return undefined;
-  }, [isAdmin, pathname, refresh, isOverview]);
+  }, [isAdmin, pathname, refresh, isOverview, needsAnyAdminData]);
 
   const usersMap = useMemo(() => {
     const map = {};
