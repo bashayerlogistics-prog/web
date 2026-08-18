@@ -79,4 +79,5 @@ jobs:
           # Use an FTP account rooted at this domain's live public_html directory.
           server-dir: ./
           protocol: ftps
+          timeout: 120000
           dangerous-clean-slate: false
