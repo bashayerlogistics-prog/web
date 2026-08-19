@@ -1,8 +1,6 @@
 import { BOOKING_CAR_TYPES, getDefaultCarCatalog } from '../data/staticData';
 import {
   fleetServiceIdsForBookingSection,
-  HOME_FLEET_SERVICE_COUNTS,
-  normalizeFleetShowcase,
   FLEET_SERVICES,
 } from '../data/adminFleetServices';
 
@@ -91,8 +89,8 @@ export function getCarTypesForForm(carCatalog, formId, fallbackTypes = BOOKING_C
 }
 
 /**
- * Same 2 cars SuperAdmin pins on Fleet Prices for this trip tab.
- * Between Cities / One Way / Round Trip / Hourly each use their own pair — not a second catalog.
+ * Cars enabled on this public booking form + trip type.
+ * Admin `car.active` + `car.forms[formId]` determine eligibility; we no longer hard-cap to 2.
  */
 export function getCarTypesForTripSection({
   carCatalog,
@@ -114,38 +112,21 @@ export function getCarTypesForTripSection({
   }
   if (!serviceIds.length) return live;
 
-  const pins = normalizeFleetShowcase(fleetShowcase);
-  const pinnedFrom = (id) => {
-    const limit = HOME_FLEET_SERVICE_COUNTS[id] || 2;
-    return (pins[id]?.carIds || []).slice(0, limit).filter((car) => car && live.includes(car));
-  };
-
-  if (serviceIds.length > 1 && !routeCategory) {
-    const firstPins = pinnedFrom(serviceIds[0]);
-    if (firstPins.length) return firstPins;
-  }
-
-  const pinned = [];
-  const seen = new Set();
-  serviceIds.forEach((id) => {
-    pinnedFrom(id).forEach((car) => {
-      if (!seen.has(car)) {
-        seen.add(car);
-        pinned.push(car);
-      }
-    });
-  });
-  if (pinned.length) return pinned;
   const fallbackIds = serviceIds.length > 1 && !routeCategory ? [serviceIds[0]] : serviceIds;
   const fallback = [];
   fallbackIds.forEach((id) => {
     (FLEET_SERVICES[id]?.cars || []).forEach((car) => {
-      if (car && live.includes(car) && !fallback.includes(car) && fallback.length < 2) {
+      if (car && live.includes(car) && !fallback.includes(car)) {
         fallback.push(car);
       }
     });
   });
-  return fallback.length ? fallback : live.slice(0, 2);
+
+  // If service-based fallback doesn't cover all enabled cars (e.g. extra cars),
+  // append the remaining enabled cars from `live`.
+  if (!fallback.length) return live;
+  const extras = live.filter((car) => !fallback.includes(car));
+  return [...fallback, ...extras];
 }
 
 export function slugifyCarId(value) {
