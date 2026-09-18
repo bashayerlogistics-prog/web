@@ -205,7 +205,9 @@ export default function AdminBackgrounds() {
   );
 
   const value = selected.source === 'car'
-    ? content.cars[selected.carId]?.[selected.field] || getCategoryHeroImage(selected.carId)
+    ? (content.cars[selected.carId]?.[selected.field]
+      || content.cars[selected.carId]?.imageUrl
+      || getCategoryHeroImage(selected.carId))
     : selected.source === 'religiousTours'
       ? content.religiousTours?.cityImages?.[selected.field]
         || DEFAULT_RELIGIOUS_TOURS.cityImages[selected.field]
@@ -268,11 +270,10 @@ export default function AdminBackgrounds() {
         });
       } else {
         await upsertCar(selected.carId, {
-          ...content.cars[selected.carId],
           [selected.field]: value,
         });
       }
-      await publishSite();
+      await publishSite('soft');
       toast.success(
         lang === 'ar' ? 'تم تحديث صورة الخلفية' : 'Background image updated',
       );

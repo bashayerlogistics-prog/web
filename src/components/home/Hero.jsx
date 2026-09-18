@@ -67,8 +67,8 @@ export default function Hero({ withBookingOverlap = false }) {
         )}
 
         <picture>
-          <source media="(max-width: 767px)" srcSet={imageMobileUrl} type="image/webp" />
-          <source media="(min-width: 768px)" srcSet={imageUrl} type="image/webp" />
+          <source media="(max-width: 767px)" srcSet={imageMobileUrl} {...(/\.(webp)(\?|$)/i.test(imageMobileUrl) ? { type: 'image/webp' } : {})} />
+          <source media="(min-width: 768px)" srcSet={imageUrl} {...(/\.(webp)(\?|$)/i.test(imageUrl) ? { type: 'image/webp' } : {})} />
           <img
             src={imageUrl}
             alt={t('hero.imageAlt')}

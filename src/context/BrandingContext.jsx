@@ -145,7 +145,7 @@ export function BrandingProvider({ children }) {
     const channel = new BroadcastChannel(BRANDING_SYNC_CHANNEL);
     channel.onmessage = (event) => {
       const type = event?.data?.type;
-      if (type !== 'branding' && type !== 'invalidate') return;
+      if (type !== 'branding' && type !== 'invalidate' && type !== 'soft') return;
       getBrandingSettings().then(setBranding);
     };
     return () => channel.close();

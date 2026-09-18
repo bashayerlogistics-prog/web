@@ -181,7 +181,7 @@ export default function AdminGallery() {
       setEditing(null);
       setForm(emptyForm);
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -192,7 +192,7 @@ export default function AdminGallery() {
       await updateGalleryItem(item.id, { active: !item.active });
       toast.success(t('admin.gallery.itemUpdated'));
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -204,7 +204,7 @@ export default function AdminGallery() {
       await deleteGalleryItem(id);
       toast.success(t('admin.gallery.itemDeleted'));
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -217,8 +217,8 @@ export default function AdminGallery() {
       const pack = getDefaultGalleryItems?.() || DEFAULT_GALLERY_ITEMS.map(({ id, ...rest }) => rest);
       await replaceGalleryItems(pack);
       await publishSite('soft');
+      await refresh({ bustCache: true });
       toast.success(t('admin.gallery.syncDefaultsDone'));
-      refresh();
     } catch {
       toast.error(t('common.error'));
     } finally {

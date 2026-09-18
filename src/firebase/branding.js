@@ -1,5 +1,6 @@
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from './db';
+import { fsGetDoc } from './reads';
 import { DEFAULT_BRANDING } from '../data/brandingDefaults';
 
 function normalizeBranding(data) {
@@ -13,7 +14,7 @@ function normalizeBranding(data) {
 
 export async function getBrandingSettings() {
   try {
-    const snap = await getDoc(doc(db, 'siteSettings', 'branding'));
+    const snap = await fsGetDoc(doc(db, 'siteSettings', 'branding'));
     if (!snap.exists()) return { ...DEFAULT_BRANDING };
     return normalizeBranding(snap.data());
   } catch {

@@ -43,8 +43,8 @@ export default function AdminSections() {
     try {
       await updateHomeSection(sectionId, !current);
       toast.success(!current ? t('admin.sections.turnedOn') : t('admin.sections.turnedOff'));
-      refresh();
-      await publishSite();
+      await publishSite('soft');
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     } finally {

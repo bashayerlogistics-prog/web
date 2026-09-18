@@ -66,8 +66,8 @@ export default function GalleryHero() {
           />
         ) : (
           <picture>
-            <source media="(max-width: 767px)" srcSet={posterMobile} type="image/webp" />
-            <source media="(min-width: 768px)" srcSet={posterUrl} type="image/webp" />
+            <source media="(max-width: 767px)" srcSet={posterMobile} {...(/\.(webp)(\?|$)/i.test(posterMobile) ? { type: 'image/webp' } : {})} />
+            <source media="(min-width: 768px)" srcSet={posterUrl} {...(/\.(webp)(\?|$)/i.test(posterUrl) ? { type: 'image/webp' } : {})} />
             <img
               className="gallery-hero__poster"
               src={posterUrl}

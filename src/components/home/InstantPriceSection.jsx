@@ -583,7 +583,7 @@ export default function InstantPriceSection() {
     >
       <div className="instant-price-section__media" aria-hidden="true">
         <picture>
-          <source media="(max-width: 767px)" srcSet={bg.mobile} type="image/webp" />
+          <source media="(max-width: 767px)" srcSet={bg.mobile} {...(/\.(webp)(\?|$)/i.test(bg.mobile) ? { type: 'image/webp' } : {})} />
           <img
             ref={bgImgRef}
             src={bg.desktop}

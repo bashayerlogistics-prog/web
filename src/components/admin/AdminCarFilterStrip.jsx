@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Car } from 'lucide-react';
-import { VEHICLE_IMAGES, getCarDisplayName, getCarImage } from '../../data/staticData';
+import { VEHICLE_IMAGES, getCarDisplayName, resolveCarThumb } from '../../data/staticData';
 
 /**
  * Always-visible 5-car toggle strip for SuperAdmin fleet pages.
@@ -49,7 +49,7 @@ export default function AdminCarFilterStrip({
           {cars.map((c) => {
             const active = value === c.id;
             const count = countFor?.(c.id) ?? 0;
-            const img = getCarImage(c.id) || VEHICLE_IMAGES[c.id] || VEHICLE_IMAGES.camry;
+            const img = resolveCarThumb(c.id, c.imageUrl) || VEHICLE_IMAGES[c.id] || VEHICLE_IMAGES.camry;
             const label = c.name?.(lang) || getCarDisplayName(c.id, lang);
             return (
               <button

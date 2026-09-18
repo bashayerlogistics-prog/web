@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useSiteContent } from '../context/SiteContentContext';
 import { bumpContentRevision } from '../firebase/content';
+import { invalidateProductsCache } from '../firebase/admin';
 import {
   clearAllAppCaches,
   clearSiteContentCache,
@@ -9,27 +10,33 @@ import {
 
 /**
  * Publish site content after SuperAdmin edits.
- * - Always bumps siteSettings/contentRevision (1 write) so live + local clients refresh.
- * - Always drops SuperAdmin list cache so the panel shows the save immediately.
- * - publishSite() / default → bump revision + soft cache clear (fast)
- * - publishSite('full') → clear cache + reload all CMS docs (~17 reads)
+ * - Clears admin list + products memory cache so the panel reloads fresh data.
+ * - Always awaits revision bump so laptop / KSA / UAE clients get the same signal.
+ * - Soft: also BroadcastChannel for same-browser tabs.
+ * - Full: reload SiteContent in this tab.
  */
 export function usePublishSiteContent() {
   const { refresh } = useSiteContent();
 
   return useCallback(async (mode = 'soft') => {
     clearAllAppCaches();
+    invalidateProductsCache();
+
+    if (mode === 'soft') {
+      softInvalidateSiteContentCache();
+    } else {
+      clearSiteContentCache();
+    }
+
     try {
+      // Must await so every region sees the new contentRevision (1 write).
       await bumpContentRevision();
     } catch (err) {
       console.warn('Content revision bump failed:', err?.code || err?.message || err);
     }
 
-    if (mode === 'soft') {
-      softInvalidateSiteContentCache();
-      return;
+    if (mode !== 'soft') {
+      await refresh();
     }
-    clearSiteContentCache();
-    await refresh();
   }, [refresh]);
 }

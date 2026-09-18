@@ -10,7 +10,6 @@ import {
   updatePassword,
 } from 'firebase/auth';
 import { auth } from '../firebase/auth';
-import { logActivity } from '../firebase/admin';
 import { ADMIN_SESSION_KEY } from '../constants/adminSession';
 import {
   ADMIN_EMAIL,
@@ -124,7 +123,13 @@ export function AdminAuthProvider({ children }) {
       });
 
       try {
-        logActivity('admin_login', { username: isAdminEmail(trimmed) ? email : DEFAULT_USERNAME }).catch(() => {});
+        import('../firebase/admin')
+          .then(({ logActivity }) =>
+            logActivity('admin_login', {
+              username: isAdminEmail(trimmed) ? email : DEFAULT_USERNAME,
+            }),
+          )
+          .catch(() => {});
       } catch {
         // Activity log is optional if rules are not published yet
       }

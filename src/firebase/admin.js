@@ -1,6 +1,5 @@
 import {
   collection,
-  getDocs,
   addDoc,
   doc,
   setDoc,
@@ -11,12 +10,12 @@ import {
   limit,
   where,
   serverTimestamp,
-  getDoc,
   writeBatch,
   onSnapshot,
   startAfter,
   getCountFromServer,
 } from 'firebase/firestore';
+import { fsGetDocs as getDocs, fsGetDoc as getDoc } from './reads';
 import { db } from './db';
 import { waitForAdminAuth } from './adminIdentity';
 import { getHomeSections as fetchHomeSections, getHomeFleetShowcase as fetchHomeFleetShowcase } from './content';
@@ -263,7 +262,7 @@ export async function addBookingTimelineEntry(bookingId, entry) {
 }
 
 /** In-memory cache — fleet tabs share reads within a short TTL */
-const PRODUCTS_CACHE_TTL_MS = 5 * 60_000;
+const PRODUCTS_CACHE_TTL_MS = 10 * 60_000;
 const productsByTripTypeCache = new Map();
 
 function readProductsCache(tripType) {
@@ -1379,6 +1378,7 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}) {
     await batch.commit();
   }
 
+  invalidateProductsCache();
   await logActivity('car_synced_packages', { carId: id, count: matching.length });
   return matching.length;
 }
@@ -1473,6 +1473,7 @@ export async function createCarWithPackages(data) {
   }
 
   await logActivity('car_created', { carId: id, packages: created, priceFrom: priceFromCarId });
+  invalidateProductsCache();
   return { id, packagesCreated: created };
 }
 

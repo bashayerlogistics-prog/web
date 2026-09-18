@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { KeyRound, Shield, Palette, Database, RotateCcw, Sparkles, Wand2, Image, Eraser, DatabaseBackup } from 'lucide-react';
+import { KeyRound, Shield, Palette, Database, Sparkles, Wand2, Image, Eraser, DatabaseBackup } from 'lucide-react';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import { useAdminData } from '../../context/AdminDataContext';
 import { useToast } from '../../context/ToastContext';
@@ -140,12 +140,6 @@ export default function AdminSettings() {
     if (colorSaveTimerRef.current) clearTimeout(colorSaveTimerRef.current);
     await persistBranding(colorsRef.current);
     await refreshBranding();
-  };
-
-  const handleResetBranding = () => {
-    const next = { ...DEFAULT_BRANDING };
-    updateColors(next);
-    scheduleColorAutoSave(next);
   };
 
   const handleApplyPalette = async (palette) => {
@@ -474,14 +468,6 @@ export default function AdminSettings() {
             loading={savingColors}
             label={t('admin.settings.applyBranding')}
           />
-          <button
-            type="button"
-            onClick={handleResetBranding}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-brand/20 text-sm font-semibold text-gray-600 hover:bg-gray-50 dark:hover:bg-brand/5"
-          >
-            <RotateCcw className="w-4 h-4" />
-            {t('admin.settings.resetBranding')}
-          </button>
         </div>
       </GlassCard>
 

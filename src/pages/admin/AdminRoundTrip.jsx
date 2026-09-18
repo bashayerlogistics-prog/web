@@ -150,7 +150,7 @@ export default function AdminRoundTrip() {
       setEditing(null);
       setShowForm(false);
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -187,19 +187,19 @@ export default function AdminRoundTrip() {
     await deleteProduct(id);
     toast.success(t('admin.productDeleted'));
     await publishSite('soft');
-    refresh();
+      await refresh({ bustCache: true });
   };
 
   const toggleActive = async (p) => {
     await updateProduct(p.id, { active: !p.active });
     await publishSite('soft');
-    refresh();
+      await refresh({ bustCache: true });
   };
 
   const toggleHidePrice = async (p) => {
     await updateProduct(p.id, { hidePrice: !p.hidePrice });
     await publishSite('soft');
-    refresh();
+      await refresh({ bustCache: true });
   };
 
   const handleSeed = async () => {
@@ -215,7 +215,7 @@ export default function AdminRoundTrip() {
       await Promise.all(toImport.map((item) => createProduct(item)));
       toast.success(t('admin.importedCount', { count: toImport.length }));
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     } finally {

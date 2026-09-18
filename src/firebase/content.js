@@ -1,11 +1,9 @@
 import {
   collection,
-  getDocs,
   query,
   orderBy,
   where,
   doc,
-  getDoc,
   setDoc,
   increment,
   serverTimestamp,
@@ -13,6 +11,7 @@ import {
   limit,
 } from 'firebase/firestore';
 import { db } from './db';
+import { fsGetDocs, fsGetDoc } from './reads';
 import {
   FLEET_ROUTES,
   ROUND_TRIP_FLEET_ROUTES,
@@ -63,12 +62,12 @@ async function fetchActive(collectionName, maxItems = 100) {
       orderBy('sortOrder', 'asc'),
       limit(size),
     );
-    const snapshot = await getDocs(q);
+    const snapshot = await fsGetDocs(q);
     return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch {
     try {
       const q = query(collection(db, collectionName), where('active', '==', true), limit(size));
-      const snapshot = await getDocs(q);
+      const snapshot = await fsGetDocs(q);
       return snapshot.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -101,7 +100,7 @@ export async function getActiveContentCollection(collectionName, maxItems = 100)
       orderBy('sortOrder', 'asc'),
       limit(size),
     );
-    const snapshot = await getDocs(q);
+    const snapshot = await fsGetDocs(q);
     return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch {
     const q = query(
@@ -109,7 +108,7 @@ export async function getActiveContentCollection(collectionName, maxItems = 100)
       where('active', '==', true),
       limit(size),
     );
-    const snapshot = await getDocs(q);
+    const snapshot = await fsGetDocs(q);
     return sortByOrder(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
   }
 }
@@ -117,12 +116,12 @@ export async function getActiveContentCollection(collectionName, maxItems = 100)
 export async function getCarCatalog(maxItems = 20) {
   const size = Math.max(1, Math.min(50, Number(maxItems) || 20));
   try {
-    const snapshot = await getDocs(
+    const snapshot = await fsGetDocs(
       query(collection(db, 'vehicles'), orderBy('sortOrder', 'asc'), limit(size)),
     );
     return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch {
-    const snapshot = await getDocs(query(collection(db, 'vehicles'), limit(size)));
+    const snapshot = await fsGetDocs(query(collection(db, 'vehicles'), limit(size)));
     return sortByOrder(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
   }
 }
@@ -278,8 +277,9 @@ export function buildServicesFromFirestore(activeServices) {
       image = categoryImage;
     }
     if (image) seen.add(image);
-    // Always prefer distinct category art for withinCity vs hourly (common CMS duplicate).
+    // Only force category art when CMS left image empty (keep SuperAdmin uploads).
     if (
+      !service.image &&
       (service.category === 'withinCity' || service.category === 'hourly') &&
       categoryImage
     ) {
@@ -498,7 +498,7 @@ export { DEFAULT_BOOKING_LOCATIONS, buildBookingLocationsFromFirestore };
 
 export async function getBookingTripTypesContent() {
   try {
-    const snap = await getDoc(doc(db, 'siteSettings', 'bookingTripTypes'));
+    const snap = await fsGetDoc(doc(db, 'siteSettings', 'bookingTripTypes'));
     if (!snap.exists()) return buildBookingTripTypesFromFirestore(null);
     return buildBookingTripTypesFromFirestore(snap.data());
   } catch {
@@ -517,7 +517,7 @@ export function subscribeBookingTripTypesContent(onData, onError) {
 
 export async function getBookingLocationsContent() {
   try {
-    const snap = await getDoc(doc(db, 'siteSettings', 'bookingLocations'));
+    const snap = await fsGetDoc(doc(db, 'siteSettings', 'bookingLocations'));
     if (!snap.exists()) return buildBookingLocationsFromFirestore(null);
     return buildBookingLocationsFromFirestore(snap.data());
   } catch {
@@ -536,7 +536,7 @@ export function subscribeBookingLocationsContent(onData, onError) {
 
 export async function getHeroContent() {
   try {
-    const snap = await getDoc(doc(db, 'siteSettings', 'hero'));
+    const snap = await fsGetDoc(doc(db, 'siteSettings', 'hero'));
     if (!snap.exists()) return { ...DEFAULT_HERO };
     return { ...DEFAULT_HERO, ...snap.data() };
   } catch {
@@ -546,7 +546,7 @@ export async function getHeroContent() {
 
 export async function getInstantPriceContent() {
   try {
-    const snap = await getDoc(doc(db, 'siteSettings', 'instantPrice'));
+    const snap = await fsGetDoc(doc(db, 'siteSettings', 'instantPrice'));
     if (!snap.exists()) return { ...DEFAULT_INSTANT_PRICE };
     return { ...DEFAULT_INSTANT_PRICE, ...snap.data() };
   } catch {
@@ -558,7 +558,7 @@ export { DEFAULT_RELIGIOUS_TOURS, buildReligiousToursFromFirestore };
 
 export async function getReligiousToursContent() {
   try {
-    const snap = await getDoc(doc(db, 'siteSettings', 'religiousTours'));
+    const snap = await fsGetDoc(doc(db, 'siteSettings', 'religiousTours'));
     if (!snap.exists()) return { ...DEFAULT_RELIGIOUS_TOURS, packages: [...DEFAULT_RELIGIOUS_TOURS.packages] };
     return buildReligiousToursFromFirestore(snap.data());
   } catch {
@@ -570,7 +570,7 @@ export { DEFAULT_GALLERY_HERO };
 
 export async function getGalleryHeroContent() {
   try {
-    const snap = await getDoc(doc(db, 'siteSettings', 'galleryHero'));
+    const snap = await fsGetDoc(doc(db, 'siteSettings', 'galleryHero'));
     if (!snap.exists()) return { ...DEFAULT_GALLERY_HERO };
     return { ...DEFAULT_GALLERY_HERO, ...snap.data() };
   } catch {
@@ -580,7 +580,7 @@ export async function getGalleryHeroContent() {
 
 export async function getFooterCreditContent() {
   try {
-    const snap = await getDoc(doc(db, 'siteSettings', 'footerCredit'));
+    const snap = await fsGetDoc(doc(db, 'siteSettings', 'footerCredit'));
     if (!snap.exists()) return { ...DEFAULT_FOOTER_CREDIT };
     return buildFooterCreditFromFirestore(snap.data());
   } catch {
@@ -651,16 +651,45 @@ export function writeStoredContentRevision(rev) {
   }
 }
 
+/** One-shot revision read (uses server when runWithServerReads is active). */
+export async function getContentRevisionOnce() {
+  try {
+    const snap = await fsGetDoc(doc(db, 'siteSettings', CONTENT_REVISION_DOC_ID));
+    return snap.exists() ? Number(snap.data()?.rev) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Admin publish bump — 1 write. Live + local browsers listening to this doc
  * then run a one-shot content refresh (not continuous collection listeners).
+ * Rapid SuperAdmin saves coalesce into one bump to cut public Firestore reads.
  */
+let revisionBumpTimer = null;
+let revisionBumpWaiters = [];
+
 export async function bumpContentRevision() {
-  await setDoc(
-    doc(db, 'siteSettings', CONTENT_REVISION_DOC_ID),
-    { rev: increment(1), updatedAt: serverTimestamp() },
-    { merge: true },
-  );
+  return new Promise((resolve, reject) => {
+    revisionBumpWaiters.push({ resolve, reject });
+    if (revisionBumpTimer != null) clearTimeout(revisionBumpTimer);
+    // Short coalesce so SuperAdmin saves still batch, but UAE/SA/laptop sync fast.
+    const delay = import.meta.env.DEV ? 120 : 800;
+    revisionBumpTimer = setTimeout(async () => {
+      revisionBumpTimer = null;
+      const waiters = revisionBumpWaiters.splice(0);
+      try {
+        await setDoc(
+          doc(db, 'siteSettings', CONTENT_REVISION_DOC_ID),
+          { rev: increment(1), updatedAt: serverTimestamp() },
+          { merge: true },
+        );
+        waiters.forEach((w) => w.resolve());
+      } catch (err) {
+        waiters.forEach((w) => w.reject(err));
+      }
+    }, delay);
+  });
 }
 
 /** Listen for CMS publish signal (~1 read on attach + 1 per publish). */
@@ -846,7 +875,7 @@ export function buildHeroFromFirestore(heroData) {
 
 export async function getHomepageSettings() {
   try {
-    const snap = await getDoc(doc(db, 'siteSettings', 'homepage'));
+    const snap = await fsGetDoc(doc(db, 'siteSettings', 'homepage'));
     const data = snap.exists() ? snap.data() : {};
     return {
       sections: mergeHomeSections(data.sections || {}),

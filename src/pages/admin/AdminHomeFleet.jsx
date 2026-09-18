@@ -468,7 +468,7 @@ export default function AdminHomeFleet({
       const next = field === 'active' ? product.active === false : !product[field];
       await updateProduct(product.id, { [field]: next });
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch (err) {
       console.error('Fleet product toggle failed', err);
       toast.error(t('admin.fleet.saveFailed'));
@@ -523,7 +523,7 @@ export default function AdminHomeFleet({
       toast.success(t('admin.fleet.created'));
       setAddFor(null);
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     } finally {

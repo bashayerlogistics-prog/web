@@ -135,7 +135,7 @@ export default function AdminServices() {
       setEditing(null);
       setShowForm(false);
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -165,13 +165,13 @@ export default function AdminServices() {
     await deleteService(id);
     toast.success(t('admin.serviceDeleted'));
     await publishSite('soft');
-    refresh();
+    await refresh({ bustCache: true });
   };
 
   const toggleActive = async (s) => {
     await updateService(s.id, { active: !s.active });
     await publishSite('soft');
-    refresh();
+    await refresh({ bustCache: true });
   };
 
   const handleSeed = async () => {
@@ -185,7 +185,7 @@ export default function AdminServices() {
         toast.success(t('admin.importedCount', { count: count || 6 }));
       }
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     } finally {

@@ -35,6 +35,8 @@ import {
 
   writeStoredContentRevision,
 
+  getContentRevisionOnce,
+
   buildFleetRoutesFromProducts,
 
   buildServicesFromFirestore,
@@ -74,6 +76,7 @@ import {
   SERVICE_CATALOG_FILTERS,
 
 } from '../firebase/content';
+import { runWithServerReads } from '../firebase/reads';
 
 import { FLEET_ROUTES, ROUND_TRIP_FLEET_ROUTES, SERVICES, BLOG_POSTS, ROUTE_CARDS, FAQ_ITEMS, SOCIAL_LINKS, DEFAULT_GALLERY_ITEMS, setLiveCarCatalog, getDefaultCarCatalog, getLiveCarCatalog, getCarImage } from '../data/staticData';
 
@@ -87,7 +90,7 @@ import { DEFAULT_TRAVEL_RESERVATIONS } from '../data/travelReservations';
 import { DEFAULT_HOME_SECTIONS, isSectionActive } from '../data/homeSections';
 import { emptyFleetShowcase, normalizeFleetShowcase } from '../data/adminFleetServices';
 
-import { readLocalCache, readPersistentCache, createThrottledCacheWriter } from '../utils/localCache';
+import { readLocalCache, createThrottledCacheWriter } from '../utils/localCache';
 
 import {
 
@@ -122,9 +125,8 @@ const CACHE_KEY = SITE_CONTENT_CACHE_KEY;
 // a cached one-shot load; enable only for an intentional preview environment.
 const USE_PUBLIC_REALTIME = import.meta.env.VITE_ENABLE_PUBLIC_REALTIME === 'true';
 
-// A cold package snapshot can contain hundreds of documents. Reuse verified
-// browser data on normal revisits; CMS publishing explicitly invalidates it.
-const SITE_CONTENT_CACHE_MS = 6 * 60 * 60 * 1000;
+// Reuse browser CMS snapshot on revisits; publish bump invalidates via contentRevision.
+const SITE_CONTENT_CACHE_MS = 12 * 60 * 60 * 1000;
 
 const STATIC_FLEET = [...FLEET_ROUTES, ...ROUND_TRIP_FLEET_ROUTES, ...HOURLY_FLEET_ROUTES];
 
@@ -136,14 +138,21 @@ function loadCachedContent() {
     return { snapshot: defaultSiteContentSnapshot(), isFresh: false };
   }
 
+  // Only paint TTL-fresh cache. Expired/persistent snapshots cause "old then new" flash.
   const fresh = readLocalCache(CACHE_KEY, SITE_CONTENT_CACHE_MS);
-  const raw = fresh || readPersistentCache(CACHE_KEY);
+  if (fresh) {
+    return {
+      snapshot: sanitizeSiteContentCache(fresh) || defaultSiteContentSnapshot(),
+      // Dev: reuse cache for 2 minutes to cut local Firestore burn while editing.
+      isFresh: import.meta.env.DEV
+        ? Boolean(readLocalCache(CACHE_KEY, 2 * 60 * 1000))
+        : true,
+    };
+  }
 
   return {
-    snapshot: sanitizeSiteContentCache(raw) || defaultSiteContentSnapshot(),
-    // Dev must always re-read Firestore, otherwise CMS edits made on the live
-    // site stay invisible locally until the cache window expires.
-    isFresh: import.meta.env.DEV ? false : Boolean(fresh),
+    snapshot: defaultSiteContentSnapshot(),
+    isFresh: false,
   };
 
 }
@@ -170,6 +179,8 @@ export function SiteContentProvider({ children }) {
   const initialCache = useMemo(() => loadCachedContent(), []);
   const initialSnapshot = initialCache.snapshot;
   const hasFreshCacheRef = useRef(initialCache.isFresh);
+  // Only advanced after a successful CMS refresh — prevents "rev matched, cache stale".
+  const syncedRevRef = useRef(readStoredContentRevision());
 
   const cacheRef = useRef(initialSnapshot);
 
@@ -248,50 +259,33 @@ export function SiteContentProvider({ children }) {
 
   }, [writeCacheThrottled]);
 
-
+  const refreshInFlightRef = useRef(null);
+  const scheduleRefreshTimerRef = useRef(null);
 
   const refresh = useCallback(async () => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
 
     setLoading(true);
 
+    const run = runWithServerReads(async () => {
     try {
-
+      // Phase 1 — price/booking critical path (paint ASAP)
       const [
         activeProducts,
         cars,
         activeServices,
-        activeRoutes,
-        activeFaqs,
-        activeSocialLinks,
-        activeBlogs,
-        activeGallery,
         homeSettings,
         heroData,
         instantPriceData,
-        religiousToursData,
-        galleryHeroData,
-        bookingTripTypesData,
         bookingLocationsData,
-        footerCreditData,
-        activeTravelReservations,
       ] = await Promise.all([
         getActiveProducts(),
         getCarCatalog(),
         getActiveServices(),
-        getActiveContentCollection('routeCards'),
-        getActiveContentCollection('faqs'),
-        getActiveContentCollection('socialLinks'),
-        getActiveBlogs(),
-        getActiveContentCollection('gallery'),
         getHomepageSettings(),
         getHeroContent(),
         getInstantPriceContent(),
-        getReligiousToursContent(),
-        getGalleryHeroContent(),
-        getBookingTripTypesContent(),
         getBookingLocationsContent(),
-        getFooterCreditContent(),
-        getActiveContentCollection('travelReservations'),
       ]);
 
       const nextBookingLocations = buildBookingLocationsFromFirestore(bookingLocationsData);
@@ -299,34 +293,68 @@ export function SiteContentProvider({ children }) {
       const nextFleetRoutes = buildFleetRoutesFromProducts(activeProducts, extraRoutes);
       const nextCars = Array.isArray(cars) && cars.length ? cars : getDefaultCarCatalog();
       const nextServices = buildServicesFromFirestore(activeServices);
+      const nextSections = homeSettings.sections;
+      const nextFleetShowcase = normalizeFleetShowcase(homeSettings.fleetShowcase);
+      const nextHero = buildHeroFromFirestore(heroData);
+      const nextInstantPrice = buildInstantPriceFromFirestore(instantPriceData);
+
+      setFleetRoutes(nextFleetRoutes.length ? nextFleetRoutes : cacheRef.current.fleetRoutes);
+      setLiveCarCatalog(nextCars);
+      setCarCatalog(getLiveCarCatalog());
+      setServices(nextServices.length ? nextServices : cacheRef.current.services);
+      setSections(nextSections);
+      setFleetShowcase(nextFleetShowcase);
+      setHero(nextHero);
+      setInstantPrice(nextInstantPrice);
+      setBookingLocations(nextBookingLocations);
+
+      persistCache({
+        fleetRoutes: nextFleetRoutes.length ? nextFleetRoutes : cacheRef.current.fleetRoutes,
+        carCatalog: nextCars,
+        services: nextServices.length ? nextServices : cacheRef.current.services,
+        sections: nextSections,
+        fleetShowcase: nextFleetShowcase,
+        hero: nextHero,
+        instantPrice: nextInstantPrice,
+        bookingLocations: nextBookingLocations,
+      });
+
+      // Phase 2 — secondary CMS (gallery, FAQ, footer…)
+      const [
+        activeRoutes,
+        activeFaqs,
+        activeSocialLinks,
+        activeBlogs,
+        activeGallery,
+        religiousToursData,
+        galleryHeroData,
+        bookingTripTypesData,
+        footerCreditData,
+        activeTravelReservations,
+      ] = await Promise.all([
+        getActiveContentCollection('routeCards'),
+        getActiveContentCollection('faqs'),
+        getActiveContentCollection('socialLinks'),
+        getActiveBlogs(),
+        getActiveContentCollection('gallery'),
+        getReligiousToursContent(),
+        getGalleryHeroContent(),
+        getBookingTripTypesContent(),
+        getFooterCreditContent(),
+        getActiveContentCollection('travelReservations'),
+      ]);
+
       const nextRoutes = buildRouteCardsFromFirestore(activeRoutes);
       const nextFaqs = buildFaqFromFirestore(activeFaqs);
       const nextSocialLinks = buildSocialLinksFromFirestore(activeSocialLinks);
       const nextBlogs = buildBlogsFromFirestore(activeBlogs);
       const nextGalleryItems = buildGalleryItemsFromFirestore(activeGallery);
       const nextTravelReservations = buildTravelReservationsFromFirestore(activeTravelReservations);
-
-      const nextSections = homeSettings.sections;
-      const nextFleetShowcase = normalizeFleetShowcase(homeSettings.fleetShowcase);
-
-      const nextHero = buildHeroFromFirestore(heroData);
-
-      const nextInstantPrice = buildInstantPriceFromFirestore(instantPriceData);
-
       const nextReligiousTours = buildReligiousToursFromFirestore(religiousToursData);
-
       const nextGalleryHero = buildGalleryHeroFromFirestore(galleryHeroData);
-
       const nextBookingTripTypes = buildBookingTripTypesFromFirestore(bookingTripTypesData);
-
       const nextFooterCredit = buildFooterCreditFromFirestore(footerCreditData);
 
-
-
-      setFleetRoutes(nextFleetRoutes.length ? nextFleetRoutes : cacheRef.current.fleetRoutes);
-      setLiveCarCatalog(nextCars);
-      setCarCatalog(getLiveCarCatalog());
-      setServices(nextServices.length ? nextServices : cacheRef.current.services);
       setRouteCards(nextRoutes.length ? nextRoutes : cacheRef.current.routeCards);
       setFaqItems(nextFaqs.length ? nextFaqs : cacheRef.current.faqItems);
       setSocialLinks(nextSocialLinks.length ? nextSocialLinks : cacheRef.current.socialLinks);
@@ -337,67 +365,32 @@ export function SiteContentProvider({ children }) {
           ? nextTravelReservations
           : (cacheRef.current.travelReservations || DEFAULT_TRAVEL_RESERVATIONS),
       );
-
-      setSections(nextSections);
-      setFleetShowcase(nextFleetShowcase);
-
-      setHero(nextHero);
-
-      setInstantPrice(nextInstantPrice);
-
       setReligiousTours(nextReligiousTours);
-
       setGalleryHero(nextGalleryHero);
-
       setBookingTripTypes(nextBookingTripTypes);
-
-      setBookingLocations(nextBookingLocations);
-
       setFooterCredit(nextFooterCredit);
 
-
-
       persistCache({
-
-        fleetRoutes: nextFleetRoutes.length ? nextFleetRoutes : cacheRef.current.fleetRoutes,
-
-        carCatalog: nextCars,
-
-        services: nextServices.length ? nextServices : cacheRef.current.services,
-
         routeCards: nextRoutes.length ? nextRoutes : cacheRef.current.routeCards,
-
         faqItems: nextFaqs.length ? nextFaqs : cacheRef.current.faqItems,
-
         socialLinks: nextSocialLinks.length ? nextSocialLinks : cacheRef.current.socialLinks,
-
         blogs: nextBlogs.length ? nextBlogs : cacheRef.current.blogs,
-
         galleryItems: nextGalleryItems.length ? nextGalleryItems : cacheRef.current.galleryItems,
-
         travelReservations: nextTravelReservations.length
           ? nextTravelReservations
           : (cacheRef.current.travelReservations || DEFAULT_TRAVEL_RESERVATIONS),
-
-        sections: nextSections,
-
-        fleetShowcase: nextFleetShowcase,
-
-        hero: nextHero,
-
-        instantPrice: nextInstantPrice,
-
         religiousTours: nextReligiousTours,
-
         galleryHero: nextGalleryHero,
-
         bookingTripTypes: nextBookingTripTypes,
-
-        bookingLocations: nextBookingLocations,
-
         footerCredit: nextFooterCredit,
-
       });
+
+      const rev = await getContentRevisionOnce();
+      if (rev) {
+        writeStoredContentRevision(rev);
+        syncedRevRef.current = rev;
+      }
+      hasFreshCacheRef.current = true;
 
     } catch (err) {
 
@@ -410,8 +403,23 @@ export function SiteContentProvider({ children }) {
       setLoading(false);
 
     }
+    });
+
+    refreshInFlightRef.current = run.finally(() => {
+      refreshInFlightRef.current = null;
+    });
+    return refreshInFlightRef.current;
 
   }, [persistCache]);
+
+  const schedulePublicRefresh = useCallback(() => {
+    hasFreshCacheRef.current = false;
+    if (scheduleRefreshTimerRef.current) window.clearTimeout(scheduleRefreshTimerRef.current);
+    scheduleRefreshTimerRef.current = window.setTimeout(() => {
+      scheduleRefreshTimerRef.current = null;
+      refresh();
+    }, import.meta.env.DEV ? 80 : 200);
+  }, [refresh]);
 
 
 
@@ -642,29 +650,40 @@ export function SiteContentProvider({ children }) {
 
 
   useEffect(() => {
+    if (!needsLivePublicContent) return undefined;
 
-    if (!needsLivePublicContent || hasFreshCacheRef.current) return undefined;
+    let cancelled = false;
 
-    const isMobile = window.matchMedia('(max-width: 767px)').matches;
+    // Cheap 1-doc server check: laptop / KSA / UAE must share the same CMS revision.
+    // If local cache is behind (or never synced), pull fresh content from Firestore.
+    const verify = async () => {
+      try {
+        const serverRev = await runWithServerReads(() => getContentRevisionOnce());
+        if (cancelled) return;
 
-    const run = () => refresh();
+        const localRev = syncedRevRef.current || readStoredContentRevision();
+        const cacheLooksFresh = hasFreshCacheRef.current;
 
+        if (!serverRev) {
+          if (!cacheLooksFresh) await refresh();
+          return;
+        }
 
+        if (serverRev !== localRev || !cacheLooksFresh) {
+          hasFreshCacheRef.current = false;
+          await refresh();
+        }
+      } catch (err) {
+        console.warn('Content revision verify failed:', err?.code || err?.message || err);
+        if (!cancelled && !hasFreshCacheRef.current) await refresh();
+      }
+    };
 
-    if (isMobile && 'requestIdleCallback' in window) {
-
-      const id = window.requestIdleCallback(run, { timeout: 2500 });
-
-      return () => window.cancelIdleCallback(id);
-
-    }
-
-
-
-    const timeout = window.setTimeout(run, isMobile ? 200 : 50);
-
-    return () => window.clearTimeout(timeout);
-
+    const timeout = window.setTimeout(verify, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
   }, [needsLivePublicContent, refresh]);
 
   useEffect(() => {
@@ -679,49 +698,39 @@ export function SiteContentProvider({ children }) {
 
       const type = event?.data?.type;
 
-      if (type === 'soft') return;
+      // soft + invalidate both mean SuperAdmin published — refresh once (coalesced)
+      if (type !== 'soft' && type !== 'invalidate') return;
 
-      hasFreshCacheRef.current = false;
-      refresh();
+      schedulePublicRefresh();
 
     };
 
     return () => channel.close();
 
-  }, [needsLivePublicContent, refresh]);
+  }, [needsLivePublicContent, schedulePublicRefresh]);
 
-  // One-doc publish signal: when SuperAdmin saves on live (or any browser),
-  // local / other tabs refresh once. Avoids continuous multi-collection listeners.
+  // Live publish signal for open tabs (all countries / networks).
   useEffect(() => {
     if (!needsLivePublicContent) return undefined;
 
-    const lastRevRef = { current: readStoredContentRevision() };
-    let refreshTimer = null;
     let cancelled = false;
 
     const unsub = subscribeContentRevision(
       (rev) => {
         if (cancelled || !rev) return;
-        if (rev === lastRevRef.current) return;
-
-        lastRevRef.current = rev;
-        writeStoredContentRevision(rev);
-        hasFreshCacheRef.current = false;
-
-        if (refreshTimer) window.clearTimeout(refreshTimer);
-        refreshTimer = window.setTimeout(() => {
-          if (!cancelled) refresh();
-        }, import.meta.env.DEV ? 150 : 400);
+        // Only skip when this browser already refreshed to this exact revision.
+        if (rev === syncedRevRef.current && hasFreshCacheRef.current) return;
+        schedulePublicRefresh();
       },
       (err) => console.warn('Content revision listener failed:', err?.code || err?.message),
     );
 
     return () => {
       cancelled = true;
-      if (refreshTimer) window.clearTimeout(refreshTimer);
+      if (scheduleRefreshTimerRef.current) window.clearTimeout(scheduleRefreshTimerRef.current);
       unsub?.();
     };
-  }, [needsLivePublicContent, refresh]);
+  }, [needsLivePublicContent, schedulePublicRefresh]);
 
 
 

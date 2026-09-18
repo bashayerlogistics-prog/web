@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Download, Eye, EyeOff, Save, Plus } from 'lucide-react';
@@ -17,6 +17,7 @@ import { useToast } from '../../context/ToastContext';
 import {
   BOOKING_CAR_TYPES,
   getCarDisplayName,
+  setLiveCarCatalog,
 } from '../../data/staticData';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import GlassCard from '../../components/ui/GlassCard';
@@ -342,6 +343,10 @@ export default function AdminCars() {
   const cars = useMemo(() => mergeCarCatalog(dbCars), [dbCars]);
   const atMaxCars = liveFleetCarCount(cars) >= MAX_FLEET_CARS;
 
+  useEffect(() => {
+    if (cars?.length) setLiveCarCatalog(cars);
+  }, [cars]);
+
   const selectedCar = activeKey ? cars.find((c) => c.id === activeKey) : null;
 
   const getDraft = (car) => (car ? drafts[car.id] || car : null);
@@ -394,12 +399,21 @@ export default function AdminCars() {
         },
       );
       await publishSite('soft');
-      setDrafts((prev) => {
-        const next = { ...prev };
-        delete next[targetId];
-        return next;
-      });
-      await refresh();
+      const ok = await refresh({ bustCache: true });
+      if (ok) {
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[targetId];
+          return next;
+        });
+      }
+      setLiveCarCatalog(
+        mergeCarCatalog(
+          (Array.isArray(dbCars) ? dbCars : []).map((c) =>
+            (c.id === targetId ? { ...c, imageUrl: draft.imageUrl, nameEn: draft.nameEn, nameAr: draft.nameAr } : c),
+          ),
+        ),
+      );
       toast.success(t('admin.cars.saved', { count: synced }));
       return true;
     } catch (err) {
@@ -416,7 +430,7 @@ export default function AdminCars() {
     try {
       const result = await seedDefaultCars();
       await publishSite('soft');
-      await refresh();
+      await refresh({ bustCache: true });
       if (result.alreadyExists) {
         toast.info(t('admin.cars.alreadySeeded'));
       } else {
@@ -439,7 +453,7 @@ export default function AdminCars() {
     try {
       const result = await createCarWithPackages(payload);
       await publishSite('soft');
-      await refresh();
+      await refresh({ bustCache: true });
       setAddOpen(false);
       toast.success(t('admin.cars.addNewSuccess', { id: result.id, count: result.packagesCreated }));
     } catch (err) {

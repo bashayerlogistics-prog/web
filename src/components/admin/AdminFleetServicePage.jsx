@@ -276,7 +276,7 @@ export default function AdminFleetServicePage({ serviceId }) {
       resetForm();
       setShowForm(false);
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -328,7 +328,7 @@ export default function AdminFleetServicePage({ serviceId }) {
       await deleteProduct(id);
       toast.success(fleetT('admin.fleet.deleted', 'admin.productDeleted'));
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -338,7 +338,7 @@ export default function AdminFleetServicePage({ serviceId }) {
     try {
       await updateProduct(p.id, { active: !p.active });
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -348,7 +348,7 @@ export default function AdminFleetServicePage({ serviceId }) {
     try {
       await updateProduct(p.id, { hidePrice: !p.hidePrice });
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -378,7 +378,7 @@ export default function AdminFleetServicePage({ serviceId }) {
       }
       toast.success(t('admin.importedCount', { count: created + updated }));
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     } finally {
@@ -406,7 +406,7 @@ export default function AdminFleetServicePage({ serviceId }) {
       }
       toast.success(fleetT('admin.fleet.duplicatesRemoved', 'admin.oneWay.duplicatesRemoved', { count: deleted }));
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     } finally {

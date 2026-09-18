@@ -211,9 +211,17 @@ function isFirebaseStorageUrl(url) {
   return /firebasestorage\.googleapis\.com|storage\.googleapis\.com/i.test(String(url || ''));
 }
 
+function isRemoteCmsImageUrl(url) {
+  const value = String(url || '').trim();
+  if (!/^https?:\/\//i.test(value)) return false;
+  // Known-dead legacy CDN paths — keep bundled art instead.
+  if (value.includes('supabase.co/storage') && value.includes('vehicle-images')) return false;
+  return true;
+}
+
 /**
- * Prefer bundled `/images/categories/*` art over stale third-party CMS links.
- * Keep Firebase Storage / other local `/images/...` admin uploads.
+ * Prefer SuperAdmin CMS uploads (ImgBB / Firebase Storage / local paths).
+ * Fall back to bundled `/images/categories/*` only when CMS has no usable URL.
  */
 export function preferBundledCarImage(carKey, candidateUrl) {
   const key = String(carKey || '').split('-')[0].toLowerCase();
@@ -227,7 +235,7 @@ export function preferBundledCarImage(carKey, candidateUrl) {
     if (livePath === localPath) return local;
     return live;
   }
-  if (isFirebaseStorageUrl(live)) return live;
+  if (isFirebaseStorageUrl(live) || isRemoteCmsImageUrl(live)) return live;
   return local;
 }
 

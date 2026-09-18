@@ -3,14 +3,19 @@ import { useAdminAuth } from '../context/AdminAuthContext';
 import {
   readAdminDataCache,
   writeAdminDataCache,
+  clearAdminDataCache,
   adminCacheKey,
   ADMIN_DATA_CACHE_TTL_MS,
 } from '../utils/adminDataCache';
 import { withTimeout } from '../utils/withTimeout';
+import { runWithServerReads } from '../firebase/reads';
+
+/** Focus/visibility refetch — keep low to cut Firestore reads while admin is open. */
+const ADMIN_FOCUS_REFETCH_MS = 5 * 60_000;
 
 /**
- * Fast admin list loader with local cache (stale-while-revalidate).
- * First paint uses cache when present — no full-page spinner on return visits.
+ * Fast admin list loader with local cache.
+ * Explicit refresh/save uses server reads so IndexedDB never shows stale rows.
  */
 export function useAdminDataLoader(loadFn, deps = [], options = {}) {
   const { isAdmin } = useAdminAuth();
@@ -32,20 +37,30 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
   const loadFnRef = useRef(loadFn);
   const hasLoadedRef = useRef(data != null);
   const requestIdRef = useRef(0);
+  const lastFetchAtRef = useRef(0);
 
   loadFnRef.current = loadFn;
 
   const refresh = useCallback(async (opts = {}) => {
-    if (!isAdmin) return;
+    if (!isAdmin) return false;
     const silent = opts.silent ?? hasLoadedRef.current;
+    const fromServer = opts.fromServer ?? opts.bustCache ?? !silent;
     const requestId = ++requestIdRef.current;
+
+    if (resolvedCacheKey && opts.bustCache) {
+      clearAdminDataCache(resolvedCacheKey);
+    }
 
     if (silent) setRefreshing(true);
     else if (!hasLoadedRef.current) setLoading(true);
 
     try {
-      const result = await withTimeout(loadFnRef.current(), 12000, 'admin-data');
-      if (requestId !== requestIdRef.current) return;
+      const load = () => withTimeout(loadFnRef.current(), 12000, 'admin-data');
+      const result = fromServer
+        ? await runWithServerReads(load)
+        : await load();
+      if (requestId !== requestIdRef.current) return false;
+      lastFetchAtRef.current = Date.now();
       startTransition(() => {
         setData(result);
         setError('');
@@ -54,10 +69,12 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
         writeAdminDataCache(resolvedCacheKey, result, cacheTtl);
       }
       hasLoadedRef.current = true;
+      return true;
     } catch (err) {
-      if (requestId !== requestIdRef.current) return;
+      if (requestId !== requestIdRef.current) return false;
       console.error('Admin data load error:', err);
       setError(err.code || 'load-failed');
+      return false;
     } finally {
       if (requestId === requestIdRef.current) {
         setLoading(false);
@@ -81,24 +98,24 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
         setData(cached);
         hasLoadedRef.current = true;
         setLoading(false);
-        refresh({ silent: true });
+        // Revalidate from server in background (avoids IndexedDB stale after publish)
+        refresh({ silent: true, fromServer: true });
         return;
       }
     }
 
-    refresh({ silent: hasLoadedRef.current });
+    refresh({ silent: hasLoadedRef.current, fromServer: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, resolvedCacheKey, ...deps]);
 
   useEffect(() => {
     if (!isAdmin) return undefined;
-    let last = 0;
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       const now = Date.now();
-      if (now - last < 20_000) return;
-      last = now;
-      refresh({ silent: true });
+      if (now - lastFetchAtRef.current < ADMIN_FOCUS_REFETCH_MS) return;
+      lastFetchAtRef.current = now;
+      refresh({ silent: true, fromServer: true });
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);

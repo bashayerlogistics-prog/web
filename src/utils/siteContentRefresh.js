@@ -33,12 +33,13 @@ import {
 } from '../firebase/content';
 import { clearAdminDataCache } from './adminDataCache';
 
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v29';
-export const APP_CACHE_BUILD = '20260819a';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v30';
+export const APP_CACHE_BUILD = '20260918c';
 const APP_CACHE_BUILD_KEY = 'bashayer-app-build';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
+  'bashayer-site-content-v29',
   'bashayer-site-content-v28',
   'bashayer-site-content-v27',
   'bashayer-site-content-v26',
@@ -72,13 +73,13 @@ function pickNonEmptyArray(value, fallback) {
   return Array.isArray(value) && value.length > 0 ? value : fallback;
 }
 
-/** Keep service-guide blog card images in sync with static defaults. */
+/** Fill missing blog card images from static defaults; never overwrite CMS uploads. */
 function mergeBlogImagesFromDefaults(blogs) {
   const byService = new Map(BLOG_POSTS.map((post) => [post.serviceId, post]));
   return (Array.isArray(blogs) ? blogs : []).map((blog) => {
+    if (blog?.image) return blog;
     const def = blog?.serviceId ? byService.get(blog.serviceId) : null;
     if (!def?.image) return blog;
-    if (blog.image === def.image) return blog;
     return { ...blog, image: def.image };
   });
 }
@@ -150,6 +151,12 @@ export function clearSiteContentCacheKeys() {
 export function clearAllAppCaches() {
   clearSiteContentCacheKeys();
   clearAdminDataCache();
+  try {
+    localStorage.removeItem('rafiq_branding');
+    localStorage.removeItem('rafiq_branding_at');
+  } catch {
+    // ignore
+  }
 }
 
 /**
@@ -189,8 +196,8 @@ export function clearSiteContentCache() {
 }
 
 /**
- * Soft clear for fleet/package CRUD — live onSnapshot already updated routes.
- * Drops stale localStorage so next cold load is fresh; no heavy refresh.
+ * Soft clear for fleet/package CRUD — drop localStorage and notify other tabs.
+ * Public tabs treat `soft` like invalidate (one-shot refresh; realtime is off).
  */
 export function softInvalidateSiteContentCache() {
   clearSiteContentCacheKeys();

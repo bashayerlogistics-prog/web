@@ -1,6 +1,6 @@
 const PREFIX = 'bashayer-admin-data-v3-';
 const LEGACY_PREFIXES = ['bashayer-admin-data-v2-', 'bashayer-admin-data-v1-'];
-export const ADMIN_DATA_CACHE_TTL_MS = 15 * 60_000;
+export const ADMIN_DATA_CACHE_TTL_MS = 5 * 60_000;
 
 function storage() {
   try {

@@ -179,7 +179,7 @@ export default function AdminProducts() {
       setEditing(null);
       setShowForm(false);
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     }
@@ -214,19 +214,19 @@ export default function AdminProducts() {
     await deleteProduct(id);
     toast.success(t('admin.productDeleted'));
     await publishSite('soft');
-    refresh();
+      await refresh({ bustCache: true });
   };
 
   const toggleActive = async (p) => {
     await updateProduct(p.id, { active: !p.active });
     await publishSite('soft');
-    refresh();
+      await refresh({ bustCache: true });
   };
 
   const toggleHidePrice = async (p) => {
     await updateProduct(p.id, { hidePrice: !p.hidePrice });
     await publishSite('soft');
-    refresh();
+      await refresh({ bustCache: true });
   };
 
   const handleRemoveDuplicates = async () => {
@@ -248,7 +248,7 @@ export default function AdminProducts() {
       }
       toast.success(t('admin.oneWay.duplicatesRemoved', { count: deleted }));
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     } finally {
@@ -289,7 +289,7 @@ export default function AdminProducts() {
       }
       toast.success(t('admin.importedCount', { count: created + updated }));
       await publishSite('soft');
-      refresh();
+      await refresh({ bustCache: true });
     } catch {
       toast.error(t('common.error'));
     } finally {
