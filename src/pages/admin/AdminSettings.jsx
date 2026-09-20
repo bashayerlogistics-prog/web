@@ -81,7 +81,23 @@ export default function AdminSettings() {
   const persistBranding = async (next, { silent = false } = {}) => {
     setSavingColors(true);
     try {
-      await updateBrandingSettings(next);
+      const payload = {
+        primaryColor: next.primaryColor || DEFAULT_BRANDING.primaryColor,
+        secondaryColor: next.secondaryColor || DEFAULT_BRANDING.secondaryColor,
+        userFontAr: next.userFontAr || DEFAULT_BRANDING.userFontAr,
+        userFontEn: next.userFontEn || DEFAULT_BRANDING.userFontEn,
+        userFont: next.userFont || next.userFontAr || DEFAULT_BRANDING.userFont,
+        adminFont: next.adminFont || DEFAULT_BRANDING.adminFont,
+        logoUrl: typeof next.logoUrl === 'string' && next.logoUrl.trim()
+          ? next.logoUrl.trim()
+          : DEFAULT_BRANDING.logoUrl,
+        faviconUrl: typeof next.faviconUrl === 'string' && next.faviconUrl.trim()
+          ? next.faviconUrl.trim()
+          : DEFAULT_BRANDING.faviconUrl,
+      };
+      await updateBrandingSettings(payload);
+      applyBranding(payload);
+      await refreshBranding();
       if (!silent) toast.success(t('admin.settings.brandingSaved'));
     } catch {
       toast.error(t('common.error'));
@@ -94,26 +110,23 @@ export default function AdminSettings() {
     if (colorSaveTimerRef.current) clearTimeout(colorSaveTimerRef.current);
     colorSaveTimerRef.current = setTimeout(() => {
       persistBranding(next, { silent });
-    }, 500);
+    }, 400);
   };
 
   const updateColors = (partial, { autoSave = false } = {}) => {
-    setColors((c) => {
-      const next = { ...c, ...partial };
-      applyBranding(next);
-      if (autoSave) scheduleColorAutoSave(next);
-      return next;
-    });
+    const next = { ...colorsRef.current, ...partial };
+    colorsRef.current = next;
+    setColors(next);
+    applyBranding(next);
+    if (autoSave) scheduleColorAutoSave(next);
   };
 
   const handleColorChange = (key, value) => {
-    const nextPartial = { [key]: value };
-    setColors((c) => {
-      const next = { ...c, ...nextPartial };
-      applyBranding(next);
-      if (isValidHexColor(value)) scheduleColorAutoSave(next);
-      return next;
-    });
+    const next = { ...colorsRef.current, [key]: value };
+    colorsRef.current = next;
+    setColors(next);
+    applyBranding(next);
+    if (isValidHexColor(value)) scheduleColorAutoSave(next);
   };
 
   const handleSubmit = async (e) => {
@@ -271,18 +284,52 @@ export default function AdminSettings() {
           </div>
         </div>
 
-        <div className="mb-6">
-          <label className="block text-sm font-semibold text-dark-700 dark:text-gray-300 mb-2">
-            {t('admin.settings.logoUpload')}
-          </label>
-          <MediaUpload
-            value={colors.logoUrl || ''}
-            onChange={(url) => updateColors({ logoUrl: url })}
-            folder="branding"
-            allowUrl
-            previewClassName="w-32 h-32 object-contain rounded-xl"
-          />
-          <p className="text-xs text-gray-400 mt-2">{t('admin.settings.logoUploadHint')}</p>
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-sm font-semibold text-dark-700 dark:text-gray-300 mb-2">
+              {t('admin.settings.logoUpload')}
+            </label>
+            <div className="mb-3 rounded-xl border border-primary-500/15 bg-primary-50/60 dark:bg-brand/20 px-3 py-2.5 text-xs leading-relaxed text-dark-700 dark:text-gray-300">
+              <p className="font-bold text-primary-700 dark:text-gold mb-1">{t('admin.settings.logoSpecTitle')}</p>
+              <p>{t('admin.settings.logoSpecBody')}</p>
+            </div>
+            <MediaUpload
+              value={colors.logoUrl || ''}
+              onChange={(url) => updateColors({ logoUrl: url }, { autoSave: true })}
+              folder="branding"
+              allowUrl
+              maxSizeKB={150}
+              maxEdge={512}
+              minEdge={256}
+              quality={0.88}
+              sizeHint={t('admin.settings.logoCompressHint')}
+              previewClassName="w-28 h-28 object-contain rounded-xl bg-white"
+            />
+            <p className="text-xs text-gray-400 mt-2">{t('admin.settings.logoUploadHint')}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-dark-700 dark:text-gray-300 mb-2">
+              {t('admin.settings.faviconUpload')}
+            </label>
+            <div className="mb-3 rounded-xl border border-primary-500/15 bg-primary-50/60 dark:bg-brand/20 px-3 py-2.5 text-xs leading-relaxed text-dark-700 dark:text-gray-300">
+              <p className="font-bold text-primary-700 dark:text-gold mb-1">{t('admin.settings.faviconSpecTitle')}</p>
+              <p>{t('admin.settings.faviconSpecBody')}</p>
+            </div>
+            <MediaUpload
+              value={colors.faviconUrl || ''}
+              onChange={(url) => updateColors({ faviconUrl: url }, { autoSave: true })}
+              folder="branding"
+              accept="image/png,image/x-icon,image/svg+xml,image/webp,.ico,.png,.svg,.webp"
+              allowUrl
+              maxSizeKB={48}
+              maxEdge={128}
+              minEdge={64}
+              quality={0.9}
+              sizeHint={t('admin.settings.faviconCompressHint')}
+              previewClassName="w-16 h-16 object-contain rounded-xl bg-white"
+            />
+            <p className="text-xs text-gray-400 mt-2">{t('admin.settings.faviconUploadHint')}</p>
+          </div>
         </div>
 
         <div className="mb-6">

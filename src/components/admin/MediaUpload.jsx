@@ -25,12 +25,16 @@ export default function MediaUpload({
   accept = 'image/*',
   folder = 'uploads',
   maxSizeKB = DEFAULT_IMAGE_MAX_KB,
+  maxEdge,
+  minEdge,
+  quality,
   allowUrl = true,
   urlPlaceholder = 'https://...',
   label,
   previewClassName = 'w-full max-h-48 object-cover rounded-xl',
   className = '',
   videoMode = false,
+  sizeHint,
 }) {
   const { t } = useTranslation();
   const inputRef = useRef(null);
@@ -73,7 +77,7 @@ export default function MediaUpload({
     setFileInfo({ name: file.name, size: file.size, type: file.type });
     setUploading(true);
     try {
-      const url = await uploadMedia(file, folder, { maxSizeKB });
+      const url = await uploadMedia(file, folder, { maxSizeKB, maxEdge, minEdge, quality });
       onChange(url);
     } catch (err) {
       if (err?.code === 'STILL_TOO_LARGE' || String(err?.message || '').startsWith('STILL_TOO_LARGE')) {
@@ -194,7 +198,7 @@ export default function MediaUpload({
         <span>
           {videoMode
             ? t('admin.media.videoUrlOnly')
-            : t('admin.media.maxSize', { max: maxSizeKB, sourceMax: SOURCE_IMAGE_MAX_MB })}
+            : (sizeHint || t('admin.media.maxSize', { max: maxSizeKB, sourceMax: SOURCE_IMAGE_MAX_MB }))}
           {fileInfo && ` · ${fileInfo.name} (${formatFileSize(fileInfo.size)})`}
         </span>
       </p>

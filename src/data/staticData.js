@@ -1247,10 +1247,10 @@ export const BRAND = {
   email: 'bashayer.logistics@gmail.com',
 };
 
-export const LOGO_URL = '/images/logo.svg';
-export const LOGO_LIGHT_URL = '/images/logo-light.svg';
-export const LOGO_BADGE_URL = '/images/logo-badge.svg';
-export const LOGO_BADGE_LIGHT_URL = '/images/logo-badge-light.svg';
+export const LOGO_URL = '/images/brand-logo.png';
+export const LOGO_LIGHT_URL = '/images/brand-logo.png';
+export const LOGO_BADGE_URL = '/images/logo-badge.png';
+export const LOGO_BADGE_LIGHT_URL = '/images/logo-badge.png';
 export const HERO_GRADIENT = '/images/hero-gradient.svg';
 export const HERO_IMAGE = '/images/hero-desktop.webp';
 export const HERO_IMAGE_MOBILE = '/images/hero-mobile.webp';

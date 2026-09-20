@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { CONTACT } from '../../data/staticData';
 import { useSiteContent } from '../../context/SiteContentContext';
 import {
@@ -96,14 +97,47 @@ export default function TravelReservationsSection() {
             paginationClass="travel-reservations-pagination"
             swiperClass="premium-swiper premium-swiper--travel"
             autoplayDelay={4200}
+            speed={700}
+            loop={reservations.length > 1}
             swiperKey="travel-reservations"
           />
         </div>
 
-        <div className="travel-reservations__grid hidden lg:grid" data-aos="fade-up" data-aos-delay="70">
-          {reservations.map((item) => (
-            <ReservationCard key={item.id} item={item} lang={lang} />
-          ))}
+        <div
+          className="hidden lg:block travel-reservations__carousel"
+          data-aos="fade-up"
+          data-aos-delay="70"
+        >
+          <button
+            type="button"
+            className="travel-reservations-nav travel-reservations-nav--prev travel-reservations-prev"
+            aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            className="travel-reservations-nav travel-reservations-nav--next travel-reservations-next"
+            aria-label={lang === 'ar' ? 'التالي' : 'Next'}
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+          <PremiumSwiper
+            items={reservations}
+            renderSlide={(item) => <ReservationCard item={item} lang={lang} />}
+            effect="slide"
+            centeredSlides
+            spaceBetween={28}
+            showNavigation
+            showPagination={false}
+            navigationPrevClass="travel-reservations-prev"
+            navigationNextClass="travel-reservations-next"
+            swiperClass="premium-swiper premium-swiper--travel premium-swiper--travel-desktop"
+            autoplayDelay={3800}
+            speed={900}
+            loop={reservations.length > 2}
+            swiperKey="travel-reservations-desktop"
+          />
         </div>
       </div>
     </section>

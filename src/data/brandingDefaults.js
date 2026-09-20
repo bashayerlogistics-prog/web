@@ -5,7 +5,8 @@ export const DEFAULT_BRANDING = {
   userFontEn: 'Inter',
   userFont: 'Tajawal',
   adminFont: 'Inter',
-  logoUrl: '',
+  logoUrl: '/images/brand-logo.png',
+  faviconUrl: '/favicon.png',
 };
 
 export function resolveUserFont(branding, lang) {

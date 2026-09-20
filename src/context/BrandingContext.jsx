@@ -44,13 +44,52 @@ function clearBrandingCache() {
   }
 }
 
-const initialBranding = readCachedBranding();
-if (typeof document !== 'undefined') {
-  applyBrandingToDom(initialBranding, window.location.pathname.startsWith('/admin'));
-}
-
 function getActiveLang() {
   return document.documentElement.lang === 'en' ? 'en' : 'ar';
+}
+
+const DEFAULT_FAVICON = '/favicon.png';
+
+function resolveFaviconHref(branding) {
+  const custom = branding?.faviconUrl?.trim() || branding?.logoUrl?.trim() || '';
+  return custom || DEFAULT_FAVICON;
+}
+
+function faviconMime(href) {
+  const path = String(href).split('?')[0].toLowerCase();
+  if (path.endsWith('.svg')) return 'image/svg+xml';
+  if (path.endsWith('.png')) return 'image/png';
+  if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
+  if (path.endsWith('.webp')) return 'image/webp';
+  if (path.endsWith('.ico')) return 'image/x-icon';
+  return '';
+}
+
+function applyFaviconToDom(branding) {
+  if (typeof document === 'undefined') return;
+  const rawHref = resolveFaviconHref(branding);
+  const isDefault = rawHref === DEFAULT_FAVICON;
+  // Browsers cache favicons aggressively — bust cache when using a custom URL
+  const href = isDefault
+    ? rawHref
+    : `${rawHref}${rawHref.includes('?') ? '&' : '?'}v=${encodeURIComponent(rawHref.slice(-48))}`;
+  const type = faviconMime(rawHref);
+
+  document
+    .querySelectorAll('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]')
+    .forEach((el) => el.remove());
+
+  const addLink = (rel) => {
+    const link = document.createElement('link');
+    link.rel = rel;
+    if (type) link.type = type;
+    link.href = href;
+    document.head.appendChild(link);
+  };
+
+  addLink('icon');
+  addLink('shortcut icon');
+  addLink('apple-touch-icon');
 }
 
 function applyBrandingToDom(branding, isAdminRoute) {
@@ -61,6 +100,14 @@ function applyBrandingToDom(branding, isAdminRoute) {
   const themeMeta = document.querySelector('meta[name="theme-color"]');
   if (themeMeta && branding.primaryColor) {
     themeMeta.setAttribute('content', branding.primaryColor);
+  }
+
+  applyFaviconToDom(branding);
+
+  const splashLogo = document.querySelector('.splash-logo');
+  const logoUrl = branding?.logoUrl?.trim();
+  if (splashLogo && logoUrl) {
+    splashLogo.src = logoUrl;
   }
 
   const lang = getActiveLang();
@@ -80,6 +127,11 @@ function applyBrandingToDom(branding, isAdminRoute) {
     document.body.style.fontFamily = getFontFamily(userFontKey);
     root.dataset.brandSurface = 'user';
   }
+}
+
+const initialBranding = readCachedBranding();
+if (typeof document !== 'undefined') {
+  applyBrandingToDom(initialBranding, window.location.pathname.startsWith('/admin'));
 }
 
 /** Server read — bypass IndexedDB so profiles never stick on stale colors. */

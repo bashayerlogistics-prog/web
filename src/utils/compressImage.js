@@ -63,7 +63,7 @@ function toJpegFile(blob, file) {
 
 /**
  * @param {File} file
- * @param {{ maxEdge?: number, quality?: number, maxBytes?: number }} [opts]
+ * @param {{ maxEdge?: number, quality?: number, maxBytes?: number, minEdge?: number }} [opts]
  * @returns {Promise<File>}
  */
 export async function compressImageFile(file, opts = {}) {
@@ -73,6 +73,7 @@ export async function compressImageFile(file, opts = {}) {
   const maxBytes = opts.maxBytes ?? null;
   const startEdge = opts.maxEdge ?? DEFAULTS.maxEdge;
   const startQuality = opts.quality ?? DEFAULTS.quality;
+  const minEdge = opts.minEdge ?? DEFAULTS.minEdge;
   const mime = DEFAULTS.mime;
 
   // Already small enough and no forced re-encode needed
@@ -104,8 +105,8 @@ export async function compressImageFile(file, opts = {}) {
 
       if (quality > DEFAULTS.minQuality + 0.06) {
         quality = Math.max(DEFAULTS.minQuality, quality - 0.1);
-      } else if (edge > DEFAULTS.minEdge) {
-        edge = Math.max(DEFAULTS.minEdge, Math.round(edge * 0.82));
+      } else if (edge > minEdge) {
+        edge = Math.max(minEdge, Math.round(edge * 0.82));
         quality = Math.max(DEFAULTS.minQuality, startQuality - 0.12);
       } else {
         break;

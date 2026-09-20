@@ -40,8 +40,9 @@ export async function uploadMedia(file, folder = 'uploads', opts = {}) {
   }
 
   const compressed = await compressImageFile(file, {
-    maxEdge: 1400,
-    quality: 0.76,
+    maxEdge: opts.maxEdge ?? 1400,
+    minEdge: opts.minEdge,
+    quality: opts.quality ?? 0.76,
     maxBytes,
   });
 

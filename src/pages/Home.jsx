@@ -82,7 +82,7 @@ export default function Home() {
           <BookingForm overlapHero={heroActive} />
         </div>
       )}
-      <LazySection rootMargin="720px 0px">
+      <LazySection when={isSectionActive('travelReservations')} rootMargin="720px 0px">
         <TravelReservationsSection />
       </LazySection>
       <LazySection when={isSectionActive('fleet')} rootMargin="640px 0px">

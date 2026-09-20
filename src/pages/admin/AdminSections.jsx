@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Layout, Calculator, Map, Car, Grid3x3, HelpCircle, BarChart3,
-  Briefcase, Info, FileText, Eye, EyeOff, Power, Zap,
+  Briefcase, Info, FileText, Eye, EyeOff, Power, Zap, MessageCircle,
 } from 'lucide-react';
 import { getAdminHomeSections, updateHomeSection } from '../../firebase/admin';
 import { useAdminDataLoader } from '../../hooks/useAdminDataLoader';
@@ -15,6 +15,7 @@ import { HOME_SECTION_LIST } from '../../data/homeSections';
 
 const SECTION_ICONS = {
   hero: Layout,
+  travelReservations: MessageCircle,
   instantPrice: Zap,
   booking: Calculator,
   routes: Map,

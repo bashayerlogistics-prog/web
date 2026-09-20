@@ -74,23 +74,23 @@ export default function Header() {
             to="/"
             className="header-logo-link flex items-center group min-w-0 shrink pe-1"
           >
-            <span className="flex lg:hidden items-center min-w-0 max-w-full">
+            <span className="flex lg:hidden items-center min-w-0 max-w-[min(100%,12.5rem)] h-9 sm:h-10">
               <BrandLogo
                 variant="full"
                 tone="light"
                 compact
                 alt={t('brand.name')}
-                className="h-9 sm:h-10 min-w-0 max-w-full transition-transform group-hover:scale-[1.02]"
+                className="h-full max-h-10 min-w-0 transition-transform group-hover:scale-[1.02]"
                 loading="eager"
                 decoding="sync"
               />
             </span>
-            <span className="hidden lg:flex items-center shrink-0">
+            <span className="hidden lg:flex items-center shrink-0 h-9 xl:h-10 max-w-[14rem] xl:max-w-[16rem]">
               <BrandLogo
                 variant="full"
                 tone="light"
                 alt={t('brand.name')}
-                className="h-8 lg:h-9 xl:h-10 max-w-[88px] lg:max-w-[105px] xl:max-w-[130px] 2xl:max-w-[160px] transition-transform group-hover:scale-[1.02]"
+                className="h-full max-h-10 transition-transform group-hover:scale-[1.02]"
                 loading="eager"
                 decoding="sync"
               />
@@ -223,7 +223,7 @@ export default function Header() {
             aria-modal="true"
           >
             <div className="flex items-center justify-between border-b border-white/10 p-4 sm:p-5 shrink-0">
-              <BrandLogo variant="full" tone="light" alt={t('brand.name')} className="h-9 max-w-[180px]" />
+              <BrandLogo variant="full" tone="light" alt={t('brand.name')} className="h-9 max-w-[200px]" />
               <button
                 type="button"
                 onClick={() => setMenuOpen(false)}

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../context/ThemeContext';
 import { useBranding } from '../../context/BrandingContext';
+import { DEFAULT_BRANDING } from '../../data/brandingDefaults';
 import LogoMark from './LogoMark';
 
 /**
@@ -13,8 +14,8 @@ export default function BrandLogo({
   compact = false,
   className = '',
   alt = '',
-  loading: _loading,
-  decoding: _decoding,
+  loading = 'lazy',
+  decoding = 'async',
   width: _width,
   height: _height,
   ...props
@@ -28,7 +29,26 @@ export default function BrandLogo({
 
   const markTone = useLightTone ? 'light' : 'dark';
   const label = alt || t('brand.name');
-  const customLogo = branding?.logoUrl?.trim();
+  const customLogo = branding?.logoUrl?.trim() || DEFAULT_BRANDING.logoUrl;
+
+  const markClass = compact
+    ? 'h-full max-h-8 w-auto aspect-square shrink-0 self-center rounded-xl object-contain bg-white'
+    : 'h-[88%] w-auto aspect-square shrink-0 self-center rounded-xl object-contain bg-white';
+
+  const Mark = customLogo ? (
+    <img
+      src={customLogo}
+      alt=""
+      loading={loading}
+      decoding={decoding}
+      className={markClass}
+    />
+  ) : (
+    <LogoMark
+      tone={markTone}
+      className={`w-auto aspect-square shrink-0 self-center rounded-xl ${compact ? 'h-full max-h-8' : 'h-[88%]'}`}
+    />
+  );
 
   if (variant === 'badge') {
     if (customLogo) {
@@ -36,7 +56,9 @@ export default function BrandLogo({
         <img
           src={customLogo}
           alt={label}
-          className={className}
+          loading={loading}
+          decoding={decoding}
+          className={`object-contain bg-white ${className}`}
           {...props}
         />
       );
@@ -68,18 +90,7 @@ export default function BrandLogo({
       aria-label={label}
       {...props}
     >
-      {customLogo ? (
-        <img
-          src={customLogo}
-          alt=""
-          className={`w-auto aspect-square shrink-0 self-center rounded-xl object-contain ${compact ? 'h-full max-h-8' : 'h-[88%]'}`}
-        />
-      ) : (
-        <LogoMark
-          tone={markTone}
-          className={`w-auto aspect-square shrink-0 self-center rounded-xl ${compact ? 'h-full max-h-8' : 'h-[88%]'}`}
-        />
-      )}
+      {Mark}
       <div className="flex flex-col min-w-0 leading-none overflow-hidden">
         <span
           className={`font-extrabold tracking-tight truncate ${

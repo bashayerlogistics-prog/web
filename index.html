@@ -35,13 +35,16 @@
           var primary = '#3e0f77';
           var secondary = '#d5a027';
           var logoUrl = '';
+          var faviconUrl = '';
           try {
             var raw = localStorage.getItem('rafiq_branding');
             if (raw) {
               var data = JSON.parse(raw);
+              if (data && data.data && typeof data.data === 'object' && !data.primaryColor) data = data.data;
               if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(data.primaryColor || '')) primary = data.primaryColor;
               if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(data.secondaryColor || '')) secondary = data.secondaryColor;
               if (typeof data.logoUrl === 'string') logoUrl = data.logoUrl.trim();
+              if (typeof data.faviconUrl === 'string') faviconUrl = data.faviconUrl.trim();
             }
           } catch (e) { /* ignore cache errors */ }
 
@@ -59,6 +62,22 @@
 
           var themeMeta = document.querySelector('meta[name="theme-color"]');
           if (themeMeta) themeMeta.setAttribute('content', primary);
+
+          var iconHref = faviconUrl || logoUrl;
+          if (iconHref) {
+            function setIconLink(rel) {
+              var link = document.querySelector('link[rel="' + rel + '"]');
+              if (!link) {
+                link = document.createElement('link');
+                link.rel = rel;
+                document.head.appendChild(link);
+              }
+              link.href = iconHref;
+            }
+            setIconLink('icon');
+            setIconLink('shortcut icon');
+            setIconLink('apple-touch-icon');
+          }
 
           if (logoUrl) {
             document.addEventListener('DOMContentLoaded', function () {
@@ -95,10 +114,10 @@
         idle(function () { injectFont(other, true); }, { timeout: 2500 });
       })();
     </script>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- Logo only globally — hero preloads are homepage-only (SPA shares this HTML on /cart, /login, …) -->
-    <link rel="preload" href="/images/logo-badge-light.svg" as="image" type="image/svg+xml" />
+    <link rel="preload" href="/images/brand-logo.png" as="image" type="image/png" />
     <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
     <link rel="dns-prefetch" href="https://firebase.googleapis.com" />
     <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
@@ -162,7 +181,7 @@
     <div id="initial-splash" role="status" aria-label="Loading">
       <div class="splash-inner">
         <div class="splash-logo-wrap">
-          <img class="splash-logo" src="/images/logo-badge-light.svg" alt="" width="72" height="72" fetchpriority="high" />
+          <img class="splash-logo" src="/images/brand-logo.png" alt="" width="72" height="72" fetchpriority="high" />
           <div class="splash-ring" aria-hidden="true"></div>
         </div>
         <div class="splash-bar" aria-hidden="true"><span class="splash-bar-fill"></span></div>

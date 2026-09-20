@@ -9,6 +9,8 @@ function normalizeBranding(data) {
     ...data,
     userFontAr: data?.userFontAr || data?.userFont || DEFAULT_BRANDING.userFontAr,
     userFontEn: data?.userFontEn || DEFAULT_BRANDING.userFontEn,
+    logoUrl: String(data?.logoUrl || '').trim() || DEFAULT_BRANDING.logoUrl,
+    faviconUrl: String(data?.faviconUrl || '').trim() || DEFAULT_BRANDING.faviconUrl,
   };
 }
 
