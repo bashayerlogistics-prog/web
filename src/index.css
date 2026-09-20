@@ -231,13 +231,19 @@ body {
 .travel-reservations__grid {
   position: relative;
   z-index: 1;
-  display: grid;
+  display: none;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: clamp(0.65rem, 1.8vw, 1.75rem);
   max-width: 74rem;
   margin: 0 auto;
   align-items: start;
   justify-items: center;
+}
+
+@media (min-width: 1024px) {
+  .travel-reservations__grid {
+    display: grid;
+  }
 }
 
 .travel-reservation {
@@ -440,9 +446,49 @@ body {
 /* Five car categories: clean circular vehicle portraits (no ring border) */
 .car-category-cards {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: clamp(0.9rem, 2vw, 1.5rem);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 3.5vw, 1.35rem) clamp(0.75rem, 3vw, 1.1rem);
   align-items: start;
+  justify-items: center;
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  .car-category-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem 1.5rem;
+  }
+
+  .car-category-card {
+    width: 100%;
+    max-width: 13rem;
+  }
+
+  .car-category-card__visual {
+    max-width: 12rem;
+    border-radius: 50%;
+    overflow: hidden;
+  }
+
+  .car-category-card__photo {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .car-category-card__hover {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  [dir="rtl"] .car-category-card__hover {
+    transform: translate(50%, 0);
+  }
+}
+
+@media (min-width: 1024px) {
+  .car-category-cards {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: clamp(0.9rem, 2vw, 1.5rem);
+  }
 }
 
 .car-category-card {
@@ -624,23 +670,23 @@ body {
     gap: 0.75rem;
   }
 
-  .travel-reservation {
+  .travel-reservations__grid .travel-reservation {
     max-width: none;
   }
 
-  .travel-reservation__visual {
+  .travel-reservations__grid .travel-reservation__visual {
     width: clamp(6.4rem, 15vw, 9rem);
   }
 
-  .travel-reservation__circle {
+  .travel-reservations__grid .travel-reservation__circle {
     width: clamp(5.9rem, 14vw, 8.35rem);
   }
 
-  .travel-reservation__copy strong {
+  .travel-reservations__grid .travel-reservation__copy strong {
     font-size: clamp(0.78rem, 1.7vw, 0.95rem);
   }
 
-  .travel-reservation__copy small {
+  .travel-reservations__grid .travel-reservation__copy small {
     font-size: clamp(0.65rem, 1.4vw, 0.75rem);
   }
 }
@@ -656,114 +702,66 @@ body {
     filter: blur(36px);
   }
 
-  .travel-reservations__grid {
-    grid-template-columns: 1fr;
-    gap: 1.15rem;
-    max-width: 22rem;
+  /* Keep laptop circular card design — one full centered card per slide */
+  .premium-swiper--travel .travel-reservation {
+    max-width: min(16rem, 100%);
+    width: 100%;
+    margin-inline: auto;
   }
 
-  .travel-reservation {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: center;
-    gap: 0.95rem 1rem;
-    max-width: none;
-    padding: 0.85rem 1rem;
-    text-align: start;
-    background: rgba(255, 255, 255, 0.82);
-    border: 1px solid rgba(var(--travel-accent), 0.14);
-    border-radius: 1.35rem;
-    box-shadow: 0 16px 34px -26px rgba(var(--travel-accent), 0.75);
-    backdrop-filter: blur(10px);
+  .premium-swiper--travel .travel-reservation__visual {
+    width: clamp(9.5rem, 48vw, 12.5rem);
   }
 
-  .travel-reservation__visual {
-    width: 4.75rem;
+  .premium-swiper--travel .travel-reservation__circle {
+    width: clamp(9rem, 46vw, 11.75rem);
   }
 
-  .travel-reservation__bloom,
-  .travel-reservation__orbit {
-    display: none;
-  }
-
-  .travel-reservation__circle {
-    width: 4.75rem;
-    box-shadow:
-      0 16px 28px -18px rgba(var(--travel-accent), 0.8),
-      inset 0 1px 0 #fff;
-  }
-
-  .travel-reservation__whatsapp {
-    width: 1.55rem;
-    height: 1.55rem;
-    border-width: 2px;
-    inset-inline-end: -2%;
-    bottom: 2%;
-  }
-
-  .travel-reservation__copy {
-    margin-top: 0;
-    padding-inline: 0;
-    align-items: flex-start;
-  }
-
-  .travel-reservation__copy strong {
-    font-size: 0.95rem;
-    line-height: 1.35;
-  }
-
-  .travel-reservation__copy small {
-    display: block;
-    font-size: 0.74rem;
-  }
-
-  .travel-reservation:hover .travel-reservation__circle,
-  .travel-reservation:focus-visible .travel-reservation__circle {
-    transform: translateY(-2px) scale(1.03);
-  }
-
+  /* Choose Your Car — 2-col grid, full unclipped circles */
   .car-category-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1.7rem 1rem;
+    overflow: visible;
   }
 
-  .car-category-card:last-child {
-    grid-column: 1 / -1;
-    width: calc(50% - 0.5rem);
-    justify-self: center;
+  .car-category-card {
+    width: 100%;
+    max-width: 11.5rem;
   }
 
   .car-category-card__visual {
-    max-width: 10.5rem;
+    max-width: min(10.5rem, 42vw);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    overflow: hidden;
+  }
+
+  .car-category-card__image,
+  .car-category-card__shade {
+    border-radius: 50%;
+  }
+
+  .car-category-card__photo {
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 
   .car-category-card__hover {
     opacity: 1;
     transform: translate(-50%, 0);
+    font-size: 0.62rem;
   }
 
   [dir="rtl"] .car-category-card__hover {
     transform: translate(50%, 0);
   }
 
-  .car-category-card__passengers {
-    top: 12%;
-    inset-inline-start: 18%;
-  }
-}
-
-@media (min-width: 480px) and (max-width: 767px) {
-  .travel-reservations__grid {
-    max-width: 28rem;
+  .car-category-card__hint {
+    max-width: 100%;
   }
 
-  .travel-reservation {
-    padding: 1rem 1.15rem;
-  }
-
-  .travel-reservation__visual,
-  .travel-reservation__circle {
-    width: 5.35rem;
+  .premium-swiper--fleet .fleet-card {
+    max-width: min(24rem, 100%);
+    width: 100%;
+    margin-inline: auto;
   }
 }
 
@@ -844,25 +842,18 @@ body {
     contain: none;
   }
 
-  /* Ultra-smooth mobile: cut GPU blur / orbs */
+  /* Ultra-smooth mobile: cut GPU blur / orbs (keep Instant Price glass like laptop) */
   .instant-price-section__orb,
-  .instant-price-card__shine,
   .premium-card__glow,
   .premium-card__shine {
     display: none !important;
   }
 
-  .instant-price-card,
-  .instant-price-field,
   .glass-card,
   .admin-form-card,
   .premium-card {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
-  }
-
-  .instant-price-card {
-    background: rgba(15, 23, 42, 0.92) !important;
   }
 }
 
@@ -921,7 +912,7 @@ body {
 
 #whatsapp-button {
   position: fixed;
-  z-index: 40;
+  z-index: 56;
   bottom: calc(1.5rem + 3.5rem + 0.75rem + env(safe-area-inset-bottom, 0px));
   inset-inline-end: calc(1rem + env(safe-area-inset-right, 0px));
   contain: layout style;
@@ -1882,10 +1873,67 @@ select {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: center 40%;
   transform: scale(1.02);
   opacity: 0;
   transition: opacity 0.18s ease;
+}
+
+@media (max-width: 767px) {
+  .instant-price-section {
+    min-height: auto;
+    padding-block: clamp(2.25rem, 5svh, 3.25rem);
+    padding-bottom: calc(clamp(2.25rem, 5svh, 3.25rem) + var(--mobile-bottom-nav-offset, 4.75rem));
+    justify-content: center;
+  }
+
+  .instant-price-section__photo {
+    object-position: center center;
+    transform: scale(1.04);
+  }
+
+  /* Match laptop overlay strength so the photo shows through on phones */
+  .instant-price-section__bg {
+    background:
+      linear-gradient(
+        115deg,
+        rgba(var(--color-brand-dark-rgb), 0.62) 0%,
+        rgba(var(--color-brand-rgb), 0.42) 42%,
+        rgba(var(--color-brand-rgb), 0.26) 68%,
+        rgba(var(--color-gold-rgb), 0.14) 100%
+      ),
+      linear-gradient(
+        180deg,
+        rgba(var(--color-brand-dark-rgb), 0.18) 0%,
+        transparent 42%,
+        rgba(var(--color-brand-dark-rgb), 0.32) 100%
+      );
+  }
+
+  .instant-price-layout {
+    gap: 1.35rem !important;
+  }
+
+  .instant-price-copy {
+    padding-inline: 0.15rem;
+  }
+
+  .instant-price-copy__body {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+  }
+
+  .instant-price-card {
+    padding: 1.05rem 1rem;
+    border-radius: 1.25rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .instant-price-section__photo {
+    object-position: center center;
+  }
 }
 
 .instant-price-section__photo.is-ready {
@@ -4771,11 +4819,14 @@ html.dark[data-brand-surface="admin"] .shimmer-text {
 /* Auth design system — Bashayer Al-Ata brand */
 .auth-page-shell {
   position: relative;
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding-top: 5rem;
+  padding-bottom: calc(1.25rem + var(--mobile-bottom-nav-offset, 0px));
   background:
     radial-gradient(circle at 15% 15%, rgba(var(--color-brand-rgb), 0.1), transparent 32rem),
     linear-gradient(145deg, #f8f7fb 0%, #f2f3f6 48%, #faf7f1 100%);
@@ -5096,13 +5147,16 @@ html.dark[data-brand-surface="admin"] .shimmer-text {
 @media (max-width: 767px) {
   .auth-page-shell {
     align-items: flex-start;
-    padding-top: 4.5rem;
+    padding-top: calc(4.25rem + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(1.25rem + var(--mobile-bottom-nav-offset, 4.75rem));
   }
 
   .auth-layout {
     display: block;
     min-height: 0;
-    border-radius: 1.5rem;
+    border-radius: 1.35rem;
+    overflow: visible;
+    box-shadow: 0 18px 48px -28px rgba(var(--color-brand-rgb), 0.32);
   }
 
   .auth-welcome-panel {
@@ -5110,27 +5164,127 @@ html.dark[data-brand-surface="admin"] .shimmer-text {
   }
 
   .auth-form-panel {
-    padding: 1.35rem;
+    padding: 1.2rem 1.15rem 1.35rem;
+  }
+
+  .auth-mobile-brand {
+    display: block;
+    margin-bottom: 1.1rem;
+  }
+
+  .auth-tabs {
+    margin-bottom: 1.15rem;
+  }
+
+  .auth-tab {
+    padding: 0.7rem 0.65rem;
+    font-size: 0.8rem;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .auth-title-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.8rem;
+  }
+
+  .auth-btn-primary,
+  .auth-btn-google {
+    min-height: 3rem;
+  }
+
+  .auth-info-note,
+  .auth-error-banner {
+    font-size: 0.78rem;
+  }
+}
+
+/* Tablet: single-column auth (welcome panel still heavy) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .auth-page-shell {
+    padding-top: 5.5rem;
+    align-items: flex-start;
+  }
+
+  .auth-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .auth-welcome-panel {
+    display: none;
   }
 
   .auth-mobile-brand {
     display: block;
   }
+
+  .auth-form-panel {
+    padding: 2rem 2.25rem;
+  }
+}
+
+/* Short landscape phones — keep form usable without huge top gap */
+@media (max-height: 520px) and (orientation: landscape) {
+  .auth-page-shell {
+    padding-top: 3.5rem;
+    padding-bottom: 1rem;
+    align-items: flex-start;
+  }
+
+  .auth-layout {
+    min-height: 0;
+  }
+
+  .auth-welcome-panel {
+    display: none;
+  }
+
+  .auth-mobile-brand {
+    display: block;
+    margin-bottom: 0.75rem;
+  }
+
+  .auth-form-panel {
+    padding: 1rem 1.25rem;
+  }
+
+  .auth-tabs {
+    margin-bottom: 0.85rem;
+  }
 }
 
 @media (max-width: 380px) {
   .auth-form-panel {
-    padding: 1.1rem;
+    padding: 1rem 0.9rem 1.15rem;
   }
 
   .auth-page-shell > div {
-    padding-inline: 0.65rem;
+    padding-inline: 0.55rem;
+  }
+
+  .auth-tab {
+    font-size: 0.74rem;
+    padding-inline: 0.4rem;
   }
 }
 
 /* Clear fixed header so dashboard content never sits underneath it */
+.dashboard-page {
+  padding-bottom: calc(1.25rem + var(--mobile-bottom-nav-offset, 0px));
+}
+
 .dashboard-hero {
-  padding-top: calc(var(--site-header-height, 5.75rem) + 0.35rem);
+  padding-top: calc(var(--site-header-height, 5.75rem) + 0.15rem);
+}
+
+@media (max-width: 767px) {
+  .dashboard-hero {
+    padding-top: calc(var(--site-header-height, 4.75rem) + env(safe-area-inset-top, 0px));
+  }
 }
 
 .dashboard-user-glass {
@@ -5393,6 +5547,8 @@ html.dark[data-brand-surface="admin"] .shimmer-text {
     width: 100%;
     max-width: 100%;
     overflow: hidden;
+    padding-inline: 0.65rem;
+    box-sizing: border-box;
   }
 
   .premium-swiper-wrap--mobile-center .swiper,
@@ -5401,16 +5557,29 @@ html.dark[data-brand-surface="admin"] .shimmer-text {
     overflow: hidden !important;
   }
 
+  /* Full-bleed slides — no half-card peeks */
   .premium-swiper-wrap--mobile-center .swiper-slide,
   .premium-swiper--wide .swiper-slide,
   .premium-swiper--fleet .swiper-slide,
   .premium-swiper--routes .swiper-slide,
   .premium-swiper--catalog .swiper-slide,
+  .premium-swiper--travel .swiper-slide,
+  .premium-swiper--categories .swiper-slide,
   .premium-swiper .swiper-slide,
   .section-swiper .swiper-slide {
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box;
+    flex-shrink: 0;
+  }
+
+  .premium-swiper-wrap--mobile-center .swiper-slide > *,
+  .premium-swiper--fleet .swiper-slide > *,
+  .premium-swiper--travel .swiper-slide > *,
+  .premium-swiper--categories .swiper-slide > * {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: auto;
   }
 
   .routes-carousel-wrap .premium-swiper-wrap,
@@ -7906,7 +8075,7 @@ select.instant-price-field {
   position: fixed;
   inset-inline: 0;
   bottom: 0;
-  z-index: 50;
+  z-index: 70;
   display: block;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: rgba(255, 255, 255, 0.96);
@@ -8012,7 +8181,7 @@ select.instant-price-field {
 .mobile-bottom-nav__sheet-root {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 80;
 }
 
 @media (min-width: 1024px) {
@@ -8710,8 +8879,10 @@ select.instant-price-field {
 
 @media (max-width: 767px) {
   .header-icon-btn--mobile {
-    width: 2rem;
-    height: 2rem;
+    width: 2.75rem;
+    height: 2.75rem;
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -11647,8 +11818,6 @@ select.instant-price-field {
   .glass-card,
   .admin-form-card,
   .premium-card,
-  .instant-price-card,
-  .instant-price-field,
   .header-bar--glass,
   .booking-form-card,
   .site-header-glass {
@@ -11656,25 +11825,33 @@ select.instant-price-field {
     -webkit-backdrop-filter: none !important;
   }
 
+  /* Instant Price keeps laptop glass (lighter blur on phones) */
+  .instant-price-card {
+    backdrop-filter: blur(14px) saturate(1.25) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(1.25) !important;
+  }
+
+  .instant-price-field {
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+  }
+
   .instant-price-section__orb,
   .premium-card__glow,
   .premium-card__shine,
-  .instant-price-card__shine,
   .hero-orb,
   .floating-orb {
     display: none !important;
   }
 
-  .admin-layout main,
-  .instant-price-section {
+  .admin-layout main {
     content-visibility: auto;
     contain-intrinsic-size: 1px 900px;
   }
 
-  /* Home below-fold: skip layout/paint until near viewport */
+  /* Home below-fold only — Instant Price is above-fold on mobile */
   #vehicles,
   #fleet,
-  #instant-price,
   #religious-tours,
   #services-catalog,
   #services,
@@ -11685,5 +11862,135 @@ select.instant-price-field {
   .catalog-section {
     content-visibility: auto;
     contain-intrinsic-size: 1px 640px;
+  }
+}
+
+/* ── Mobile UX: tap targets, swiper clicks, CTA clearance ───────── */
+@media (max-width: 1023px) {
+  .premium-swiper .swiper-slide a,
+  .premium-swiper .swiper-slide button,
+  .premium-swiper .swiper-slide label,
+  .section-swiper .swiper-slide a,
+  .section-swiper .swiper-slide button {
+    pointer-events: auto;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .fleet-card__btn,
+  .fleet-card__whatsapp {
+    min-height: 44px;
+    font-size: 0.75rem;
+    padding: 0.55rem 0.45rem;
+  }
+
+  .fleet-card__actions {
+    gap: 0.45rem;
+  }
+
+  .instant-price-chip {
+    min-height: 36px;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.6875rem;
+  }
+
+  .instant-price-cta,
+  .booking-form-card__submit,
+  .rt-cta,
+  .auth-btn-primary,
+  .auth-btn-google {
+    min-height: 48px;
+    touch-action: manipulation;
+  }
+
+  .ip-select__trigger,
+  .instant-price-field,
+  .booking-form-input,
+  .rt-field {
+    min-height: 44px;
+  }
+
+  .ip-select__option {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .whatsapp-fab {
+    width: 3.25rem;
+    height: 3.25rem;
+  }
+
+  .car-category-card,
+  .travel-reservation {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* Keep form CTAs clear of bottom nav + FABs */
+  .booking-form-actions,
+  .instant-price-card form,
+  .rt-card form {
+    padding-bottom: 0.25rem;
+  }
+
+  .mobile-bottom-nav__item {
+    min-height: 48px;
+  }
+
+  .mobile-bottom-nav__sheet-link,
+  .mobile-bottom-nav__sheet-action {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 767px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    overscroll-behavior-y: contain;
+  }
+
+  button,
+  a,
+  [role='button'],
+  input,
+  select,
+  textarea,
+  label {
+    touch-action: manipulation;
+  }
+
+  .section-container {
+    padding-inline: max(0.85rem, env(safe-area-inset-left, 0px)) max(0.85rem, env(safe-area-inset-right, 0px));
+  }
+
+  /* Prevent iOS zoom on focus for small inputs */
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+
+  .booking-form-input,
+  select.booking-form-input,
+  input.booking-form-input,
+  textarea.booking-form-input,
+  .instant-price-field,
+  .auth-input,
+  .rt-field {
+    font-size: 16px !important;
+  }
+
+  .dashboard-page .container {
+    padding-inline: max(0.85rem, env(safe-area-inset-left, 0px)) max(0.85rem, env(safe-area-inset-right, 0px));
+  }
+
+  .auth-page-shell .auth-form-panel h1 {
+    font-size: clamp(1.35rem, 5.5vw, 1.75rem);
+    line-height: 1.25;
   }
 }

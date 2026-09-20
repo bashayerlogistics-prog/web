@@ -62,13 +62,23 @@ const INSTANT_BG_DESKTOP = '/images/instant-price-bg.webp';
 const INSTANT_BG_MOBILE = '/images/instant-price-bg-mobile.webp';
 const INSTANT_BG_LEGACY = '/images/instant-price-bg.png';
 
-function resolveInstantBg(url) {
+function isLegacyInstantBg(url) {
   const raw = String(url || '').trim();
-  if (!raw || raw === INSTANT_BG_LEGACY || raw === INSTANT_BG_DESKTOP) {
-    return { desktop: INSTANT_BG_DESKTOP, mobile: INSTANT_BG_MOBILE };
-  }
-  const optimized = optimizedImageUrl(raw, 1280, 72);
-  return { desktop: optimized, mobile: optimizedImageUrl(raw, 768, 68) || optimized };
+  return !raw || raw === INSTANT_BG_LEGACY || raw === INSTANT_BG_DESKTOP || raw === INSTANT_BG_MOBILE;
+}
+
+/**
+ * Always use the laptop/desktop background on mobile too.
+ * Dedicated mobile uploads were a different scene and read as a solid dark fill.
+ */
+function resolveInstantBg(desktopUrl) {
+  const desktopRaw = String(desktopUrl || '').trim();
+
+  const desktop = isLegacyInstantBg(desktopRaw)
+    ? INSTANT_BG_DESKTOP
+    : (optimizedImageUrl(desktopRaw, 1536, 72) || desktopRaw);
+
+  return { desktop, mobile: desktop };
 }
 
 function shortVehicleName(vehicle, lang) {
@@ -574,7 +584,7 @@ export default function InstantPriceSection() {
     setBgReady(false);
     const img = bgImgRef.current;
     if (img?.complete && img.naturalWidth > 0) setBgReady(true);
-  }, [bg.desktop]);
+  }, [bg.desktop, bg.mobile]);
 
   return (
     <section
@@ -583,7 +593,16 @@ export default function InstantPriceSection() {
     >
       <div className="instant-price-section__media" aria-hidden="true">
         <picture>
-          <source media="(max-width: 767px)" srcSet={bg.mobile} {...(/\.(webp)(\?|$)/i.test(bg.mobile) ? { type: 'image/webp' } : {})} />
+          <source
+            media="(max-width: 767px)"
+            srcSet={bg.mobile}
+            {...(/\.(webp)(\?|$)/i.test(bg.mobile) ? { type: 'image/webp' } : {})}
+          />
+          <source
+            media="(min-width: 768px)"
+            srcSet={bg.desktop}
+            {...(/\.(webp)(\?|$)/i.test(bg.desktop) ? { type: 'image/webp' } : {})}
+          />
           <img
             ref={bgImgRef}
             src={bg.desktop}
@@ -592,8 +611,8 @@ export default function InstantPriceSection() {
             width={1536}
             height={1024}
             decoding="async"
-            loading="lazy"
-            fetchPriority="low"
+            loading="eager"
+            fetchPriority="high"
             onLoad={() => setBgReady(true)}
           />
         </picture>
@@ -602,8 +621,8 @@ export default function InstantPriceSection() {
       <div className="instant-price-section__grid" aria-hidden="true" />
 
       <div className="section-container relative z-10 instant-price-section__inner">
-        <div className="instant-price-layout grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10 xl:gap-14 items-center">
-          <div className="order-2 lg:order-1 text-center lg:text-start lg:pe-2 instant-price-copy">
+        <div className="instant-price-layout grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-10 xl:gap-14 items-center">
+          <div className="order-1 text-center lg:text-start lg:pe-2 instant-price-copy">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gold/10 border border-gold/25 mb-3 sm:mb-4">
               <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
               <p className="text-[11px] sm:text-xs font-bold tracking-[0.18em] uppercase text-gold">
@@ -636,7 +655,7 @@ export default function InstantPriceSection() {
             </div>
           </div>
 
-          <div className="order-1 lg:order-2 instant-price-card" data-dropdown-scope>
+          <div className="order-2 instant-price-card" data-dropdown-scope>
             <div className="instant-price-card__shine" aria-hidden="true" />
             <div className="relative z-10 space-y-3.5 sm:space-y-4">
               <div className="flex items-start gap-2.5 sm:gap-3">
@@ -899,7 +918,7 @@ export default function InstantPriceSection() {
 
                     <button
                       type="submit"
-                      className="instant-price-cta group w-full"
+                      className="instant-price-cta group w-full touch-target"
                     >
                       <span className="instant-price-cta__shine" aria-hidden="true" />
                       <Search className="w-4 h-4 sm:w-5 sm:h-5 relative z-10 transition-transform group-hover:scale-110" />
@@ -1009,7 +1028,7 @@ export default function InstantPriceSection() {
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="instant-price-cta group"
+                      className="instant-price-cta group w-full touch-target"
                     >
                       <span className="instant-price-cta__shine" aria-hidden="true" />
                       {submitting ? (

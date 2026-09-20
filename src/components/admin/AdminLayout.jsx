@@ -10,13 +10,27 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import { useAdminData } from '../../context/AdminDataContext';
 import { AdminDataProvider } from '../../context/AdminDataContext';
+import { useSiteContent } from '../../context/SiteContentContext';
 import { useTheme } from '../../context/ThemeContext';
 import { setLanguage } from '../../i18n';
+import { getCarDisplayName, getLiveCarCatalog } from '../../data/staticData';
 import BrandLogo from '../ui/BrandLogo';
 import AdminPageSearch from './AdminPageSearch';
 import { prefetchAdminRoute, warmAdminRoutes } from '../../utils/prefetchAdminRoutes';
 
-/** Grouped sidebar — categories / cars / products / services stay separate */
+/** Sidebar label from SuperAdmin Name EN/AR (categories + products). */
+function resolveNavLabel(item, lang, t, carById) {
+  if (!item.carKey) return t(item.labelKey);
+  const car = carById?.get(item.carKey);
+  const fromCatalog = lang === 'ar'
+    ? (car?.nameAr || car?.nameEn)
+    : (car?.nameEn || car?.nameAr);
+  if (fromCatalog) return fromCatalog;
+  return getCarDisplayName(item.carKey, lang) || t(item.labelKey);
+}
+
+/** Grouped sidebar — categories / cars / products / services stay separate.
+ *  Items with `carKey` resolve their label from SuperAdmin category names. */
 const navGroups = [
   {
     id: 'main',
@@ -39,11 +53,11 @@ const navGroups = [
     labelKey: 'admin.nav.groupCategories',
     items: [
       { to: '/admin/categories', icon: Tags, labelKey: 'admin.nav.categories', end: true },
-      { to: '/admin/categories/taurus', icon: Car, labelKey: 'admin.nav.carTaurus' },
-      { to: '/admin/categories/camry', icon: Car, labelKey: 'admin.nav.carCamry' },
-      { to: '/admin/categories/staria', icon: Car, labelKey: 'admin.nav.carStaria' },
-      { to: '/admin/categories/yukon', icon: Car, labelKey: 'admin.nav.carYukon' },
-      { to: '/admin/categories/hiace', icon: Car, labelKey: 'admin.nav.carHiace' },
+      { to: '/admin/categories/taurus', icon: Car, labelKey: 'admin.nav.carTaurus', carKey: 'taurus', carLabelSource: 'name' },
+      { to: '/admin/categories/camry', icon: Car, labelKey: 'admin.nav.carCamry', carKey: 'camry', carLabelSource: 'name' },
+      { to: '/admin/categories/staria', icon: Car, labelKey: 'admin.nav.carStaria', carKey: 'staria', carLabelSource: 'name' },
+      { to: '/admin/categories/yukon', icon: Car, labelKey: 'admin.nav.carYukon', carKey: 'yukon', carLabelSource: 'name' },
+      { to: '/admin/categories/hiace', icon: Car, labelKey: 'admin.nav.carHiace', carKey: 'hiace', carLabelSource: 'name' },
     ],
   },
   {
@@ -51,11 +65,11 @@ const navGroups = [
     labelKey: 'admin.nav.groupCars',
     items: [
       { to: '/admin/cars', icon: Car, labelKey: 'admin.nav.cars', end: true },
-      { to: '/admin/cars/taurus', icon: Car, labelKey: 'admin.nav.carTaurus' },
-      { to: '/admin/cars/camry', icon: Car, labelKey: 'admin.nav.carCamry' },
-      { to: '/admin/cars/staria', icon: Car, labelKey: 'admin.nav.carStaria' },
-      { to: '/admin/cars/yukon', icon: Car, labelKey: 'admin.nav.carYukon' },
-      { to: '/admin/cars/hiace', icon: Car, labelKey: 'admin.nav.carHiace' },
+      { to: '/admin/cars/taurus', icon: Car, labelKey: 'admin.nav.carTaurus', carKey: 'taurus', carLabelSource: 'name' },
+      { to: '/admin/cars/camry', icon: Car, labelKey: 'admin.nav.carCamry', carKey: 'camry', carLabelSource: 'name' },
+      { to: '/admin/cars/staria', icon: Car, labelKey: 'admin.nav.carStaria', carKey: 'staria', carLabelSource: 'name' },
+      { to: '/admin/cars/yukon', icon: Car, labelKey: 'admin.nav.carYukon', carKey: 'yukon', carLabelSource: 'name' },
+      { to: '/admin/cars/hiace', icon: Car, labelKey: 'admin.nav.carHiace', carKey: 'hiace', carLabelSource: 'name' },
     ],
   },
   {
@@ -110,8 +124,10 @@ function normalizeSearch(text) {
 
 function AdminLayoutInner() {
   const { t, i18n } = useTranslation();
+  const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
   const { logout, adminUser } = useAdminAuth();
   const { refresh, loading, stats, error } = useAdminData();
+  const { carCatalog } = useSiteContent();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -120,6 +136,16 @@ function AdminLayoutInner() {
   const [pageQuery, setPageQuery] = useState('');
   const pageSearchRef = useRef(null);
   const actionMenuRef = useRef(null);
+
+  const carById = useMemo(() => {
+    const map = new Map();
+    getLiveCarCatalog().forEach((c) => map.set(c.id, c));
+    (carCatalog || []).forEach((c) => {
+      const prev = map.get(c.id);
+      map.set(c.id, prev ? { ...prev, ...c } : c);
+    });
+    return map;
+  }, [carCatalog]);
 
   const focusPageSearch = useCallback(() => {
     setSidebarOpen(true);
@@ -226,7 +252,9 @@ function AdminLayoutInner() {
     hits.sort((a, b) => b.to.length - a.to.length);
     return hits[0];
   }, [location.pathname]);
-  const pageTitle = currentNav ? t(currentNav.labelKey) : t('admin.title');
+  const pageTitle = currentNav
+    ? resolveNavLabel(currentNav, lang, t, carById)
+    : t('admin.title');
 
   const searchablePages = useMemo(
     () =>
@@ -235,10 +263,10 @@ function AdminLayoutInner() {
           ...item,
           groupId: group.id,
           groupLabel: t(group.labelKey),
-          label: t(item.labelKey),
+          label: resolveNavLabel(item, lang, t, carById),
         })),
       ),
-    [t],
+    [t, lang, carById],
   );
 
   const filteredPages = useMemo(() => {
@@ -416,9 +444,10 @@ function AdminLayoutInner() {
                   {isOpen && (
                     <div className="space-y-0.5 ps-0.5">
                       {group.items.map((item) => {
-                        const { to, icon: Icon, labelKey, end } = item;
+                        const { to, icon: Icon, end } = item;
                         const badge = getBadge(item);
                         const active = pathMatchesItem(location.pathname, item);
+                        const label = resolveNavLabel(item, lang, t, carById);
                         return (
                           <NavLink
                             key={to}
@@ -437,7 +466,7 @@ function AdminLayoutInner() {
                             >
                               <Icon className="w-4 h-4" />
                             </span>
-                            <span className="flex-1 truncate text-sm">{t(labelKey)}</span>
+                            <span className="flex-1 truncate text-sm">{label}</span>
                             {badge != null && (
                               <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-black flex items-center justify-center">
                                 {badge}

@@ -11,6 +11,7 @@ import {
   Route,
   HelpCircle,
   User,
+  UserPlus,
   LogIn,
   MessageCircle,
   Newspaper,
@@ -18,9 +19,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { CONTACT, getCarDisplayName } from '../../data/staticData';
+import { getAccountEntryPath, hasReturningAccount, setAuthRedirect } from '../../utils/authEntry';
+import { useCart } from '../../context/CartContext';
 import AppNavLink from '../ui/AppNavLink';
 
-function NavItem({ active, onClick, href, icon: Icon, label, center = false }) {
+function NavItem({ active, onClick, href, state, icon: Icon, label, center = false }) {
   const className = [
     'mobile-bottom-nav__item',
     center ? 'mobile-bottom-nav__item--center' : '',
@@ -49,7 +52,13 @@ function NavItem({ active, onClick, href, icon: Icon, label, center = false }) {
       );
     }
     return (
-      <Link to={href} className={className} aria-current={active ? 'page' : undefined}>
+      <Link
+        to={href}
+        state={state}
+        onClick={onClick}
+        className={className}
+        aria-current={active ? 'page' : undefined}
+      >
         {content}
       </Link>
     );
@@ -64,7 +73,8 @@ function NavItem({ active, onClick, href, icon: Icon, label, center = false }) {
 
 export default function MobileBottomNav() {
   const { t, i18n } = useTranslation();
-  const { user } = useAuth();
+  const { user, isClerkSignedIn } = useAuth();
+  const { cartCount } = useCart();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const isRtl = i18n.language === 'ar';
@@ -94,8 +104,14 @@ export default function MobileBottomNav() {
 
   if (location.pathname.startsWith('/admin')) return null;
 
-  const accountHref = user ? '/dashboard' : '/login';
-  const accountLabel = user ? t('nav.dashboardShort') : t('nav.loginShort');
+  const signedIn = Boolean(user || isClerkSignedIn);
+  const postAuthPath = cartCount > 0 ? '/cart' : '/dashboard';
+  const accountHref = signedIn ? '/dashboard' : getAccountEntryPath();
+  const returning = hasReturningAccount();
+  const accountLabel = signedIn
+    ? t('nav.dashboardShort')
+    : (returning ? t('nav.loginShort') : t('nav.register'));
+  const AccountIcon = signedIn ? User : (returning ? LogIn : UserPlus);
 
   const moreLinks = [
     { key: 'routes', href: '/#routes', icon: Route },
@@ -176,10 +192,14 @@ export default function MobileBottomNav() {
             <div className="mobile-bottom-nav__sheet-footer">
               <Link
                 to={accountHref}
-                onClick={() => setMenuOpen(false)}
+                state={signedIn ? undefined : { from: { pathname: postAuthPath } }}
+                onClick={() => {
+                  if (!signedIn) setAuthRedirect(postAuthPath);
+                  setMenuOpen(false);
+                }}
                 className="mobile-bottom-nav__sheet-action mobile-bottom-nav__sheet-action--brand"
               >
-                {user ? <User className="w-5 h-5 shrink-0" /> : <LogIn className="w-5 h-5 shrink-0" />}
+                {<AccountIcon className="w-5 h-5 shrink-0" />}
                 <span>{accountLabel}</span>
               </Link>
               <a
@@ -230,7 +250,9 @@ export default function MobileBottomNav() {
           />
           <NavItem
             href={accountHref}
-            icon={user ? User : LogIn}
+            state={signedIn ? undefined : { from: { pathname: postAuthPath } }}
+            onClick={signedIn ? undefined : () => setAuthRedirect(postAuthPath)}
+            icon={AccountIcon}
             label={accountLabel}
             active={isPathActive(accountHref)}
           />

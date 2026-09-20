@@ -70,8 +70,11 @@ export async function syncPendingAdminWrites() {
         synced += 1;
       } catch (err) {
         if (!isRetryableFirebaseError(err)) {
-          console.warn('Pending admin write blocked:', err?.code || err?.message, entry.type);
+          console.warn('Dropping non-retryable pending admin write:', err?.code || err?.message, entry.type);
+          await removePendingAdminWrite(entry.id);
+          continue;
         }
+        /* Retryable (network) — stop and try again on next sync */
         break;
       }
     }

@@ -22,21 +22,27 @@ export async function getBrandingSettings() {
   }
 }
 
+/**
+ * Live branding. onData(branding, meta) where meta.fromCache is true for
+ * IndexedDB-first snapshots — callers should not let cache clobber a server read.
+ */
 export function subscribeBrandingSettings(onData) {
   try {
     return onSnapshot(
       doc(db, 'siteSettings', 'branding'),
+      { includeMetadataChanges: true },
       (snap) => {
+        const fromCache = Boolean(snap.metadata?.fromCache);
         if (!snap.exists()) {
-          onData({ ...DEFAULT_BRANDING });
+          onData({ ...DEFAULT_BRANDING }, { fromCache });
           return;
         }
-        onData(normalizeBranding(snap.data()));
+        onData(normalizeBranding(snap.data()), { fromCache });
       },
-      () => onData({ ...DEFAULT_BRANDING }),
+      () => onData({ ...DEFAULT_BRANDING }, { fromCache: false }),
     );
   } catch {
-    onData({ ...DEFAULT_BRANDING });
+    onData({ ...DEFAULT_BRANDING }, { fromCache: false });
     return () => {};
   }
 }

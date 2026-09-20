@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { useLocation } from 'react-router-dom';
 import i18n from '../i18n';
 import { getBrandingSettings, subscribeBrandingSettings } from '../firebase/branding';
+import { runWithServerReads } from '../firebase/reads';
 import { DEFAULT_BRANDING, getFontFamily, resolveUserFont } from '../data/brandingDefaults';
 import { buildBrandingCssVars } from '../utils/colorUtils';
 import { loadGoogleFont } from '../utils/fontUtils';
@@ -9,8 +10,6 @@ import { loadGoogleFont } from '../utils/fontUtils';
 const BrandingContext = createContext(null);
 const BRANDING_CACHE_KEY = 'rafiq_branding';
 const BRANDING_AT_KEY = 'rafiq_branding_at';
-const BRANDING_TTL_MS = 30 * 60 * 1000;
-const USE_BRANDING_REALTIME = import.meta.env.VITE_ENABLE_BRANDING_REALTIME === 'true';
 const BRANDING_SYNC_CHANNEL = 'bashayer-site-content';
 
 function readCachedBranding() {
@@ -27,22 +26,21 @@ function readCachedBranding() {
   }
 }
 
-function isBrandingCacheFresh() {
-  if (import.meta.env.DEV) return false;
-  try {
-    const at = Number(localStorage.getItem(BRANDING_AT_KEY) || 0);
-    return at > 0 && Date.now() - at < BRANDING_TTL_MS;
-  } catch {
-    return false;
-  }
-}
-
 function persistBrandingCache(branding) {
   try {
     localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify(branding));
     localStorage.setItem(BRANDING_AT_KEY, String(Date.now()));
   } catch {
     // ignore quota errors
+  }
+}
+
+function clearBrandingCache() {
+  try {
+    localStorage.removeItem(BRANDING_CACHE_KEY);
+    localStorage.removeItem(BRANDING_AT_KEY);
+  } catch {
+    // ignore
   }
 }
 
@@ -84,72 +82,78 @@ function applyBrandingToDom(branding, isAdminRoute) {
   }
 }
 
+/** Server read — bypass IndexedDB so profiles never stick on stale colors. */
+async function fetchLiveBranding() {
+  return runWithServerReads(() => getBrandingSettings());
+}
+
 export function BrandingProvider({ children }) {
   const [branding, setBranding] = useState(initialBranding);
-  const [loading, setLoading] = useState(!isBrandingCacheFresh());
+  const [loading, setLoading] = useState(true);
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
   const brandingRef = useRef(branding);
   brandingRef.current = branding;
+  const hasServerBrandRef = useRef(false);
 
   const applyBranding = useCallback((partial) => {
     setBranding((prev) => ({ ...prev, ...partial }));
   }, []);
 
+  const refresh = useCallback(async () => {
+    try {
+      const data = await fetchLiveBranding();
+      hasServerBrandRef.current = true;
+      setBranding(data);
+      return data;
+    } catch {
+      return brandingRef.current;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Live branding for every visitor profile (Fahad save → Jawwad sees new colors fast).
+  // Cache is paint-only; never skip sync with a 30‑minute “fresh” TTL.
   useEffect(() => {
-    if (isAdminRoute && !USE_BRANDING_REALTIME) {
-      setLoading(false);
-      return undefined;
-    }
-
-    if (USE_BRANDING_REALTIME) {
-      const unsub = subscribeBrandingSettings((data) => {
-        setBranding(data);
-        setLoading(false);
-      });
-      return unsub;
-    }
-
-    if (isBrandingCacheFresh()) {
-      setLoading(false);
-      return undefined;
-    }
-
     let cancelled = false;
-    const start = () => {
-      getBrandingSettings().then((data) => {
-        if (cancelled) return;
-        setBranding(data);
-        setLoading(false);
-      });
-    };
+    hasServerBrandRef.current = false;
 
-    const isMobile = window.matchMedia('(max-width: 767px)').matches;
-    if (isMobile && 'requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(start, { timeout: 2500 });
-      return () => {
-        cancelled = true;
-        window.cancelIdleCallback(id);
-      };
-    }
+    // Immediate server fetch so old localStorage paint is replaced ASAP.
+    fetchLiveBranding().then((data) => {
+      if (cancelled) return;
+      hasServerBrandRef.current = true;
+      setBranding(data);
+      setLoading(false);
+    });
 
-    const timeout = window.setTimeout(start, isMobile ? 400 : 60);
+    const unsub = subscribeBrandingSettings((data, meta) => {
+      if (cancelled) return;
+      // Do not let IndexedDB overwrite a fresher server read.
+      if (meta?.fromCache && hasServerBrandRef.current) return;
+      if (!meta?.fromCache) hasServerBrandRef.current = true;
+      setBranding(data);
+      setLoading(false);
+    });
+
     return () => {
       cancelled = true;
-      window.clearTimeout(timeout);
+      unsub?.();
     };
   }, [isAdminRoute]);
 
+  // Same Chrome profile / other tabs
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return undefined;
     const channel = new BroadcastChannel(BRANDING_SYNC_CHANNEL);
     channel.onmessage = (event) => {
       const type = event?.data?.type;
       if (type !== 'branding' && type !== 'invalidate' && type !== 'soft') return;
-      getBrandingSettings().then(setBranding);
+      clearBrandingCache();
+      refresh();
     };
     return () => channel.close();
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     applyBrandingToDom(branding, isAdminRoute);
@@ -170,17 +174,6 @@ export function BrandingProvider({ children }) {
     i18n.on('languageChanged', onLangChange);
     return () => i18n.off('languageChanged', onLangChange);
   }, [isAdminRoute]);
-
-  const refresh = useCallback(async () => {
-    try {
-      const data = await getBrandingSettings();
-      setBranding(data);
-    } catch {
-      // keep cached branding
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   return (
     <BrandingContext.Provider value={{ branding, loading, refresh, applyBranding }}>

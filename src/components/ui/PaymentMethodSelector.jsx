@@ -9,7 +9,6 @@ import {
 } from '../../utils/paymentHelpers';
 import { uploadImage } from '../../firebase/storage';
 import { PAYMENT_METHODS } from '../../data/paymentDefaults';
-import LoadingSpinner from '../ui/LoadingSpinner';
 
 const METHOD_CONFIG = [
   { id: PAYMENT_METHODS.WHATSAPP, icon: MessageCircle, enabledKey: 'whatsapp' },
@@ -70,7 +69,14 @@ export default function PaymentMethodSelector({
     }
   };
 
-  if (loading) return <LoadingSpinner text={t('common.loading')} />;
+  if (loading && enabledMethods.length === 0) {
+    return (
+      <div className="grid gap-2 animate-pulse" aria-busy="true">
+        <div className="h-14 rounded-xl bg-gray-100" />
+        <div className="h-14 rounded-xl bg-gray-100" />
+      </div>
+    );
+  }
 
   if (enabledMethods.length === 0) {
     return (

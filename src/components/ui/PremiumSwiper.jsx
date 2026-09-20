@@ -71,7 +71,8 @@ export default function PremiumSwiper({
   loop = false,
   centeredSlides = true,
   spaceBetween = 16,
-  mobileSlidesPerView,
+  // Kept for API compat — mobile always uses 1 full slide (no fractional peeks)
+  mobileSlidesPerView: _mobileSlidesPerView,
   showNavigation = false,
   navigationPrevClass = '',
   navigationNextClass = '',
@@ -131,12 +132,13 @@ export default function PremiumSwiper({
 
   const mobileLayout = isMobile
     ? {
-        slidesPerView: mobileSlidesPerView ?? MOBILE_SWIPER_DEFAULTS.slidesPerView,
+        slidesPerView: 1,
         slidesPerGroup: 1,
-        centeredSlides: MOBILE_SWIPER_DEFAULTS.centeredSlides,
-        centeredSlidesBounds: MOBILE_SWIPER_DEFAULTS.centeredSlidesBounds,
-        spaceBetween: MOBILE_SWIPER_DEFAULTS.spaceBetween,
+        centeredSlides: false,
+        centeredSlidesBounds: false,
+        spaceBetween: 0,
         roundLengths: true,
+        resistanceRatio: 0.65,
       }
     : {
         slidesPerView: 'auto',
@@ -159,6 +161,11 @@ export default function PremiumSwiper({
         loop={canLoop}
         grabCursor
         watchOverflow
+        threshold={10}
+        touchAngle={40}
+        preventClicks={false}
+        preventClicksPropagation={false}
+        touchStartPreventDefault={false}
         {...mobileLayout}
         coverflowEffect={effectiveEffect === 'coverflow' ? coverflow : undefined}
         autoplay={autoplayEnabled ? {
@@ -168,7 +175,7 @@ export default function PremiumSwiper({
         } : false}
         pagination={showPagination && paginationClass
           ? { el: `.${paginationClass}`, clickable: true }
-          : undefined}
+          : false}
         navigation={navigation}
         breakpoints={isMobile ? undefined : breakpoints}
         onSwiper={(swiper) => { swiperRef.current = swiper; }}

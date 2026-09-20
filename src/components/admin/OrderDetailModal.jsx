@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, MapPin, Calendar, Clock, CreditCard, User, Tag, Bell, Truck, CheckCircle, XCircle, ExternalLink, FileText } from 'lucide-react';
+import { X, MapPin, Calendar, Clock, CreditCard, User, Tag, Bell, Truck, CheckCircle, XCircle, ExternalLink, FileText, Phone, Mail, MessageCircle } from 'lucide-react';
 import { CITIES } from '../../data/staticData';
 import { getCityName, getStatusLabel, formatBookingDateTime } from '../../utils/bookingHelpers';
 import { getPaymentMethodLabel, getPaymentStatusLabel } from '../../utils/paymentHelpers';
+import { resolveOrderCustomer } from '../../utils/orderHelpers';
 import StatusBadge from '../ui/StatusBadge';
 import BookingTracker from '../ui/BookingTracker';
 import OrderInvoiceModal from './OrderInvoiceModal';
@@ -36,6 +37,12 @@ export default function OrderDetailModal({
   if (!open || !booking) return null;
 
   const timeline = booking.trackingTimeline || [];
+  const customer = resolveOrderCustomer(booking, user);
+  const digits = customer.phone.replace(/\D/g, '');
+  const waDigits = digits
+    ? (digits.startsWith('966') ? digits : digits.replace(/^0/, '966'))
+    : '';
+  const whatsappHref = waDigits ? `https://wa.me/${waDigits}` : null;
 
   return (
     <div className="fixed inset-0 z-[9990] flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -105,9 +112,6 @@ export default function OrderDetailModal({
               )}
               {booking.orderSource && (
                 <div className="col-span-2"><span className="text-gray-500">{t('payment.orderSource')}:</span> <span className="font-semibold ms-1 capitalize">{booking.orderSource}</span></div>
-              )}
-              {booking.customerPhone && (
-                <div className="col-span-2" dir="ltr"><span className="text-gray-500">{t('cart.phoneWhatsApp')}:</span> <span className="font-semibold ms-1">{booking.customerPhone}</span></div>
               )}
             </div>
 
@@ -199,13 +203,61 @@ export default function OrderDetailModal({
             )}
           </div>
 
-          {/* Customer */}
-          {user && (
-            <div className="p-4 rounded-2xl border border-gray-100 dark:border-dark-700">
-              <h3 className="font-black flex items-center gap-2 mb-2"><User className="w-5 h-5 text-primary-500" />{t('admin.customer')}</h3>
-              <p className="font-bold">{user.displayName}</p>
-              <p className="text-sm text-gray-500">{user.email}</p>
-              {user.phone && <p className="text-sm text-gray-500">{user.phone}</p>}
+          {/* Customer — always show from booking fields + user profile */}
+          {customer.hasAny && (
+            <div className="p-4 rounded-2xl border border-gray-100 dark:border-dark-700 bg-gradient-to-br from-brand/[0.03] to-transparent">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h3 className="font-black flex items-center gap-2">
+                  <User className="w-5 h-5 text-primary-500" />
+                  {t('admin.customer')}
+                </h3>
+                {customer.isGuest ? (
+                  <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                    {t('common.guest')}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    {lang === 'ar' ? 'مسجّل' : 'Registered'}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2.5 text-sm">
+                <p className="font-bold text-dark-800 dark:text-white text-base">
+                  {customer.name || t('admin.unknownUser')}
+                </p>
+                {customer.phone && (
+                  <div className="flex flex-wrap items-center gap-2" dir="ltr">
+                    <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <a href={`tel:${customer.phone}`} className="font-semibold text-brand hover:underline">
+                      {customer.phone}
+                    </a>
+                    {whatsappHref && (
+                      <a
+                        href={whatsappHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg"
+                      >
+                        <MessageCircle className="w-3 h-3" />
+                        WhatsApp
+                      </a>
+                    )}
+                  </div>
+                )}
+                {customer.email && (
+                  <div className="flex items-center gap-2 min-w-0" dir="ltr">
+                    <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <a href={`mailto:${customer.email}`} className="font-medium text-gray-600 dark:text-gray-300 truncate hover:underline">
+                      {customer.email}
+                    </a>
+                  </div>
+                )}
+                {customer.userId && (
+                  <p className="text-[10px] text-gray-400 font-mono break-all" dir="ltr">
+                    UID: {customer.userId}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -235,8 +287,16 @@ export default function OrderDetailModal({
           >
             <FileText className="w-5 h-5" />
           </button>
-          <button type="button" onClick={() => onSendNotification(booking, user)}
-            className="flex-1 flex items-center justify-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-bold py-3 rounded-xl transition-all hover:scale-[1.02] shadow-lg shadow-primary-500/25">
+          <button
+            type="button"
+            onClick={() => onSendNotification(booking, user || (customer.userId ? {
+              id: customer.userId,
+              displayName: customer.name,
+              email: customer.email,
+              phone: customer.phone,
+            } : null))}
+            className="flex-1 flex items-center justify-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-bold py-3 rounded-xl transition-all hover:scale-[1.02] shadow-lg shadow-primary-500/25"
+          >
             <Bell className="w-5 h-5" />
             {t('admin.notifyUser')}
           </button>

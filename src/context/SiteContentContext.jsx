@@ -116,6 +116,12 @@ import {
 
   defaultSiteContentSnapshot,
 
+  isSiteContentDirty,
+
+  clearSiteContentDirty,
+
+  markSiteContentDirty,
+
 } from '../utils/siteContentRefresh';
 
 
@@ -125,8 +131,9 @@ const CACHE_KEY = SITE_CONTENT_CACHE_KEY;
 // a cached one-shot load; enable only for an intentional preview environment.
 const USE_PUBLIC_REALTIME = import.meta.env.VITE_ENABLE_PUBLIC_REALTIME === 'true';
 
-// Reuse browser CMS snapshot on revisits; publish bump invalidates via contentRevision.
-const SITE_CONTENT_CACHE_MS = 12 * 60 * 60 * 1000;
+// Short TTL — SuperAdmin image/CMS edits must not linger. contentRevision still
+// forces an immediate refresh when the server is ahead.
+const SITE_CONTENT_CACHE_MS = 2 * 60 * 1000;
 
 const STATIC_FLEET = [...FLEET_ROUTES, ...ROUND_TRIP_FLEET_ROUTES, ...HOURLY_FLEET_ROUTES];
 
@@ -138,15 +145,20 @@ function loadCachedContent() {
     return { snapshot: defaultSiteContentSnapshot(), isFresh: false };
   }
 
-  // Only paint TTL-fresh cache. Expired/persistent snapshots cause "old then new" flash.
-  const fresh = readLocalCache(CACHE_KEY, SITE_CONTENT_CACHE_MS);
-  if (fresh) {
+  const dirty = isSiteContentDirty();
+  // Prefer last CMS snapshot for paint even if TTL expired / dirty (avoid static-seed flash).
+  const ttlFresh = readLocalCache(CACHE_KEY, SITE_CONTENT_CACHE_MS);
+  const anySnapshot = ttlFresh || readLocalCache(CACHE_KEY, Infinity);
+
+  if (anySnapshot) {
     return {
-      snapshot: sanitizeSiteContentCache(fresh) || defaultSiteContentSnapshot(),
-      // Dev: reuse cache for 2 minutes to cut local Firestore burn while editing.
-      isFresh: import.meta.env.DEV
-        ? Boolean(readLocalCache(CACHE_KEY, 2 * 60 * 1000))
-        : true,
+      snapshot: sanitizeSiteContentCache(anySnapshot) || defaultSiteContentSnapshot(),
+      // Never trust cache as fresh when SuperAdmin marked dirty or TTL expired.
+      isFresh: !dirty && Boolean(ttlFresh) && (
+        import.meta.env.DEV
+          ? Boolean(readLocalCache(CACHE_KEY, 2 * 60 * 1000))
+          : true
+      ),
     };
   }
 
@@ -391,6 +403,7 @@ export function SiteContentProvider({ children }) {
         syncedRevRef.current = rev;
       }
       hasFreshCacheRef.current = true;
+      clearSiteContentDirty();
 
     } catch (err) {
 
@@ -414,6 +427,7 @@ export function SiteContentProvider({ children }) {
 
   const schedulePublicRefresh = useCallback(() => {
     hasFreshCacheRef.current = false;
+    markSiteContentDirty();
     if (scheduleRefreshTimerRef.current) window.clearTimeout(scheduleRefreshTimerRef.current);
     scheduleRefreshTimerRef.current = window.setTimeout(() => {
       scheduleRefreshTimerRef.current = null;
@@ -656,26 +670,53 @@ export function SiteContentProvider({ children }) {
 
     // Cheap 1-doc server check: laptop / KSA / UAE must share the same CMS revision.
     // If local cache is behind (or never synced), pull fresh content from Firestore.
+    // When already dirty / TTL-stale, refresh immediately in parallel so old images
+    // do not linger 10–15s waiting on the revision round-trip.
     const verify = async () => {
+      const localRev = syncedRevRef.current || readStoredContentRevision();
+      const cacheLooksFresh = hasFreshCacheRef.current && !isSiteContentDirty();
+
+      if (!cacheLooksFresh) {
+        hasFreshCacheRef.current = false;
+        const refreshPromise = refresh();
+        try {
+          const serverRev = await runWithServerReads(() => getContentRevisionOnce());
+          if (!cancelled && serverRev) {
+            // refresh() will write synced rev when done; seed early for listeners
+            syncedRevRef.current = serverRev;
+          }
+        } catch {
+          // refresh still in flight
+        }
+        await refreshPromise;
+        return;
+      }
+
       try {
         const serverRev = await runWithServerReads(() => getContentRevisionOnce());
         if (cancelled) return;
 
-        const localRev = syncedRevRef.current || readStoredContentRevision();
-        const cacheLooksFresh = hasFreshCacheRef.current;
-
+        // Cannot read revision → always refresh so SuperAdmin images are not stuck.
         if (!serverRev) {
-          if (!cacheLooksFresh) await refresh();
+          hasFreshCacheRef.current = false;
+          await refresh();
           return;
         }
 
-        if (serverRev !== localRev || !cacheLooksFresh) {
+        if (serverRev !== localRev) {
+          hasFreshCacheRef.current = false;
+          await refresh();
+          return;
+        }
+
+        hasFreshCacheRef.current = true;
+        clearSiteContentDirty();
+      } catch (err) {
+        console.warn('Content revision verify failed:', err?.code || err?.message || err);
+        if (!cancelled) {
           hasFreshCacheRef.current = false;
           await refresh();
         }
-      } catch (err) {
-        console.warn('Content revision verify failed:', err?.code || err?.message || err);
-        if (!cancelled && !hasFreshCacheRef.current) await refresh();
       }
     };
 
@@ -760,7 +801,7 @@ export function SiteContentProvider({ children }) {
 
         const car = byId[key];
 
-        const resolved = getCarImage(key) || car?.imageUrl;
+        const resolved = car?.imageUrl || getCarImage(key);
         if (!resolved) return v;
 
         return { ...v, image: resolved };

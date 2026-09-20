@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, ShoppingBag, X } from 'lucide-react';
 import { useArabicAlertSound } from '../../hooks/useArabicAlertSound';
+import { setAuthRedirect } from '../../utils/authEntry';
 import VehicleImage from './VehicleImage';
 
 export default function AddToCartModal({ open, item, onClose }) {
@@ -12,21 +14,34 @@ export default function AddToCartModal({ open, item, onClose }) {
   useArabicAlertSound(open, 'success');
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
+    const onKey = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose]);
 
-  if (!open || !item) return null;
+  if (!open || !item || typeof document === 'undefined') return null;
 
   const name = item.shortName?.[lang] || item.vehicleName?.[lang] || item.vehicleName?.ar;
   const route = item.routeTitle?.[lang] || item.routeTitle?.ar;
 
-  return (
-    <div className="fixed inset-0 z-[9998] flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-dark-900/50 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-modal-in">
-        <div className="flex items-center justify-between gap-3 px-5 pt-5 pb-3">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9998] flex items-center justify-center p-4 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-to-cart-title"
+    >
+      <div className="absolute inset-0 bg-dark-900/50 backdrop-blur-sm animate-fade-in" onClick={onClose} aria-hidden />
+      <div className="relative w-full max-w-md max-h-[min(90dvh,36rem)] bg-white rounded-3xl shadow-2xl overflow-y-auto overscroll-contain animate-modal-in">
+        <div className="flex items-center justify-between gap-3 px-5 pt-5 pb-3 sticky top-0 bg-white z-10">
           <button
             type="button"
             onClick={onClose}
@@ -35,7 +50,9 @@ export default function AddToCartModal({ open, item, onClose }) {
           >
             <X className="w-4 h-4" />
           </button>
-          <h2 className="text-lg font-black text-brand flex-1 text-center">{t('cart.addedTitle')}</h2>
+          <h2 id="add-to-cart-title" className="text-lg font-black text-brand flex-1 text-center">
+            {t('cart.addedTitle')}
+          </h2>
           <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
             <CheckCircle className="w-5 h-5 text-green-600" />
           </div>
@@ -69,16 +86,28 @@ export default function AddToCartModal({ open, item, onClose }) {
               <ShoppingBag className="w-4 h-4" />
               {t('cart.completeBooking')}
             </Link>
+            <Link
+              to="/register"
+              state={{ from: { pathname: '/cart' } }}
+              onClick={() => {
+                setAuthRedirect('/cart');
+                onClose?.();
+              }}
+              className="w-full border-2 border-brand/30 text-brand font-bold py-3.5 rounded-xl hover:bg-brand/5 transition-all text-center"
+            >
+              {t('auth.register')}
+            </Link>
             <button
               type="button"
               onClick={onClose}
-              className="w-full border-2 border-brand/30 text-brand font-bold py-3.5 rounded-xl hover:bg-brand/5 transition-all"
+              className="w-full text-sm font-semibold text-gray-500 hover:text-brand py-2"
             >
               {t('cart.continueBrowsing')}
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

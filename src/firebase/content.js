@@ -268,23 +268,10 @@ export function buildServicesFromFirestore(activeServices) {
 
   const six = fromLive.length ? [...fromLive, ...extras] : mapped;
 
-  // If CMS gave two categories the same imageUrl, force the category default.
-  const seen = new Set();
+  // SuperAdmin imageUrl wins; bundled category art only fills empty slots.
   return six.map((service) => {
     const categoryImage = CATALOG_CATEGORY_IMAGES[service.category];
-    let image = service.image || categoryImage || '';
-    if (image && seen.has(image) && categoryImage && categoryImage !== image) {
-      image = categoryImage;
-    }
-    if (image) seen.add(image);
-    // Only force category art when CMS left image empty (keep SuperAdmin uploads).
-    if (
-      !service.image &&
-      (service.category === 'withinCity' || service.category === 'hourly') &&
-      categoryImage
-    ) {
-      image = categoryImage;
-    }
+    const image = service.image || categoryImage || '';
     return { ...service, image };
   });
 }
@@ -362,7 +349,8 @@ export function buildBlogsFromFirestore(activeBlogs) {
           ar: b.excerptAr || def.excerpt.ar,
           en: b.excerptEn || def.excerpt.en,
         },
-        image: def.image || b.imageUrl || '',
+        // Prefer SuperAdmin uploads; fall back to static seed art only when empty.
+        image: b.imageUrl || def.image || '',
         content: {
           ar: b.contentAr || def.content.ar,
           en: b.contentEn || def.content.en,
@@ -386,7 +374,7 @@ export function buildBlogsFromFirestore(activeBlogs) {
         ar: b.excerptAr || b.contentAr || def?.excerpt?.ar || '',
         en: b.excerptEn || b.contentEn || def?.excerpt?.en || '',
       },
-      image: def?.image || b.imageUrl || '',
+      image: b.imageUrl || def?.image || '',
       content: {
         ar: b.contentAr || def?.content?.ar || '',
         en: b.contentEn || def?.content?.en || '',
@@ -491,6 +479,7 @@ export const DEFAULT_INSTANT_PRICE = {
   currencyOptionEn: 'Saudi Riyal (SAR)',
   currencyOptionAr: 'ريال سعودي (SAR)',
   backgroundImageUrl: '/images/instant-price-bg.webp',
+  backgroundImageMobileUrl: '/images/instant-price-bg-mobile.webp',
 };
 
 export { DEFAULT_BOOKING_TRIP_TYPES, buildBookingTripTypesFromFirestore };
@@ -674,7 +663,7 @@ export async function bumpContentRevision() {
     revisionBumpWaiters.push({ resolve, reject });
     if (revisionBumpTimer != null) clearTimeout(revisionBumpTimer);
     // Short coalesce so SuperAdmin saves still batch, but UAE/SA/laptop sync fast.
-    const delay = import.meta.env.DEV ? 120 : 800;
+    const delay = import.meta.env.DEV ? 80 : 250;
     revisionBumpTimer = setTimeout(async () => {
       revisionBumpTimer = null;
       const waiters = revisionBumpWaiters.splice(0);
@@ -835,6 +824,9 @@ export function buildInstantPriceFromFirestore(data) {
     next.backgroundImageUrl === '/images/instant-price-bg.png'
   ) {
     next.backgroundImageUrl = DEFAULT_INSTANT_PRICE.backgroundImageUrl;
+  }
+  if (!next.backgroundImageMobileUrl) {
+    next.backgroundImageMobileUrl = DEFAULT_INSTANT_PRICE.backgroundImageMobileUrl;
   }
   return next;
 }

@@ -19,6 +19,8 @@ import { usePaymentSettings } from '../hooks/usePaymentSettings';
 import { getCityName } from '../utils/bookingHelpers';
 
 import { createOrderWithPayment } from '../firebase/payment';
+import { getUserProfile } from '../firebase/bookings';
+import { getAccountEntryPath, hasReturningAccount } from '../utils/authEntry';
 
 import { DEFAULT_CURRENCY, PAYMENT_METHODS } from '../data/paymentDefaults';
 
@@ -81,6 +83,26 @@ export default function Checkout() {
       setCustomerName((current) => current || user?.displayName || clerkName);
     }
   }, [user, clerkEmail, clerkName]);
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    let cancelled = false;
+    getUserProfile(user.uid)
+      .then((profile) => {
+        if (cancelled || !profile) return;
+        if (profile.displayName) {
+          setCustomerName((current) => current || profile.displayName);
+        }
+        if (profile.email) {
+          setCustomerEmail((current) => current || profile.email);
+        }
+        if (profile.phone) {
+          setCustomerPhone((current) => current || profile.phone);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.uid]);
 
   useEffect(() => {
     setMoyasarOrder(null);
@@ -177,7 +199,7 @@ export default function Checkout() {
     try {
 
       if (!user?.uid) {
-        navigate('/login', { state: { from: location } });
+        navigate(getAccountEntryPath(), { state: { from: location } });
         setLoading(false);
         return;
       }
@@ -465,11 +487,11 @@ export default function Checkout() {
                     }
                   />
                   <Link
-                    to="/login"
+                    to={getAccountEntryPath()}
                     state={{ from: location }}
                     className="mt-2 inline-block text-sm font-bold text-brand hover:underline"
                   >
-                    {t('auth.login')}
+                    {hasReturningAccount() ? t('auth.login') : t('auth.register')}
                   </Link>
                 </div>
               )}

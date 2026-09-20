@@ -63,6 +63,16 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **New re
 | `MOYASAR_SECRET_KEY` | Moyasar dashboard `sk_test_` / `sk_live_` — never use `VITE_` |
 | `FIREBASE_SERVICE_ACCOUNT` | Firebase Console → Project settings → Service accounts → Generate new private key (whole JSON) |
 
+**Customer login bridge (Hostinger PHP, no Blaze)**
+
+| Secret | Notes |
+|--------|--------|
+| `CLERK_SECRET_KEY` | Clerk Dashboard → API Keys → Secret key (`sk_test_` / `sk_live_`) |
+| `FIREBASE_SERVICE_ACCOUNT` | same JSON as Moyasar (shared) |
+| `VITE_CLERK_EXCHANGE_URL` | optional; defaults to `https://YOUR-DOMAIN/clerk-exchange.php` |
+
+Without `CLERK_SECRET_KEY` + `FIREBASE_SERVICE_ACCOUNT`, Clerk OTP still works but `/dashboard` will not open.
+
 **Firebase (rules + functions)**
 
 | Secret | How |

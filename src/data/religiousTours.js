@@ -155,15 +155,14 @@ export const DEFAULT_RELIGIOUS_TOURS = {
   packages: RELIGIOUS_TOUR_PACKAGES,
 };
 
-/** Prefer fresh bundled defaults over stale `/images/gallery/*` CMS paths; keep remote uploads. */
+/** Prefer SuperAdmin city photos; fall back to bundled defaults only when empty. */
 function mergeCityImages(stored) {
   const defaults = DEFAULT_RELIGIOUS_TOURS.cityImages;
   if (!stored || typeof stored !== 'object') return { ...defaults };
   const next = { ...defaults };
   for (const key of Object.keys(defaults)) {
     const url = String(stored[key] || '').trim();
-    if (!url) continue;
-    if (!url.startsWith('/images/gallery/')) next[key] = url;
+    if (url) next[key] = url;
   }
   return next;
 }

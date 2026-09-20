@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "deploy:rules": "firebase deploy --only firestore:rules",
     "deploy:functions": "firebase deploy --only functions",
-    "zip:hostinger": "node scripts/make-hostinger-zip.mjs"
+    "sync:hostinger": "node scripts/sync-hostinger-upload.mjs",
+    "verify:hostinger": "node scripts/verify-hostinger-upload.mjs",
+    "zip:hostinger": "node scripts/make-hostinger-zip.mjs",
+    "hostinger": "npm run build && npm run sync:hostinger && npm run verify:hostinger && npm run zip:hostinger"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.9",

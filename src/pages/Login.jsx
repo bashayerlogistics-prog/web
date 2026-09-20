@@ -5,43 +5,122 @@ import { useSignIn } from '@clerk/clerk-react';
 import { AlertCircle, LogIn, Mail, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { handleAuthError, validateEmail } from '../utils/firebaseErrors';
+import { isSessionExistsError, markHasAccount, resolveRedirectTarget, setAuthRedirect } from '../utils/authEntry';
+import { useCart } from '../context/CartContext';
 import AuthAlertModal from '../components/ui/AuthAlertModal';
 import AuthGlassCard from '../components/ui/AuthGlassCard';
 import EmailOtpStep from '../components/ui/EmailOtpStep';
 
 const REMEMBER_KEY = 'bashayer_remember_email';
-const SUCCESS_REDIRECT_MS = 900;
 
 export default function Login() {
   const { t, i18n } = useTranslation();
-  const { user, syncFirebaseSession } = useAuth();
+  const { user, loading: authLoading, isClerkSignedIn, syncFirebaseSession, logout } = useAuth();
+  const { cartCount } = useCart();
   const { isLoaded, signIn, setActive } = useSignIn();
   const navigate = useNavigate();
   const location = useLocation();
   const lang = i18n.language;
   const redirectFrom = location.state?.from;
-  const from = redirectFrom
-    ? `${redirectFrom.pathname || '/dashboard'}${redirectFrom.search || ''}`
-    : '/dashboard';
+  const from = resolveRedirectTarget(redirectFrom, { cartCount });
+
+  useEffect(() => {
+    setAuthRedirect(from);
+  }, [from]);
 
   const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_KEY) || '');
   const [code, setCode] = useState('');
   const [step, setStep] = useState('email');
   const [loading, setLoading] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const [inlineError, setInlineError] = useState('');
   const [modal, setModal] = useState(null);
   const [resendKey, setResendKey] = useState(0);
-  const authAttemptRef = useRef(false);
-  const redirectTimerRef = useRef(null);
+  const resumeRef = useRef(false);
+  const navigatedRef = useRef(false);
+
+  const goToAccount = () => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    markHasAccount();
+    navigate(from, { replace: true });
+  };
+
+  const finishWithSync = async (authProvider = 'clerk_email') => {
+    let result;
+    try {
+      result = await syncFirebaseSession({ authProvider, language: lang });
+    } catch (error) {
+      if (!error?.code) error.code = 'auth/bridge-failed';
+      throw error;
+    }
+    if (!result?.user) {
+      const err = new Error(lang === 'ar' ? 'تعذر ربط الحساب.' : 'Could not link your account.');
+      err.code = 'auth/bridge-failed';
+      throw err;
+    }
+    markHasAccount();
+    setModal({
+      type: 'success',
+      title: lang === 'ar' ? 'مرحباً بعودتك!' : 'Welcome back!',
+      message: lang === 'ar'
+        ? 'تم تسجيل دخولك بنجاح.'
+        : 'You are signed in.',
+    });
+    goToAccount();
+    return result;
+  };
+
+  const resumeExistingSession = async () => {
+    if (resumeRef.current) return;
+    resumeRef.current = true;
+    setResuming(true);
+    setInlineError('');
+    setModal(null);
+    try {
+      await finishWithSync('clerk_email');
+    } catch (error) {
+      resumeRef.current = false;
+      setResuming(false);
+      console.error('Login resume session failed:', error);
+      const code = String(error?.code || '');
+      const detail = String(error?.message || '').trim();
+      const bridgeHint = code.includes('failed-precondition')
+        || code.includes('bridge')
+        || code.includes('internal')
+        || code.includes('not-found')
+        || code.includes('unauthenticated')
+        || /clerk|bridge|firebase|token|link/i.test(detail);
+      const fallback = lang === 'ar'
+        ? (bridgeHint
+          ? 'تعذر ربط الحساب بالخادم. اضغط «متابعة» مجدداً، أو سجّل الخروج وأعد المحاولة.'
+          : 'تعذر استكمال الجلسة. حاول مرة أخرى.')
+        : (bridgeHint
+          ? 'Could not link your account to the server. Tap Continue again, or sign out and retry.'
+          : 'Could not resume your session. Try again.');
+      /* Prefer server/bridge detail when it is not our generic wrapper */
+      const generic = /could not link your account|تعذر ربط الحساب/i.test(detail);
+      setInlineError(!generic && detail && detail.length < 180 ? detail : fallback);
+    }
+  };
 
   useEffect(() => {
-    if (user && !authAttemptRef.current) navigate(from, { replace: true });
-  }, [user, from, navigate]);
+    if (user) goToAccount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, from]);
 
-  useEffect(() => () => window.clearTimeout(redirectTimerRef.current), []);
+  useEffect(() => {
+    if (!isClerkSignedIn || user || authLoading || resumeRef.current) return undefined;
+    resumeExistingSession();
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClerkSignedIn, user, authLoading]);
 
   const showError = (error) => {
-    authAttemptRef.current = false;
+    if (isSessionExistsError(error)) {
+      resumeExistingSession();
+      return;
+    }
     const message = error?.errors?.[0]?.longMessage
       || error?.errors?.[0]?.message
       || handleAuthError(error, 'login', lang).message;
@@ -57,6 +136,10 @@ export default function Login() {
 
   const sendCode = async ({ resend = false } = {}) => {
     if (!isLoaded || !signIn) return;
+    if (isClerkSignedIn) {
+      resumeExistingSession();
+      return;
+    }
     setInlineError('');
     setModal(null);
     const validation = validateEmail(email, lang);
@@ -102,7 +185,10 @@ export default function Login() {
   const handleVerify = async (event) => {
     event.preventDefault();
     if (!isLoaded || !signIn) return;
-    authAttemptRef.current = true;
+    if (isClerkSignedIn) {
+      resumeExistingSession();
+      return;
+    }
     setInlineError('');
     setLoading(true);
     try {
@@ -111,18 +197,7 @@ export default function Login() {
         throw { errors: [{ message: lang === 'ar' ? 'تعذر إكمال التحقق.' : 'Could not complete verification.' }] };
       }
       await setActive({ session: result.createdSessionId });
-      await syncFirebaseSession({ authProvider: 'clerk_email', language: lang });
-      setModal({
-        type: 'success',
-        title: lang === 'ar' ? 'مرحباً بعودتك!' : 'Welcome back!',
-        message: lang === 'ar'
-          ? 'تم تسجيل دخولك بنجاح. ستبقى جلستك محفوظة على هذا الجهاز.'
-          : 'You are signed in. Your session will stay active on this device.',
-      });
-      redirectTimerRef.current = window.setTimeout(
-        () => navigate(from, { replace: true }),
-        SUCCESS_REDIRECT_MS,
-      );
+      await finishWithSync('clerk_email');
     } catch (error) {
       showError(error);
     } finally {
@@ -132,19 +207,95 @@ export default function Login() {
 
   const handleGoogle = async () => {
     if (!isLoaded || !signIn) return;
+    if (isClerkSignedIn) {
+      resumeExistingSession();
+      return;
+    }
     setInlineError('');
     setLoading(true);
     try {
+      setAuthRedirect(from);
+      const complete = `${window.location.origin}${from.startsWith('/') ? from : `/${from}`}`;
       await signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
         redirectUrl: `${window.location.origin}/sso-callback`,
-        redirectUrlComplete: from,
+        redirectUrlComplete: complete,
       });
     } catch (error) {
       showError(error);
       setLoading(false);
     }
   };
+
+  if (authLoading || resuming || user) {
+    return (
+      <main className="auth-page-shell">
+        <div className="relative z-10 w-full max-w-md mx-auto px-4 py-16 text-center">
+          <div className="w-10 h-10 border-4 border-brand/25 border-t-gold rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm text-gray-500">
+            {lang === 'ar' ? 'جارٍ فتح حسابك…' : 'Opening your account…'}
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (isClerkSignedIn && !user) {
+    return (
+      <>
+        <AuthGlassCard icon={LogIn} title={t('auth.login')} subtitle={t('auth.loginSubtitle')} activeTab="login">
+          {inlineError && (
+            <div className="auth-error-banner mb-4">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{inlineError}</span>
+            </div>
+          )}
+          <p className="text-sm text-gray-500 mb-4">
+            {lang === 'ar'
+              ? 'جلسة الدخول نشطة. اضغط للمتابعة إلى حسابك.'
+              : 'Your sign-in session is active. Continue to open your account.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              resumeRef.current = false;
+              navigatedRef.current = false;
+              resumeExistingSession();
+            }}
+            className="auth-btn-primary w-full"
+          >
+            {lang === 'ar' ? 'متابعة إلى الحساب' : 'Continue to account'}
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await logout();
+              } catch (error) {
+                console.error('Sign-out failed:', error);
+              } finally {
+                resumeRef.current = false;
+                navigatedRef.current = false;
+                setInlineError('');
+                setResuming(false);
+              }
+            }}
+            className="mt-3 w-full text-sm font-semibold text-brand/80 hover:text-brand underline-offset-2 hover:underline"
+          >
+            {lang === 'ar' ? 'تسجيل الخروج والمحاولة بحساب آخر' : 'Sign out and try another account'}
+          </button>
+        </AuthGlassCard>
+        <AuthAlertModal
+          open={!!modal}
+          onClose={() => setModal(null)}
+          type={modal?.type}
+          title={modal?.title}
+          message={modal?.message}
+          code={modal?.code}
+        />
+      </>
+    );
+  }
 
   return (
     <>

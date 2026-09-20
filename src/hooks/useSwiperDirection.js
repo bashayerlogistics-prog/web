@@ -15,5 +15,6 @@ export const MOBILE_SWIPER_DEFAULTS = {
   slidesPerView: 1,
   centeredSlides: false,
   centeredSlidesBounds: false,
-  spaceBetween: 16,
+  /* 0 avoids peeking neighbors when CSS forces slide width: 100% */
+  spaceBetween: 0,
 };

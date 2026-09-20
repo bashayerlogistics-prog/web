@@ -169,6 +169,7 @@ export function AdminAuthProvider({ children }) {
       await updatePassword(user, newPassword);
 
       try {
+        const { logActivity } = await import('../firebase/admin');
         await logActivity('admin_password_changed', {});
       } catch {
         // optional

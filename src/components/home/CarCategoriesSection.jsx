@@ -15,6 +15,48 @@ import VehicleImage from '../ui/VehicleImage';
 
 const CARD_IMAGE_WIDTH = 640;
 
+function CategoryCard({ car, lang, t }) {
+  const name = lang === 'ar'
+    ? car.nameAr || getCarDisplayName(car.id, 'ar')
+    : car.nameEn || getCarDisplayName(car.id, 'en');
+  const image = car.imageUrl || getCarImage(car.id);
+  const focus = getCategoryCircleFocus(car.id, image);
+
+  return (
+    <Link
+      to={`/cars/${car.id}`}
+      className="car-category-card group"
+      style={{
+        '--car-focus-x': String(focus.x),
+        '--car-focus-y': String(focus.y),
+        '--car-zoom': String(focus.zoom),
+        '--car-photo': `url("${optimizedImageUrl(image, CARD_IMAGE_WIDTH, 70)}")`,
+      }}
+    >
+      <div className="car-category-card__visual">
+        <VehicleImage
+          src={image}
+          alt={name}
+          className="car-category-card__image"
+          imgClassName="car-category-card__photo"
+          width={CARD_IMAGE_WIDTH}
+        />
+        <span className="car-category-card__shade" aria-hidden="true" />
+        <span className="car-category-card__passengers">
+          <Users className="w-3 h-3 shrink-0" />
+          {car.passengers}
+        </span>
+        <span className="car-category-card__hover">
+          {t('carCategories.viewAll')}
+          <ArrowUpRight className="w-4 h-4 shrink-0 rtl:rotate-[-90deg]" />
+        </span>
+      </div>
+      <h3 className="car-category-card__title">{name}</h3>
+      <span className="car-category-card__hint">{t('carCategories.cardHint')}</span>
+    </Link>
+  );
+}
+
 export default function CarCategoriesSection() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
@@ -59,48 +101,9 @@ export default function CarCategoriesSection() {
           data-aos="fade-up"
           data-aos-delay="80"
         >
-          {cars.map((car) => {
-            const name = lang === 'ar'
-              ? car.nameAr || getCarDisplayName(car.id, 'ar')
-              : car.nameEn || getCarDisplayName(car.id, 'en');
-            const image = getCarImage(car.id);
-            const focus = getCategoryCircleFocus(car.id, image);
-
-            return (
-              <Link
-                key={car.id}
-                to={`/cars/${car.id}`}
-                className="car-category-card group"
-                style={{
-                  '--car-focus-x': String(focus.x),
-                  '--car-focus-y': String(focus.y),
-                  '--car-zoom': String(focus.zoom),
-                  '--car-photo': `url("${optimizedImageUrl(image, CARD_IMAGE_WIDTH, 70)}")`,
-                }}
-              >
-                <div className="car-category-card__visual">
-                  <VehicleImage
-                    src={image}
-                    alt={name}
-                    className="car-category-card__image"
-                    imgClassName="car-category-card__photo"
-                    width={CARD_IMAGE_WIDTH}
-                  />
-                  <span className="car-category-card__shade" aria-hidden="true" />
-                  <span className="car-category-card__passengers">
-                    <Users className="w-3 h-3 shrink-0" />
-                    {car.passengers}
-                  </span>
-                  <span className="car-category-card__hover">
-                    {t('carCategories.viewAll')}
-                    <ArrowUpRight className="w-4 h-4 shrink-0 rtl:rotate-[-90deg]" />
-                  </span>
-                </div>
-                <h3 className="car-category-card__title">{name}</h3>
-                <span className="car-category-card__hint">{t('carCategories.cardHint')}</span>
-              </Link>
-            );
-          })}
+          {cars.map((car) => (
+            <CategoryCard key={car.id} car={car} lang={lang} t={t} />
+          ))}
         </div>
       </div>
     </section>

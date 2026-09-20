@@ -6,7 +6,12 @@ const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 /** Isolated so Clerk JS stays out of the public homepage chunk. */
 export default function ClerkAuthTree({ children }) {
   return (
-    <ClerkProvider publishableKey={clerkPubKey} afterSignOutUrl="/">
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      afterSignOutUrl="/"
+      signInFallbackRedirectUrl="/dashboard"
+      signUpFallbackRedirectUrl="/dashboard"
+    >
       <CustomerAuthProvider>{children}</CustomerAuthProvider>
     </ClerkProvider>
   );

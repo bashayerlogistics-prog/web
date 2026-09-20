@@ -748,7 +748,7 @@ export const PASSENGER_OPTIONS = [
 ];
 
 const CAR_STAT_SHORT = {
-  taurus: { ar: 'تورس', en: 'Taurus' },
+  taurus: { ar: 'فورد تورس', en: 'Taurus' },
   camry: { ar: 'كامري', en: 'Camry' },
   staria: { ar: 'ستاريا', en: 'Staria' },
   yukon: { ar: 'جمس', en: 'GMC' },

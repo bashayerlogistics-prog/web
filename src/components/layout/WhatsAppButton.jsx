@@ -16,7 +16,7 @@ export default function WhatsAppButton() {
         href={CONTACT.whatsapp}
         target="_blank"
         rel="noreferrer"
-        className="whatsapp-fab"
+        className="whatsapp-fab touch-target"
         aria-label={t('whatsapp.quickBook')}
         title={t('whatsapp.quickBook')}
       >

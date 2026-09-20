@@ -55,10 +55,7 @@ const SERVICE_ICON_MAP = {
 
 function resolveServiceImage(service) {
   const categoryImage = CATEGORY_IMAGES[service?.category];
-  // Always use distinct category art for within-city vs hourly (CMS often duplicates).
-  if (service?.category === 'withinCity' || service?.category === 'hourly') {
-    return categoryImage || service?.image || '';
-  }
+  // SuperAdmin CMS image first; category art only when empty.
   return service?.image || categoryImage || '';
 }
 

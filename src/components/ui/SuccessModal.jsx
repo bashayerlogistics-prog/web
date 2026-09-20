@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, Copy, MapPin, Calendar, X, Navigation, Home } from 'lucide-react';
@@ -11,21 +12,22 @@ export default function SuccessModal({ open, bookingId, booking, isGuest = false
   useArabicAlertSound(open, 'success');
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
+    return () => { document.body.style.overflow = previousOverflow; };
   }, [open]);
 
-  if (!open || !bookingId) return null;
+  if (!open || !bookingId || typeof document === 'undefined') return null;
 
   const copyRef = () => {
     navigator.clipboard?.writeText(bookingId);
   };
 
-  return (
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4 sm:p-6">
       <div className="absolute inset-0 bg-dark-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white dark:bg-dark-800 rounded-3xl shadow-2xl overflow-hidden animate-modal-in">
+      <div className="relative w-full max-w-md max-h-[min(90dvh,40rem)] overflow-y-auto overscroll-contain bg-white dark:bg-dark-800 rounded-3xl shadow-2xl animate-modal-in">
         <div className="bg-gradient-to-br from-primary-500 via-primary-600 to-primary-800 px-6 py-8 text-center text-white relative overflow-hidden">
           <div className="absolute inset-0 opacity-20">
             <div className="absolute -top-10 -end-10 w-40 h-40 bg-white rounded-full blur-2xl" />
@@ -116,6 +118,7 @@ export default function SuccessModal({ open, bookingId, booking, isGuest = false
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

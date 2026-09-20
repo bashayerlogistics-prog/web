@@ -1,6 +1,6 @@
 import { useState, useEffect, Children } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Eye, Monitor } from 'lucide-react';
+import { Eye, Image as ImageIcon, Monitor, Smartphone } from 'lucide-react';
 import { getHeroSettings, updateHeroSettings } from '../../firebase/admin';
 import { DEFAULT_HERO } from '../../firebase/content';
 import { HERO_AI_SUGGESTIONS } from '../../data/aiContentSuggestions';
@@ -9,6 +9,7 @@ import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
 import AiSuggestionsTable from '../../components/admin/AiSuggestionsTable';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import AdminApplyButton from '../../components/admin/AdminApplyButton';
+import MediaUpload from '../../components/admin/MediaUpload';
 import GlassCard from '../../components/ui/GlassCard';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
@@ -173,6 +174,41 @@ export default function AdminHero() {
                 className={inputClass}
               />
             </FieldGroup>
+          </div>
+        </GlassCard>
+
+        <GlassCard>
+          <h2 className="font-black text-lg mb-5 flex items-center gap-2 text-brand">
+            <ImageIcon className="w-5 h-5 text-primary-500 shrink-0" />
+            {t('admin.hero.media')}
+          </h2>
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs font-bold text-gray-500 dark:text-gold-light mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                <Monitor className="w-3.5 h-3.5" />
+                {t('admin.hero.desktopImage')}
+              </p>
+              <MediaUpload
+                value={form.imageUrl || ''}
+                onChange={(url) => set('imageUrl', url)}
+                folder="hero"
+                allowUrl
+                previewClassName="w-full max-h-56 object-cover rounded-xl"
+              />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-500 dark:text-gold-light mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5" />
+                {t('admin.hero.mobileImage')}
+              </p>
+              <MediaUpload
+                value={form.imageMobileUrl || ''}
+                onChange={(url) => set('imageMobileUrl', url)}
+                folder="hero"
+                allowUrl
+                previewClassName="w-full max-h-64 object-cover rounded-xl"
+              />
+            </div>
           </div>
         </GlassCard>
 

@@ -14,8 +14,21 @@ import { hasAdminSessionFlag } from '../constants/adminSession';
 import { isFirebaseAdminUser } from '../firebase/adminIdentity';
 import { AuthContext } from './AuthContext';
 
+async function waitForClerkToken(getToken, attempts = 8) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const token = await getToken({ skipCache: i > 0 });
+      if (token) return token;
+    } catch {
+      /* session may still be activating after setActive */
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 150 + i * 50));
+  }
+  return null;
+}
+
 export default function CustomerAuthProvider({ children }) {
-  const { isLoaded: clerkLoaded, isSignedIn, getToken } = useClerkAuth();
+  const { isLoaded: clerkLoaded, isSignedIn, getToken, sessionId } = useClerkAuth();
   const { user: clerkUser } = useUser();
   const clerk = useClerk();
   const [user, setUser] = useState(null);
@@ -23,6 +36,9 @@ export default function CustomerAuthProvider({ children }) {
   const [authReady, setAuthReady] = useState(false);
   const syncingRef = useRef(false);
   const lastClerkIdRef = useRef('');
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+  const hasClerkSession = Boolean(isSignedIn || sessionId);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -34,12 +50,12 @@ export default function CustomerAuthProvider({ children }) {
       }
       if (firebaseUser && !isFirebaseAdminUser(firebaseUser)) {
         setLoading(false);
-      } else if (clerkLoaded && !isSignedIn) {
+      } else if (clerkLoaded && !isSignedIn && !sessionId) {
         setLoading(false);
       }
     });
     return () => unsubscribe();
-  }, [clerkLoaded, isSignedIn]);
+  }, [clerkLoaded, isSignedIn, sessionId]);
 
   useEffect(() => {
     if (!loading && clerkLoaded) return undefined;
@@ -52,21 +68,31 @@ export default function CustomerAuthProvider({ children }) {
   }, [loading, clerkLoaded]);
 
   const syncFirebaseSession = useCallback(async (profile = {}) => {
-    if (!isSignedIn) return null;
-    if (isFirebaseAdminUser(auth.currentUser)) return null;
-    const clerkToken = await getToken();
+    /* Stale admin Firebase session must not block customer Clerk linking. */
+    if (isFirebaseAdminUser(auth.currentUser)) {
+      await signOut(auth).catch(() => {});
+    }
+
+    /* Do NOT gate on React isSignedIn — after setActive it is often still false for 1–2 renders (mobile worse). */
+    const clerkToken = await waitForClerkToken(() => getTokenRef.current());
     if (!clerkToken) {
       const err = new Error('Missing Clerk token');
       err.code = 'auth/missing-clerk-token';
       throw err;
     }
 
-    const { token, isNew } = await exchangeClerkSession(clerkToken, {
+    const exchanged = await exchangeClerkSession(clerkToken, {
       displayName: profile.displayName || '',
       phone: profile.phone || '',
       authProvider: profile.authProvider || 'clerk_email',
       language: profile.language || localStorage.getItem('language') || 'ar',
     });
+    const token = exchanged?.token;
+    if (!token) {
+      const err = new Error('Clerk bridge returned no Firebase token');
+      err.code = 'auth/bridge-failed';
+      throw err;
+    }
 
     await setPersistence(auth, browserLocalPersistence);
     const credential = await signInWithCustomToken(auth, token);
@@ -77,29 +103,45 @@ export default function CustomerAuthProvider({ children }) {
       err.code = 'auth/admin-account';
       throw err;
     }
-    return { user: credential.user, isNew };
-  }, [clerk, getToken, isSignedIn]);
+
+    /* Set immediately so ProtectedRoute sees user before onAuthStateChanged fires */
+    setUser(credential.user);
+    setLoading(false);
+    if (clerkUser?.id) lastClerkIdRef.current = clerkUser.id;
+
+    return { user: credential.user, isNew: Boolean(exchanged?.isNew) };
+  }, [clerk, clerkUser?.id]);
 
   useEffect(() => {
     if (!clerkLoaded || !authReady) return undefined;
 
-    if (isFirebaseAdminUser(auth.currentUser)) {
+    /* Admin panel session: skip customer sync unless a Clerk customer session needs linking. */
+    if (isFirebaseAdminUser(auth.currentUser) && !hasClerkSession) {
       setLoading(false);
       return undefined;
     }
 
-    if (!isSignedIn) {
+    if (!hasClerkSession) {
       lastClerkIdRef.current = '';
       if (isFirebaseAdminUser(auth.currentUser) || hasAdminSessionFlag()) {
         setLoading(false);
         return undefined;
       }
-      signOut(auth).catch(() => {}).finally(() => setLoading(false));
-      return undefined;
+      /* Debounce: setActive on mobile can lag React isSignedIn by a few hundred ms.
+         Signing out Firebase immediately would wipe a just-linked session. */
+      const signOutTimer = window.setTimeout(() => {
+        signOut(auth).catch(() => {}).finally(() => setLoading(false));
+      }, 800);
+      return () => window.clearTimeout(signOutTimer);
     }
 
     const clerkId = clerkUser?.id || '';
     if (!clerkId) {
+      /* Session id may exist before user object hydrates — keep loading briefly */
+      if (sessionId) {
+        setLoading(true);
+        return undefined;
+      }
       setLoading(false);
       return undefined;
     }
@@ -128,11 +170,26 @@ export default function CustomerAuthProvider({ children }) {
         const provider = clerkUser?.externalAccounts?.some((item) => item.provider === 'google')
           ? 'google'
           : 'clerk_email';
-        await syncFirebaseSession({ authProvider: provider });
-        if (!cancelled) lastClerkIdRef.current = clerkId;
-      } catch (error) {
-        console.error('Clerk → Firebase sync failed:', error);
-        if (!cancelled) lastClerkIdRef.current = '';
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          if (cancelled) return;
+          try {
+            const result = await syncFirebaseSession({ authProvider: provider });
+            if (!result?.user) {
+              const err = new Error('Clerk → Firebase sync returned no user');
+              err.code = 'auth/bridge-failed';
+              throw err;
+            }
+            if (!cancelled) lastClerkIdRef.current = clerkId;
+            return;
+          } catch (error) {
+            console.error(`Clerk → Firebase sync failed (attempt ${attempt}/3):`, error);
+            if (attempt === 3) {
+              if (!cancelled) lastClerkIdRef.current = '';
+              return;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 500 * attempt));
+          }
+        }
       } finally {
         syncingRef.current = false;
         if (!cancelled) setLoading(false);
@@ -142,7 +199,7 @@ export default function CustomerAuthProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [authReady, clerkLoaded, clerkUser, isSignedIn, syncFirebaseSession]);
+  }, [authReady, clerkLoaded, clerkUser, hasClerkSession, sessionId, syncFirebaseSession]);
 
   const completeProfile = async ({ name, phone }) => {
     const displayName = String(name || '').trim();
@@ -196,7 +253,7 @@ export default function CustomerAuthProvider({ children }) {
         user,
         loading: loading || !clerkLoaded,
         clerkUser,
-        isClerkSignedIn: Boolean(isSignedIn),
+        isClerkSignedIn: Boolean(hasClerkSession),
         syncFirebaseSession,
         completeProfile,
         logout,

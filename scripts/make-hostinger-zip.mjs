@@ -2,21 +2,25 @@ import fs from 'fs';
 import path from 'path';
 import { createWriteStream } from 'fs';
 import { createRequire } from 'module';
-import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 process.chdir(projectRoot);
 
-execSync('npm install archiver --no-save --silent', { stdio: 'inherit' });
 const require = createRequire(import.meta.url);
 const { ZipArchive } = require('archiver');
 
-if (fs.existsSync('hostinger-upload.zip')) fs.unlinkSync('hostinger-upload.zip');
-fs.copyFileSync('hostinger/resend-send.php', 'dist/resend-send.php');
-fs.copyFileSync('hostinger/moyasar-verify.php', 'dist/moyasar-verify.php');
+const SOURCE = 'hostinger-upload';
+const OUT = 'hostinger-upload.zip';
 
-const out = createWriteStream('hostinger-upload.zip');
+if (!fs.existsSync(SOURCE)) {
+  console.error('Missing', SOURCE);
+  process.exit(1);
+}
+
+if (fs.existsSync(OUT)) fs.unlinkSync(OUT);
+
+const out = createWriteStream(OUT);
 const archive = new ZipArchive({ zlib: { level: 9 } });
 
 archive.on('error', (err) => {
@@ -26,7 +30,7 @@ archive.on('error', (err) => {
 
 const done = new Promise((resolve, reject) => {
   out.on('close', () => {
-    console.log('OK', archive.pointer(), 'bytes');
+    console.log('ZIP_OK', archive.pointer(), 'bytes');
     resolve();
   });
   out.on('error', reject);
@@ -47,6 +51,22 @@ function walk(dir, base = '') {
   }
 }
 
-walk('dist');
+walk(SOURCE);
 await archive.finalize();
 await done;
+
+// Sanity: no backslash entry names
+const { execSync } = await import('child_process');
+try {
+  const listing = execSync(`powershell -NoProfile -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::OpenRead('${OUT}').Entries | Select-Object -First 8 -ExpandProperty FullName"`, {
+    encoding: 'utf8',
+  });
+  console.log('Sample entries:\n' + listing);
+  if (listing.includes('\\')) {
+    console.error('BAD_ZIP: backslash paths detected');
+    process.exit(1);
+  }
+  console.log('PATHS_OK');
+} catch (e) {
+  console.warn('Could not verify zip entries:', e.message);
+}

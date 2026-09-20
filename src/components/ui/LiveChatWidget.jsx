@@ -221,7 +221,7 @@ export default function LiveChatWidget() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] end-4 z-[55] flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-white shadow-xl transition-transform hover:scale-105 lg:bottom-6 lg:h-14 lg:w-14"
+        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] end-4 z-[55] flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-white shadow-xl transition-transform hover:scale-105 active:scale-95 touch-target lg:bottom-6 lg:h-14 lg:w-14"
         aria-label={t('chat.title')}
         aria-expanded={open}
       >

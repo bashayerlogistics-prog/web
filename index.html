@@ -97,9 +97,7 @@
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <!-- LCP only: do not preload below-fold images (steals bandwidth from hero) -->
-    <link rel="preload" href="/images/hero-mobile.webp" as="image" type="image/webp" fetchpriority="high" media="(max-width: 767px)" />
-    <link rel="preload" href="/images/hero-desktop.webp" as="image" type="image/webp" fetchpriority="high" media="(min-width: 768px)" />
+    <!-- Logo only globally — hero preloads are homepage-only (SPA shares this HTML on /cart, /login, …) -->
     <link rel="preload" href="/images/logo-badge-light.svg" as="image" type="image/svg+xml" />
     <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
     <link rel="dns-prefetch" href="https://firebase.googleapis.com" />

@@ -41,3 +41,38 @@ export function orderNumberMatches(booking, orderNumberMap, query) {
     || String(parseOrderNumber(booking?.orderNumber) || '').includes(q)
   );
 }
+
+/**
+ * Merge booking snapshot + users collection so admin always has
+ * name / phone / email even when the user doc is missing or incomplete.
+ */
+export function resolveOrderCustomer(booking, user) {
+  const name = String(
+    booking?.customerName
+    || user?.displayName
+    || user?.fullName
+    || '',
+  ).trim();
+  const email = String(
+    booking?.customerEmail
+    || user?.email
+    || '',
+  ).trim();
+  const phone = String(
+    booking?.customerPhone
+    || user?.phone
+    || '',
+  ).trim();
+  const userId = booking?.userId || user?.id || user?.uid || null;
+  const isGuest = Boolean(booking?.isGuest ?? !userId);
+
+  return {
+    name: name || '',
+    email: email || '',
+    phone: phone || '',
+    userId,
+    isGuest,
+    hasAny: Boolean(name || email || phone || userId),
+    label: name || email || phone || '',
+  };
+}

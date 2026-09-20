@@ -1,4 +1,4 @@
-const IMGBB_API_KEY = import.meta.env.VITE_IMGBB_API_KEY || '702af61835a70aeaea5dfe2b62440f6a';
+const IMGBB_API_KEY = String(import.meta.env.VITE_IMGBB_API_KEY || '').trim();
 const IMGBB_UPLOAD_URL = 'https://api.imgbb.com/1/upload';
 
 /**
@@ -7,6 +7,10 @@ const IMGBB_UPLOAD_URL = 'https://api.imgbb.com/1/upload';
  * @returns {Promise<string>} public image URL
  */
 export async function uploadToImgbb(file) {
+  if (!IMGBB_API_KEY) {
+    throw new Error('Missing VITE_IMGBB_API_KEY — set it in your env to upload images.');
+  }
+
   const formData = new FormData();
   formData.append('key', IMGBB_API_KEY);
   formData.append('image', file, file.name || 'image.jpg');

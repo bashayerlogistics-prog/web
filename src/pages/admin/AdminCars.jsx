@@ -22,6 +22,22 @@ import {
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import GlassCard from '../../components/ui/GlassCard';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import { AdminAlertModal } from '../../components/admin/AdminBookingFormEditor';
+
+function normText(value) {
+  return String(value || '').trim();
+}
+
+function namesChanged(draft, original, { includeModel = false } = {}) {
+  if (!draft || !original) return false;
+  if (normText(draft.nameEn) !== normText(original.nameEn)) return true;
+  if (normText(draft.nameAr) !== normText(original.nameAr)) return true;
+  if (includeModel) {
+    if (normText(draft.modelEn) !== normText(original.modelEn || original.nameEn)) return true;
+    if (normText(draft.modelAr) !== normText(original.modelAr || original.nameAr)) return true;
+  }
+  return false;
+}
 
 function useAdminFleetBase() {
   const location = useLocation();
@@ -202,7 +218,9 @@ function AdminCarDetail({
                 : 'border-brand/15 text-brand hover:bg-brand/5'
             }`}
           >
-            {getCarDisplayName(item.id, lang)}
+            {lang === 'ar'
+              ? (item.nameAr || item.nameEn || getCarDisplayName(item.id, 'ar'))
+              : (item.nameEn || item.nameAr || getCarDisplayName(item.id, 'en'))}
           </Link>
         ))}
       </div>
@@ -234,36 +252,44 @@ function AdminCarDetail({
         </div>
 
         <div className="grid gap-2">
-          <label className="text-[11px] font-bold text-gray-500">{t('admin.cars.nameEn')}</label>
+          <label className="text-[11px] font-bold text-gray-500">
+            {isCategories ? t('admin.categories.nameEn') : t('admin.cars.productNameEn')}
+          </label>
           <input
             className="admin-input"
             value={draft.nameEn || ''}
             onChange={(e) => setField('nameEn', e.target.value)}
-            placeholder="Toyota Camry 2026"
+            placeholder={isCategories ? 'Taurus' : 'Ford Taurus 2026'}
           />
-          <label className="text-[11px] font-bold text-gray-500">{t('admin.cars.nameAr')}</label>
+          <label className="text-[11px] font-bold text-gray-500">
+            {isCategories ? t('admin.categories.nameAr') : t('admin.cars.productNameAr')}
+          </label>
           <input
             className="admin-input"
             dir="rtl"
             value={draft.nameAr || ''}
             onChange={(e) => setField('nameAr', e.target.value)}
-            placeholder="كامري 2026"
+            placeholder={isCategories ? 'فورد تورس' : 'فورد تورس 2026'}
           />
-          <label className="text-[11px] font-bold text-gray-500">{t('admin.cars.modelEn')}</label>
-          <input
-            className="admin-input"
-            value={draft.modelEn || ''}
-            onChange={(e) => setField('modelEn', e.target.value)}
-            placeholder="Toyota Camry 2026"
-          />
-          <label className="text-[11px] font-bold text-gray-500">{t('admin.cars.modelAr')}</label>
-          <input
-            className="admin-input"
-            dir="rtl"
-            value={draft.modelAr || ''}
-            onChange={(e) => setField('modelAr', e.target.value)}
-            placeholder="كامري 2026"
-          />
+          {!isCategories && (
+            <>
+              <label className="text-[11px] font-bold text-gray-500">{t('admin.cars.modelEn')}</label>
+              <input
+                className="admin-input"
+                value={draft.modelEn || ''}
+                onChange={(e) => setField('modelEn', e.target.value)}
+                placeholder="Ford Taurus 2026"
+              />
+              <label className="text-[11px] font-bold text-gray-500">{t('admin.cars.modelAr')}</label>
+              <input
+                className="admin-input"
+                dir="rtl"
+                value={draft.modelAr || ''}
+                onChange={(e) => setField('modelAr', e.target.value)}
+                placeholder="فورد تورس 2026"
+              />
+            </>
+          )}
           <label className="text-[11px] font-bold text-gray-500">{t('admin.cars.passengers')}</label>
           <input
             type="number"
@@ -338,6 +364,7 @@ export default function AdminCars() {
   const [seeding, setSeeding] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [nameConfirm, setNameConfirm] = useState(null);
 
   const { data: dbCars, loading, refresh } = useAdminDataLoader(getAllCars);
   const cars = useMemo(() => mergeCarCatalog(dbCars), [dbCars]);
@@ -361,6 +388,23 @@ export default function AdminCars() {
         [field]: value,
       },
     }));
+  };
+
+  const requestSave = (targetId, patch = {}) => {
+    const original = cars.find((c) => c.id === targetId);
+    const draft = { ...(drafts[targetId] || original || { id: targetId }), ...patch };
+    if (namesChanged(draft, original, { includeModel: !isCategories })) {
+      setNameConfirm({ targetId, patch, draft, original });
+      return;
+    }
+    return persistCar(targetId, patch);
+  };
+
+  const confirmNameSave = async () => {
+    if (!nameConfirm) return;
+    const { targetId, patch } = nameConfirm;
+    setNameConfirm(null);
+    await persistCar(targetId, patch);
   };
 
   const persistCar = async (targetId, patch = {}) => {
@@ -494,23 +538,53 @@ export default function AdminCars() {
 
     const draft = getDraft(car);
     return (
-      <AdminCarDetail
-        car={car}
-        allCars={cars}
-        draft={draft}
-        busy={savingId === car.id}
-        lang={lang}
-        t={t}
-        setField={setField}
-        onSave={() => persistCar(car.id)}
-        onToggleActive={async () => {
-          const nextActive = draft.active === false;
-          setField('active', nextActive);
-          await persistCar(car.id, { active: nextActive });
-        }}
-        basePath={basePath}
-        isCategories={isCategories}
-      />
+      <>
+        <AdminCarDetail
+          car={car}
+          allCars={cars}
+          draft={draft}
+          busy={savingId === car.id}
+          lang={lang}
+          t={t}
+          setField={setField}
+          onSave={() => requestSave(car.id)}
+          onToggleActive={async () => {
+            const nextActive = draft.active === false;
+            setField('active', nextActive);
+            await persistCar(car.id, { active: nextActive });
+          }}
+          basePath={basePath}
+          isCategories={isCategories}
+        />
+        <AdminAlertModal
+          open={Boolean(nameConfirm)}
+          type="warning"
+          title={t('admin.cars.nameChangeConfirmTitle')}
+          body={
+            isCategories
+              ? t('admin.cars.nameChangeConfirmBodyCategory', {
+                  from: lang === 'ar'
+                    ? (nameConfirm?.original?.nameAr || nameConfirm?.original?.nameEn || '')
+                    : (nameConfirm?.original?.nameEn || nameConfirm?.original?.nameAr || ''),
+                  to: lang === 'ar'
+                    ? (nameConfirm?.draft?.nameAr || nameConfirm?.draft?.nameEn || '')
+                    : (nameConfirm?.draft?.nameEn || nameConfirm?.draft?.nameAr || ''),
+                })
+              : t('admin.cars.nameChangeConfirmBodyProduct', {
+                  from: lang === 'ar'
+                    ? (nameConfirm?.original?.nameAr || nameConfirm?.original?.nameEn || '')
+                    : (nameConfirm?.original?.nameEn || nameConfirm?.original?.nameAr || ''),
+                  to: lang === 'ar'
+                    ? (nameConfirm?.draft?.nameAr || nameConfirm?.draft?.nameEn || '')
+                    : (nameConfirm?.draft?.nameEn || nameConfirm?.draft?.nameAr || ''),
+                })
+          }
+          confirmLabel={t('admin.cars.nameChangeConfirmAction')}
+          cancelLabel={t('common.cancel')}
+          onConfirm={confirmNameSave}
+          onClose={() => setNameConfirm(null)}
+        />
+      </>
     );
   }
 

@@ -25,7 +25,7 @@ export default function MediaUpload({
   accept = 'image/*',
   folder = 'uploads',
   maxSizeKB = DEFAULT_IMAGE_MAX_KB,
-  allowUrl = false,
+  allowUrl = true,
   urlPlaceholder = 'https://...',
   label,
   previewClassName = 'w-full max-h-48 object-cover rounded-xl',
@@ -116,7 +116,11 @@ export default function MediaUpload({
     setFileInfo(null);
   };
 
-  const uploadLabel = uploading ? t('admin.media.optimizing') : t('admin.uploadImage');
+  const uploadLabel = uploading
+    ? t('admin.media.optimizing')
+    : value
+      ? t('admin.media.changeImage')
+      : t('admin.uploadImage');
 
   return (
     <div className={`space-y-3 ${className}`}>

@@ -1,4 +1,11 @@
-const HEADER_OFFSET = 72;
+function getHeaderOffset() {
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue('--site-header-height')
+    .trim();
+  const parsed = Number.parseFloat(raw);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed + 8;
+  return 72;
+}
 
 function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -12,15 +19,16 @@ export function scrollToSection(hash, smooth = true, { force = false } = {}) {
   const el = document.getElementById(id);
   if (!el) return false;
 
+  const headerOffset = getHeaderOffset();
   const rect = el.getBoundingClientRect();
-  const targetTop = rect.top + window.scrollY - HEADER_OFFSET;
+  const targetTop = rect.top + window.scrollY - headerOffset;
 
   if (!force) {
     const delta = targetTop - window.scrollY;
     // Already aligned with the section — skip jump
     if (Math.abs(delta) < 48) return true;
     // Section is already visible in the upper viewport
-    if (rect.top >= HEADER_OFFSET - 8 && rect.bottom <= window.innerHeight + 40) return true;
+    if (rect.top >= headerOffset - 8 && rect.bottom <= window.innerHeight + 40) return true;
   }
 
   const behavior = smooth && !prefersReducedMotion() ? 'smooth' : 'auto';

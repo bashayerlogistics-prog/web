@@ -12,7 +12,7 @@ import { queueOrRunAdminWrite } from '../../firebase/offlineAdminSync';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import { CITIES } from '../../data/staticData';
 import { getCityName, getStatusLabel, formatBookingDate } from '../../utils/bookingHelpers';
-import { buildOrderNumberMap, getOrderDisplayId, orderNumberMatches } from '../../utils/orderHelpers';
+import { buildOrderNumberMap, getOrderDisplayId, orderNumberMatches, resolveOrderCustomer } from '../../utils/orderHelpers';
 import { useAdminData } from '../../context/AdminDataContext';
 import { useToast } from '../../context/ToastContext';
 import { useAdminInstantSearch, useAdminInstantFilter } from '../../hooks/useAdminInstantSearch';
@@ -208,13 +208,13 @@ export default function AdminOrders() {
       const source = b.orderSource || (b.paymentMethod === 'whatsapp' ? 'whatsapp' : 'website');
       const matchSource = sourceFilter === 'all' || source === sourceFilter;
       const user = usersMap[b.userId];
+      const customer = resolveOrderCustomer(b, user);
       const matchSearch = !query
         || orderNumberMatches(b, orderNumberMap, query)
-        || user?.email?.toLowerCase().includes(query)
-        || user?.displayName?.toLowerCase().includes(query)
-        || b.customerName?.toLowerCase().includes(query)
-        || b.customerEmail?.toLowerCase().includes(query)
-        || b.customerPhone?.includes(query);
+        || customer.name?.toLowerCase().includes(query)
+        || customer.email?.toLowerCase().includes(query)
+        || customer.phone?.includes(query)
+        || user?.phone?.includes(query);
       return matchLocalStatus && matchLocalPayment && matchMethod && matchSource && matchSearch;
     });
 
@@ -514,6 +514,7 @@ export default function AdminOrders() {
           </div>
         ) : paginated.map((booking) => {
           const user = usersMap[booking.userId];
+          const customer = resolveOrderCustomer(booking, user);
           const orderId = getOrderDisplayId(booking, orderNumberMap);
           const source = booking.orderSource || (booking.paymentMethod === 'whatsapp' ? 'whatsapp' : 'website');
           const paymentStatus = booking.paymentStatus || 'pending';
@@ -531,9 +532,17 @@ export default function AdminOrders() {
                 </span>
                 <StatusBadge status={booking.status} label={getStatusLabel(booking.status, lang)} />
               </div>
-              <p className="text-sm font-semibold truncate">
-                {booking.customerName || user?.displayName || user?.email || t('admin.unknownUser')}
-              </p>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">
+                  {customer.label || t('admin.unknownUser')}
+                </p>
+                {customer.phone && (
+                  <p className="text-xs text-brand font-medium truncate" dir="ltr">{customer.phone}</p>
+                )}
+                {customer.email && (
+                  <p className="text-[11px] text-gray-500 truncate" dir="ltr">{customer.email}</p>
+                )}
+              </div>
               <p className="text-xs text-gray-500 truncate">
                 {getCityName(CITIES, booking.from, lang)} → {getCityName(CITIES, booking.to, lang)}
               </p>
@@ -577,6 +586,7 @@ export default function AdminOrders() {
             </tr>
           ) : paginated.map((booking, idx) => {
             const user = usersMap[booking.userId];
+            const customer = resolveOrderCustomer(booking, user);
             const orderId = getOrderDisplayId(booking, orderNumberMap);
             const paymentStatus = booking.paymentStatus || 'pending';
             const source = booking.orderSource || (booking.paymentMethod === 'whatsapp' ? 'whatsapp' : 'website');
@@ -608,11 +618,14 @@ export default function AdminOrders() {
                 </AdminTableCell>
                 <AdminTableCell>
                   <p className="font-semibold truncate">
-                    {booking.customerName || user?.displayName || t('admin.unknownUser')}
+                    {customer.label || t('admin.unknownUser')}
                   </p>
-                  <p className="text-[10px] text-gray-500 truncate" dir="ltr">
-                    {booking.customerEmail || user?.email || booking.customerPhone || '—'}
-                  </p>
+                  {customer.phone && (
+                    <p className="text-[11px] text-brand font-medium truncate" dir="ltr">{customer.phone}</p>
+                  )}
+                  {customer.email && (
+                    <p className="text-[10px] text-gray-500 truncate" dir="ltr">{customer.email}</p>
+                  )}
                 </AdminTableCell>
                 <AdminTableCell>
                   <span className="text-xs font-medium line-clamp-2 leading-tight">

@@ -5,24 +5,29 @@ import { useSignIn, useSignUp } from '@clerk/clerk-react';
 import { AlertCircle, Mail, Phone, ShieldCheck, User, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { handleAuthError, validateEmail } from '../utils/firebaseErrors';
+import { isSessionExistsError, markHasAccount, resolveRedirectTarget, setAuthRedirect } from '../utils/authEntry';
+import { useCart } from '../context/CartContext';
 import AuthAlertModal from '../components/ui/AuthAlertModal';
 import AuthGlassCard from '../components/ui/AuthGlassCard';
 import EmailOtpStep from '../components/ui/EmailOtpStep';
 
-const SUCCESS_REDIRECT_MS = 900;
+const SUCCESS_REDIRECT_MS = 400;
 
 export default function Register() {
   const { t, i18n } = useTranslation();
-  const { user, completeProfile } = useAuth();
+  const { user, isClerkSignedIn, syncFirebaseSession, completeProfile, logout } = useAuth();
+  const { cartCount } = useCart();
   const { isLoaded: signUpLoaded, signUp, setActive } = useSignUp();
   const { isLoaded: signInLoaded, signIn } = useSignIn();
   const navigate = useNavigate();
   const location = useLocation();
   const lang = i18n.language;
   const redirectFrom = location.state?.from;
-  const from = redirectFrom
-    ? `${redirectFrom.pathname || '/dashboard'}${redirectFrom.search || ''}`
-    : '/dashboard';
+  const from = resolveRedirectTarget(redirectFrom, { cartCount });
+
+  useEffect(() => {
+    setAuthRedirect(from);
+  }, [from]);
 
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -35,16 +40,59 @@ export default function Register() {
   const [resendKey, setResendKey] = useState(0);
   const authAttemptRef = useRef(false);
   const redirectTimerRef = useRef(null);
+  const resumeRef = useRef(false);
+  const navigatedRef = useRef(false);
+
+  const goToAccount = () => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    markHasAccount();
+    window.clearTimeout(redirectTimerRef.current);
+    redirectTimerRef.current = window.setTimeout(
+      () => navigate(from, { replace: true }),
+      SUCCESS_REDIRECT_MS,
+    );
+  };
+
+  const resumeExistingSession = async () => {
+    if (resumeRef.current || step === 'details' || authAttemptRef.current) return;
+    resumeRef.current = true;
+    try {
+      const result = await syncFirebaseSession({ authProvider: 'clerk_email', language: lang });
+      if (!result?.user) throw new Error('bridge-failed');
+      markHasAccount();
+      navigate(from, { replace: true });
+    } catch (error) {
+      resumeRef.current = false;
+      console.error('Register resume session failed:', error);
+      setInlineError(
+        lang === 'ar'
+          ? 'جلسة الدخول نشطة لكن تعذر فتح الحساب. انتقل لتسجيل الدخول أو سجّل الخروج ثم أعد المحاولة.'
+          : 'You are signed in, but the account could not open. Go to Login, or sign out and try again.',
+      );
+    }
+  };
 
   useEffect(() => {
     if (user && !authAttemptRef.current && step !== 'details') {
-      navigate(from, { replace: true });
+      goToAccount();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, navigate, step, from]);
+
+  useEffect(() => {
+    if (!isClerkSignedIn || user || authAttemptRef.current || step === 'details') return;
+    resumeExistingSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClerkSignedIn, user, step]);
 
   useEffect(() => () => window.clearTimeout(redirectTimerRef.current), []);
 
   const showError = (error, keepOpen = false) => {
+    if (isSessionExistsError(error)) {
+      resumeExistingSession();
+      return;
+    }
     if (!keepOpen) authAttemptRef.current = false;
     const message = error?.errors?.[0]?.longMessage
       || error?.errors?.[0]?.message
@@ -137,7 +185,10 @@ export default function Register() {
     setInlineError('');
     setLoading(true);
     try {
-      await completeProfile({ name, phone });
+      const result = await completeProfile({ name, phone });
+      if (!result?.user) {
+        throw { errors: [{ message: lang === 'ar' ? 'تعذر حفظ الحساب.' : 'Could not save your account.' }] };
+      }
       setModal({
         type: 'success',
         title: lang === 'ar' ? 'أهلاً بك معنا!' : 'Welcome aboard!',
@@ -145,10 +196,7 @@ export default function Register() {
           ? 'تم حفظ بياناتك وإنشاء حسابك بنجاح.'
           : 'Your details are saved and your account is ready.',
       });
-      redirectTimerRef.current = window.setTimeout(
-        () => navigate(from, { replace: true }),
-        SUCCESS_REDIRECT_MS,
-      );
+      goToAccount();
     } catch (error) {
       showError(error, true);
     } finally {
@@ -158,12 +206,18 @@ export default function Register() {
 
   const handleGoogle = async () => {
     if (!signInLoaded || !signIn) return;
+    if (isClerkSignedIn) {
+      resumeExistingSession();
+      return;
+    }
     setLoading(true);
     try {
+      setAuthRedirect(from);
+      const complete = `${window.location.origin}${from.startsWith('/') ? from : `/${from}`}`;
       await signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
         redirectUrl: `${window.location.origin}/sso-callback`,
-        redirectUrlComplete: '/dashboard',
+        redirectUrlComplete: complete,
       });
     } catch (error) {
       showError(error);
@@ -178,6 +232,34 @@ export default function Register() {
           <div className="auth-error-banner mb-4">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{inlineError}</span>
+          </div>
+        )}
+
+        {isClerkSignedIn && !user && step !== 'details' && (
+          <div className="mb-4 space-y-3">
+            <Link
+              to="/login"
+              state={redirectFrom ? { from: redirectFrom } : undefined}
+              className="auth-btn-primary w-full inline-flex items-center justify-center"
+            >
+              {lang === 'ar' ? 'الانتقال إلى تسجيل الدخول' : 'Go to Login'}
+            </Link>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await logout();
+                } catch (error) {
+                  console.error('Sign-out failed:', error);
+                } finally {
+                  resumeRef.current = false;
+                  setInlineError('');
+                }
+              }}
+              className="w-full text-sm font-semibold text-brand/80 hover:text-brand underline-offset-2 hover:underline"
+            >
+              {lang === 'ar' ? 'تسجيل الخروج والمحاولة من جديد' : 'Sign out and start over'}
+            </button>
           </div>
         )}
 

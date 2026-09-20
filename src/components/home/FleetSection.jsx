@@ -10,6 +10,7 @@ import { buildHomeFleetSections, HOME_FLEET_PAIRS } from '../../data/adminFleetS
 import { useSiteContent } from '../../context/SiteContentContext';
 import { useCart } from '../../context/CartContext';
 import AddToCartModal from '../ui/AddToCartModal';
+import PremiumSwiper from '../ui/PremiumSwiper';
 import VehicleImage from '../ui/VehicleImage';
 import { buildWhatsAppUrl, buildVehicleWhatsAppMessage } from '../../utils/vehicleHelpers';
 
@@ -161,8 +162,19 @@ function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
 
   const gridClass =
     cols === 4
-      ? 'grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5'
-      : 'grid grid-cols-2 gap-4 sm:gap-5';
+      ? 'hidden lg:grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5'
+      : 'hidden lg:grid grid-cols-2 gap-4 sm:gap-5';
+
+  const renderCard = (vehicle) => (
+    <VehicleCard
+      key={`${group.id}-${String(vehicle.id || '').split('-')[0] || vehicle.id}`}
+      vehicle={vehicle}
+      routeTitle={routeTitle}
+      routeId={group.routeId}
+      lang={lang}
+      t={t}
+    />
+  );
 
   return (
     <div className="flex flex-col gap-3 sm:gap-4 min-w-0 w-full">
@@ -178,17 +190,19 @@ function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
         )}
       </div>
 
+      <div className="block lg:hidden">
+        <PremiumSwiper
+          items={vehicles}
+          renderSlide={(vehicle) => renderCard(vehicle)}
+          paginationClass={`fleet-group-pagination-${group.id}`}
+          swiperClass="premium-swiper premium-swiper--fleet"
+          autoplayDelay={4800}
+          swiperKey={`fleet-${group.id}`}
+        />
+      </div>
+
       <div className={gridClass}>
-        {vehicles.map((vehicle) => (
-          <VehicleCard
-            key={`${group.id}-${String(vehicle.id || '').split('-')[0] || vehicle.id}`}
-            vehicle={vehicle}
-            routeTitle={routeTitle}
-            routeId={group.routeId}
-            lang={lang}
-            t={t}
-          />
-        ))}
+        {vehicles.map((vehicle) => renderCard(vehicle))}
       </div>
     </div>
   );

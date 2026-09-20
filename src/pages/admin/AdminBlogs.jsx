@@ -122,12 +122,13 @@ export default function AdminBlogs() {
       contentAr: b.contentAr || '',
       dateEn: b.dateEn || '',
       dateAr: b.dateAr || '',
-      imageUrl: b.imageUrl || '',
+      imageUrl: b.imageUrl || b.image || '',
       sortOrder: b.sortOrder || 0,
       active: b.active ?? true,
     });
     setEditing(b.id);
     setShowForm(true);
+    setAddMode('manual');
   };
 
   const handleDelete = async (id) => {
@@ -301,16 +302,19 @@ export default function AdminBlogs() {
               <input value={form.titleAr} onChange={(e) => setForm({ ...form, titleAr: e.target.value })} placeholder="العنوان (AR)" required dir="rtl" className="admin-input" />
               <input value={form.dateEn} onChange={(e) => setForm({ ...form, dateEn: e.target.value })} placeholder="Date (EN)" className="admin-input" />
               <input value={form.dateAr} onChange={(e) => setForm({ ...form, dateAr: e.target.value })} placeholder="التاريخ (AR)" dir="rtl" className="admin-input" />
-              <textarea value={form.excerptEn} onChange={(e) => setForm({ ...form, excerptEn: e.target.value })} placeholder="Excerpt (EN)" rows={2} className="admin-input md:col-span-2" />
-              <textarea value={form.excerptAr} onChange={(e) => setForm({ ...form, excerptAr: e.target.value })} placeholder="المقتطف (AR)" rows={2} dir="rtl" className="admin-input md:col-span-2" />
-              <textarea value={form.contentEn} onChange={(e) => setForm({ ...form, contentEn: e.target.value })} placeholder="Full content (EN)" rows={5} className="admin-input md:col-span-2" />
-              <textarea value={form.contentAr} onChange={(e) => setForm({ ...form, contentAr: e.target.value })} placeholder="المحتوى الكامل (AR)" rows={5} dir="rtl" className="admin-input md:col-span-2" />
               <MediaUpload
                 value={form.imageUrl}
                 onChange={(imageUrl) => setForm((current) => ({ ...current, imageUrl }))}
                 folder="blogs"
+                allowUrl
+                label={t('admin.blogs.image')}
+                className="md:col-span-2"
               />
-              <label className="flex items-center gap-2 px-4 py-3 rounded-xl border border-white/50 bg-white/50 dark:admin-surface">
+              <textarea value={form.excerptEn} onChange={(e) => setForm({ ...form, excerptEn: e.target.value })} placeholder="Excerpt (EN)" rows={2} className="admin-input md:col-span-2" />
+              <textarea value={form.excerptAr} onChange={(e) => setForm({ ...form, excerptAr: e.target.value })} placeholder="المقتطف (AR)" rows={2} dir="rtl" className="admin-input md:col-span-2" />
+              <textarea value={form.contentEn} onChange={(e) => setForm({ ...form, contentEn: e.target.value })} placeholder="Full content (EN)" rows={5} className="admin-input md:col-span-2" />
+              <textarea value={form.contentAr} onChange={(e) => setForm({ ...form, contentAr: e.target.value })} placeholder="المحتوى الكامل (AR)" rows={5} dir="rtl" className="admin-input md:col-span-2" />
+              <label className="flex items-center gap-2 px-4 py-3 rounded-xl border border-white/50 bg-white/50 dark:admin-surface md:col-span-2">
                 <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} className="w-4 h-4" />
                 <span className="font-semibold">{t('admin.products.active')}</span>
               </label>

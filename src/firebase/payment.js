@@ -10,7 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './db';
 import { uploadImage } from './storage';
-import { logActivity, sendNotification, addBookingTimelineEntry } from './admin';
+import { logActivity, sendNotification, addBookingTimelineEntry, upsertUserDocument } from './admin';
 import {
   getPendingOrders,
   isRetryableFirebaseError,
@@ -199,8 +199,14 @@ function buildOrderPayload(orderData, userId, orderNumber) {
   if (hasProof) {
     trackingTimeline.push({ status: 'proof_submitted', label: 'Payment proof uploaded', at: nowIso });
   }
+  const customerName = String(orderData.customerName || '').trim();
+  const customerPhone = String(orderData.customerPhone || '').trim();
+  const customerEmail = String(orderData.customerEmail || '').trim();
   const payload = {
     ...orderData,
+    customerName,
+    customerPhone,
+    customerEmail,
     userId: userId || null,
     isGuest: Boolean(orderData.isGuest ?? !userId),
     orderNumber,
@@ -238,6 +244,23 @@ async function createOrderOnline(orderData, userId, bookingId, fixedOrderNumber 
   const bookingRef = doc(db, 'bookings', bookingId);
   await setDoc(bookingRef, payload);
 
+  // Keep users collection in sync so admin always sees latest name/phone/email
+  if (userId) {
+    const profilePatch = {};
+    if (String(orderData.customerName || '').trim()) {
+      profilePatch.displayName = String(orderData.customerName).trim();
+    }
+    if (String(orderData.customerEmail || '').trim()) {
+      profilePatch.email = String(orderData.customerEmail).trim();
+    }
+    if (String(orderData.customerPhone || '').trim()) {
+      profilePatch.phone = String(orderData.customerPhone).trim();
+    }
+    if (Object.keys(profilePatch).length) {
+      await Promise.allSettled([upsertUserDocument(userId, profilePatch)]);
+    }
+  }
+
   const booking = { id: bookingId, ...orderData, orderNumber, userId: userId || null };
   // The booking is the critical write. Notifications/email are best effort and
   // must not turn a saved order into a checkout failure.
@@ -247,6 +270,8 @@ async function createOrderOnline(orderData, userId, bookingId, fixedOrderNumber 
       orderNumber,
       userId: userId || null,
       paymentMethod: orderData.paymentMethod,
+      customerName: orderData.customerName || null,
+      customerPhone: orderData.customerPhone || null,
     }),
     notifyOrderEmails('order_placed', booking, orderNumber, settings),
     payload.paymentStatus === 'pending' || payload.paymentStatus === 'proof_submitted'

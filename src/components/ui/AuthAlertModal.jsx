@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, AlertCircle, CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { useArabicAlertSound } from '../../hooks/useArabicAlertSound';
@@ -54,24 +55,25 @@ export default function AuthAlertModal({
   useArabicAlertSound(open, type);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
     window.addEventListener('keydown', onKey);
     const focusTimer = window.setTimeout(() => actionRef.current?.focus(), 100);
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKey);
       window.clearTimeout(focusTimer);
       previousFocus?.focus?.();
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-3 sm:p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6">
       <div
         className="absolute inset-0 bg-[#140a20]/65 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
@@ -82,7 +84,7 @@ export default function AuthAlertModal({
         aria-modal="true"
         aria-labelledby="auth-alert-title"
         aria-describedby="auth-alert-message"
-        className={`relative w-full max-w-sm auth-glass-modal animate-modal-in ring-1 ${variant.ring}`}
+        className={`relative w-full max-w-sm max-h-[min(90dvh,36rem)] overflow-y-auto overscroll-contain auth-glass-modal animate-modal-in ring-1 ${variant.ring}`}
       >
         <div className={`bg-gradient-to-br ${variant.gradient} px-6 pt-8 pb-9 text-center text-white relative overflow-hidden rounded-t-3xl`}>
           <div className="absolute inset-0 opacity-25">
@@ -122,6 +124,7 @@ export default function AuthAlertModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

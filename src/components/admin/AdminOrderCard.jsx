@@ -1,14 +1,15 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Calendar, Tag, User, ChevronRight } from 'lucide-react';
+import { MapPin, Calendar, Tag, User, ChevronRight, Phone } from 'lucide-react';
 import { CITIES } from '../../data/staticData';
 import { getCityName, getStatusLabel, formatBookingDate } from '../../utils/bookingHelpers';
+import { formatOrderNumber, resolveOrderCustomer } from '../../utils/orderHelpers';
 import StatusBadge from '../ui/StatusBadge';
-import { formatOrderNumber } from '../../utils/orderHelpers';
 
 export default function AdminOrderCard({ booking, user, compact, orderDisplayId }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
+  const customer = resolveOrderCustomer(booking, user);
 
   return (
     <div className={`admin-card-inner rounded-xl border hover:shadow-md transition-all duration-250 ${compact ? 'p-3' : 'p-4'}`}>
@@ -31,10 +32,18 @@ export default function AdminOrderCard({ booking, user, compact, orderDisplayId 
             {booking.totalPrice || booking.price} {t('booking.sar')}
           </div>
         </div>
-        {user && (
-          <div className="flex items-center gap-1.5 text-xs admin-text-muted pt-1 border-t border-gray-200/80 dark:border-white/10">
-            <User className="w-3 h-3" />
-            <span className="truncate">{user.displayName || user.email}</span>
+        {customer.hasAny && (
+          <div className="flex flex-col gap-0.5 text-xs admin-text-muted pt-1 border-t border-gray-200/80 dark:border-white/10">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <User className="w-3 h-3 shrink-0" />
+              <span className="truncate font-semibold">{customer.label || t('admin.unknownUser')}</span>
+            </div>
+            {customer.phone && (
+              <div className="flex items-center gap-1.5 ps-4" dir="ltr">
+                <Phone className="w-3 h-3 shrink-0" />
+                <span className="truncate">{customer.phone}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

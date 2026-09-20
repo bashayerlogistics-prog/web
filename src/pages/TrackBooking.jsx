@@ -12,6 +12,7 @@ import BookingTracker from '../components/ui/BookingTracker';
 import AlertBanner from '../components/ui/AlertBanner';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { formatOrderNumber } from '../utils/orderHelpers';
+import { getAccountEntryPath, hasReturningAccount } from '../utils/authEntry';
 
 export default function TrackBooking() {
   const { t, i18n } = useTranslation();
@@ -91,10 +92,13 @@ export default function TrackBooking() {
             message={t('dashboard.trackAccessDenied')}
           />
           <div className="mt-6 text-center">
-            <Link to="/login" state={{ from: { pathname: '/track', search: searchParams.toString() ? `?${searchParams.toString()}` : '' } }}
-              className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-bold px-6 py-3 rounded-xl">
+            <Link
+              to={getAccountEntryPath()}
+              state={{ from: { pathname: '/track', search: searchParams.toString() ? `?${searchParams.toString()}` : '' } }}
+              className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-bold px-6 py-3 rounded-xl"
+            >
               <Lock className="w-4 h-4" />
-              {t('auth.login')}
+              {hasReturningAccount() ? t('auth.login') : t('auth.register')}
             </Link>
           </div>
         </div>

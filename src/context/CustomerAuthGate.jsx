@@ -9,7 +9,7 @@ const AUTH_PATHS = [
   '/sso-callback',
   '/dashboard',
   '/checkout',
-  '/cart',
+  /* /cart stays guest-fast: Clerk only if session cookie already exists */
   '/track',
   '/payment',
 ];
@@ -21,8 +21,16 @@ const GUEST_AUTH = {
   loading: false,
   clerkUser: null,
   isClerkSignedIn: false,
-  syncFirebaseSession: async () => null,
-  completeProfile: async () => null,
+  syncFirebaseSession: async () => {
+    const err = new Error('Auth bridge is not ready yet.');
+    err.code = 'auth/bridge-not-ready';
+    throw err;
+  },
+  completeProfile: async () => {
+    const err = new Error('Auth bridge is not ready yet.');
+    err.code = 'auth/bridge-not-ready';
+    throw err;
+  },
   logout: async () => {},
 };
 

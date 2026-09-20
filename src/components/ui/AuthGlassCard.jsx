@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BadgeCheck, Headphones, ShieldCheck, Sparkles } from 'lucide-react';
 import BrandLogo from '../ui/BrandLogo';
@@ -11,7 +11,9 @@ export default function AuthGlassCard({
   children,
 }) {
   const { t, i18n } = useTranslation();
+  const location = useLocation();
   const isArabic = i18n.language === 'ar';
+  const tabState = location.state?.from ? { from: location.state.from } : undefined;
   const benefits = isArabic
     ? [
         { icon: ShieldCheck, text: 'بياناتك محمية بأعلى معايير الأمان' },
@@ -23,6 +25,21 @@ export default function AuthGlassCard({
         { icon: BadgeCheck, text: 'Manage every booking in one simple place' },
         { icon: Headphones, text: 'Dedicated support before and after your trip' },
       ];
+  const welcomeCopy = activeTab === 'register'
+    ? {
+        eyebrow: isArabic ? 'أنشئ حسابك الآن' : 'Create your account',
+        title: isArabic ? 'أول زيارة؟ سجّل مرة واحدة وابدأ الحجز' : 'First time here? Sign up once and start booking',
+        body: isArabic
+          ? 'إنشاء الحساب يأخذ دقيقة واحدة ثم تصل إلى ملفك وحجوزاتك مباشرة.'
+          : 'Registration takes a minute, then you land straight on your profile and bookings.',
+      }
+    : {
+        eyebrow: isArabic ? 'مرحباً بعودتك' : 'Welcome back',
+        title: isArabic ? 'سجّل دخولك لمتابعة حجوزاتك' : 'Sign in to manage your bookings',
+        body: isArabic
+          ? 'ادخل بحسابك الحالي للوصول إلى الحجوزات وتحديثات الرحلات.'
+          : 'Use your existing account for bookings, trip updates, and travel services.',
+      };
 
   return (
     <main className="auth-page-shell">
@@ -36,15 +53,13 @@ export default function AuthGlassCard({
               <BrandLogo variant="full" tone="light" alt="" className="h-11 sm:h-14 w-auto mb-8" />
               <span className="auth-eyebrow">
                 <Sparkles className="w-4 h-4" />
-                {isArabic ? 'رحلتك تبدأ من هنا' : 'Your journey starts here'}
+                {welcomeCopy.eyebrow}
               </span>
               <h2 className="mt-5 text-3xl lg:text-4xl font-black leading-tight">
-                {isArabic ? 'سافر براحة، ونحن نهتم بالتفاصيل' : 'Travel with confidence. We handle the details.'}
+                {welcomeCopy.title}
               </h2>
               <p className="mt-4 text-sm sm:text-base text-white/70 leading-7 max-w-md">
-                {isArabic
-                  ? 'سجّل دخولك للوصول إلى حجوزاتك وتحديثات رحلاتك وخدماتك في أي وقت.'
-                  : 'Sign in for instant access to bookings, trip updates, and travel services whenever you need them.'}
+                {welcomeCopy.body}
               </p>
               <div className="mt-8 space-y-4">
                 {benefits.map(({ icon: BenefitIcon, text }) => (
@@ -81,6 +96,7 @@ export default function AuthGlassCard({
             <nav className="auth-tabs" aria-label={isArabic ? 'خيارات الحساب' : 'Account options'}>
               <Link
                 to="/login"
+                state={tabState}
                 aria-current={activeTab === 'login' ? 'page' : undefined}
                 className={`auth-tab ${activeTab === 'login' ? 'auth-tab-active' : ''}`}
               >
@@ -88,6 +104,7 @@ export default function AuthGlassCard({
               </Link>
               <Link
                 to="/register"
+                state={tabState}
                 aria-current={activeTab === 'register' ? 'page' : undefined}
                 className={`auth-tab ${activeTab === 'register' ? 'auth-tab-active' : ''}`}
               >
