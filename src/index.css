@@ -448,7 +448,7 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: clamp(1rem, 3.5vw, 1.35rem) clamp(0.75rem, 3vw, 1.1rem);
-  align-items: start;
+  align-items: stretch;
   justify-items: center;
 }
 
@@ -460,18 +460,15 @@ body {
 
   .car-category-card {
     width: 100%;
-    max-width: 13rem;
+    max-width: 12.5rem;
   }
 
   .car-category-card__visual {
-    max-width: 12rem;
+    width: 11.5rem;
+    max-width: 11.5rem;
+    aspect-ratio: 1 / 1;
     border-radius: 50%;
     overflow: hidden;
-  }
-
-  .car-category-card__photo {
-    -webkit-mask-image: none;
-    mask-image: none;
   }
 
   .car-category-card__hover {
@@ -489,6 +486,11 @@ body {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: clamp(0.9rem, 2vw, 1.5rem);
   }
+
+  .car-category-card__visual {
+    width: min(100%, 12rem);
+    max-width: 12rem;
+  }
 }
 
 .car-category-card {
@@ -496,6 +498,8 @@ body {
   flex-direction: column;
   align-items: center;
   min-width: 0;
+  width: 100%;
+  height: 100%;
   color: inherit;
   text-align: center;
   text-decoration: none;
@@ -504,9 +508,10 @@ body {
 
 .car-category-card__visual {
   position: relative;
-  width: 100%;
-  max-width: 13rem;
-  aspect-ratio: 1;
+  width: min(100%, 11.5rem);
+  max-width: 11.5rem;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 auto;
   padding: 0;
   background: #180533;
   border: none;
@@ -521,6 +526,8 @@ body {
 }
 
 .car-category-card__image {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   border: none;
@@ -540,27 +547,27 @@ body {
 }
 
 /*
- * The photo is laid out `--car-zoom` circles wide (16:9, so 56.25% of that tall),
- * then pulled by the car's own centre point so the vehicle lands dead centre.
+ * Photo is `--car-zoom` circles wide (16:9 height). Same zoom for every car
+ * keeps visual size equal; focus x/y only pans the subject into the centre.
  */
 .car-category-card__photo {
+  position: absolute !important;
   inset: auto !important;
   top: 50% !important;
   left: 50% !important;
-  width: calc(var(--car-zoom, 1.78) * 100%) !important;
-  height: calc(var(--car-zoom, 1.78) * 56.25%) !important;
-  max-width: none;
+  width: calc(var(--car-zoom, 1.92) * 100%) !important;
+  height: calc(var(--car-zoom, 1.92) * 56.25%) !important;
+  max-width: none !important;
   object-fit: cover !important;
   object-position: center !important;
-  /* Zooming around the car keeps it centred while the photo grows on hover */
-  transform-origin: calc(var(--car-focus-x, 0.5) * 100%) calc(var(--car-focus-y, 0.5) * 100%);
+  transform-origin: calc(var(--car-focus-x, 0.5) * 100%) calc(var(--car-focus-y, 0.55) * 100%);
   transform: translate(
       calc(var(--car-focus-x, 0.5) * -100%),
-      calc(var(--car-focus-y, 0.5) * -100%)
+      calc(var(--car-focus-y, 0.55) * -100%)
     )
     scale(var(--car-hover-zoom, 1));
-  -webkit-mask-image: linear-gradient(180deg, #000 87%, transparent 99%);
-  mask-image: linear-gradient(180deg, #000 87%, transparent 99%);
+  -webkit-mask-image: none;
+  mask-image: none;
   transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -620,17 +627,24 @@ body {
 }
 
 .car-category-card__title {
-  margin-top: 1rem;
+  margin-top: 0.9rem;
+  min-height: 2.5em;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   color: var(--color-brand-dark);
   font-size: clamp(0.85rem, 1.7vw, 1.05rem);
   font-weight: 900;
+  line-height: 1.25;
   transition: color 0.25s ease, transform 0.3s ease;
 }
 
 .car-category-card__hint {
   display: block;
   max-width: 11rem;
+  min-height: 1.7em;
   margin-top: 0.2rem;
+  margin-inline: auto;
   color: #9ca3af;
   font-size: 0.62rem;
   line-height: 1.4;
@@ -717,7 +731,7 @@ body {
     width: clamp(9rem, 46vw, 11.75rem);
   }
 
-  /* Choose Your Car — 2-col grid, full unclipped circles */
+  /* Choose Your Car — 2-col grid, equal full circles */
   .car-category-cards {
     overflow: visible;
   }
@@ -728,8 +742,9 @@ body {
   }
 
   .car-category-card__visual {
+    width: min(10.5rem, 42vw);
     max-width: min(10.5rem, 42vw);
-    aspect-ratio: 1;
+    aspect-ratio: 1 / 1;
     border-radius: 50%;
     overflow: hidden;
   }
@@ -737,11 +752,6 @@ body {
   .car-category-card__image,
   .car-category-card__shade {
     border-radius: 50%;
-  }
-
-  .car-category-card__photo {
-    -webkit-mask-image: none;
-    mask-image: none;
   }
 
   .car-category-card__hover {

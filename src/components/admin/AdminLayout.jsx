@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ShoppingBag, Users, Activity, Settings,
   LogOut, Sun, Moon, Languages, Menu, RefreshCw, X, Search,
   Image, Bell, ChevronRight, ChevronDown, FileText, Briefcase, ToggleLeft, Monitor, MessageCircle,
-  Map, HelpCircle, Share2, Images, Car, Tags, DatabaseBackup, CreditCard, ListOrdered, Copyright, Grid3x3,
+  Map as MapIcon, HelpCircle, Share2, Images, Car, Tags, DatabaseBackup, CreditCard, ListOrdered, Copyright, Grid3x3,
 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAdminAuth } from '../../context/AdminAuthContext';
@@ -77,7 +77,7 @@ const navGroups = [
     labelKey: 'admin.nav.groupServices',
     items: [
       { to: '/admin/services', icon: Briefcase, labelKey: 'admin.nav.services' },
-      { to: '/admin/routes', icon: Map, labelKey: 'admin.nav.routes' },
+      { to: '/admin/routes', icon: MapIcon, labelKey: 'admin.nav.routes' },
       { to: '/admin/faq', icon: HelpCircle, labelKey: 'admin.nav.faq' },
     ],
   },

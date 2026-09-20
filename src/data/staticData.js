@@ -190,18 +190,19 @@ export { VEHICLE_IMAGES };
 /**
  * Circle framing for the bundled scene photos: `x`/`y` are the car centre inside
  * the photo (0-1) and `zoom` is the photo width relative to the circle width.
+ * Keep zoom in a tight band (~1.9) so all 5 cars read the same size in the circle.
  */
 const CATEGORY_CIRCLE_FOCUS = {
-  taurus: { x: 0.5, y: 0.82, zoom: 2.05 },
-  camry: { x: 0.5, y: 0.58, zoom: 1.65 },
-  staria: { x: 0.3, y: 0.73, zoom: 2 },
-  yukon: { x: 0.43, y: 0.74, zoom: 1.95 },
-  hiace: { x: 0.4, y: 0.64, zoom: 2.3 },
-  h1: { x: 0.4, y: 0.64, zoom: 2.3 },
+  taurus: { x: 0.5, y: 0.78, zoom: 1.92 },
+  camry: { x: 0.5, y: 0.55, zoom: 1.92 },
+  staria: { x: 0.42, y: 0.7, zoom: 1.92 },
+  yukon: { x: 0.48, y: 0.68, zoom: 1.92 },
+  hiace: { x: 0.45, y: 0.62, zoom: 1.92 },
+  h1: { x: 0.45, y: 0.62, zoom: 1.92 },
 };
 
 /** Plain centre crop — used for any image we have not measured (admin uploads). */
-const DEFAULT_CIRCLE_FOCUS = { x: 0.5, y: 0.5, zoom: 1.78 };
+const DEFAULT_CIRCLE_FOCUS = { x: 0.5, y: 0.55, zoom: 1.92 };
 
 function mediaPathOnly(url) {
   return String(url || '').trim().split('?')[0];
