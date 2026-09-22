@@ -10084,40 +10084,44 @@ select.instant-price-field {
 }
 
 /*
- * ~16:9 hero — matches category WebPs. Cars live in the lower third;
- * do NOT shift the poster upward (that crops the vehicle and leaves only sky).
+ * Category car heroes — show the FULL vehicle (no aggressive crop).
+ * Admin uploads vary in framing; contain + dark stage keeps the whole car visible.
  */
 .category-hero.gallery-hero {
-  min-height: min(52svh, 420px);
-  max-height: min(85svh, 760px);
-  height: min(56.25vw, 85svh, 760px);
+  min-height: min(58svh, 480px);
+  max-height: min(88svh, 820px);
+  height: min(62vw, 88svh, 820px);
   place-items: center;
   align-content: center;
   padding:
-    calc(var(--site-header-height, 5.75rem) + 1.25rem)
+    calc(var(--site-header-height, 5.75rem) + 1rem)
     1.25rem
-    clamp(6rem, 12vw, 8rem);
+    clamp(5.5rem, 11vw, 7.5rem);
   box-sizing: border-box;
   border-block-end: none;
   box-shadow: none;
 }
 
 .category-hero .gallery-hero__media {
-  background: var(--gallery-surface-deep);
+  background: var(--gallery-surface-deep, #0c1222);
 }
 
 .category-hero .gallery-hero__media picture {
   position: absolute;
   inset: 0;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
+  background: linear-gradient(180deg, #10182a 0%, #0c1222 55%, #0a101c 100%);
 }
 
 .category-hero .gallery-hero__overlay {
   background:
-    linear-gradient(180deg, rgba(var(--color-brand-deep-rgb), 0.42) 0%, rgba(var(--color-brand-deep-rgb), 0.12) 36%, rgba(var(--color-brand-deep-rgb), 0.28) 68%, rgba(var(--color-brand-deep-rgb), 0.72) 100%),
-    radial-gradient(ellipse at 50% 20%, rgba(var(--color-gold-rgb), 0.12), transparent 55%);
+    linear-gradient(180deg, rgba(var(--color-brand-deep-rgb), 0.55) 0%, rgba(var(--color-brand-deep-rgb), 0.18) 38%, rgba(var(--color-brand-deep-rgb), 0.22) 62%, rgba(var(--color-brand-deep-rgb), 0.78) 100%),
+    radial-gradient(ellipse at 50% 28%, rgba(var(--color-gold-rgb), 0.1), transparent 55%);
   box-shadow: none;
+  pointer-events: none;
 }
 
 .category-hero .gallery-hero__content {
@@ -10146,26 +10150,31 @@ select.instant-price-field {
   stroke-width: 2.5;
 }
 
-/* Bias to lower frame so the car stays visible above the wave */
+/* Full car in frame — never crop roof / wheels off */
 .category-hero .gallery-hero__poster.category-hero__poster {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center 78%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center 58%;
+  padding-inline: clamp(0.5rem, 3vw, 2.5rem);
+  padding-block: clamp(0.75rem, 4vh, 2rem) clamp(2.5rem, 8vh, 4.5rem);
+  box-sizing: border-box;
   transform: none;
   animation: none;
 }
 
 @media (max-width: 767px) {
   .category-hero.gallery-hero {
-    min-height: min(48svh, 360px);
-    max-height: min(78svh, 640px);
-    height: min(72vw, 78svh, 640px);
-    padding-inline: 1rem;
-    padding-top: calc(var(--site-header-height, 5.25rem) + 1rem);
-    padding-bottom: clamp(5.25rem, 14vw, 7rem);
+    min-height: min(52svh, 400px);
+    max-height: min(82svh, 680px);
+    height: min(78vw, 82svh, 680px);
+    padding-inline: 0.75rem;
+    padding-top: calc(var(--site-header-height, 5.25rem) + 0.75rem);
+    padding-bottom: clamp(5rem, 13vw, 6.5rem);
   }
 
   .category-hero .gallery-hero__logo {
@@ -10182,7 +10191,10 @@ select.instant-price-field {
   }
 
   .category-hero .gallery-hero__poster.category-hero__poster {
-    object-position: center 82%;
+    object-fit: contain;
+    object-position: center 55%;
+    padding-inline: 0.35rem;
+    padding-block: 0.5rem 3.25rem;
   }
 }
 
