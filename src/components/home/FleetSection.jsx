@@ -5,6 +5,7 @@ import { ShoppingCart, MessageCircle, Info, Users, Check } from 'lucide-react';
 import {
   getVehicleSlug,
   getShortVehicleName,
+  getCarImage,
 } from '../../data/staticData';
 import { buildHomeFleetSections, HOME_FLEET_PAIRS } from '../../data/adminFleetServices';
 import { useSiteContent } from '../../context/SiteContentContext';
@@ -14,7 +15,7 @@ import PremiumSwiper from '../ui/PremiumSwiper';
 import VehicleImage from '../ui/VehicleImage';
 import { buildWhatsAppUrl, buildVehicleWhatsAppMessage } from '../../utils/vehicleHelpers';
 
-function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
+function VehicleCard({ vehicle, routeTitle, routeId, lang, t, categoryImage }) {
   const { addItem } = useCart();
   const [modalItem, setModalItem] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -23,6 +24,8 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
   const shortName = getShortVehicleName(vehicle.id, lang);
   const slug = getVehicleSlug(vehicle.id, routeId);
   const routeLabel = routeTitle[lang] || routeTitle.ar;
+  // Always match "Choose Your Car" / All categories image for this car name.
+  const cardImage = categoryImage || getCarImage(vehicle.id) || vehicle.image;
 
   const discount =
     vehicle.originalPrice && vehicle.price
@@ -48,7 +51,7 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
     },
     routeTitle,
     price: vehicle.price,
-    image: vehicle.image,
+    image: cardImage,
     passengers: String(vehicle.passengers),
   });
 
@@ -69,7 +72,7 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
 
         <div className="fleet-card__media">
           <VehicleImage
-            src={vehicle.image}
+            src={cardImage}
             alt={shortName}
             className="fleet-card__image w-full"
             hoverZoom
@@ -145,7 +148,7 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
   );
 }
 
-function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
+function ServiceFleetGroup({ group, lang, t, cols = 2, imageByCar = {} }) {
   const title = group.title[lang] || group.title.ar;
   const routeTitle = group.routeTitle;
 
@@ -165,16 +168,20 @@ function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
       ? 'hidden lg:grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5'
       : 'hidden lg:grid grid-cols-2 gap-4 sm:gap-5';
 
-  const renderCard = (vehicle) => (
-    <VehicleCard
-      key={`${group.id}-${String(vehicle.id || '').split('-')[0] || vehicle.id}`}
-      vehicle={vehicle}
-      routeTitle={routeTitle}
-      routeId={group.routeId}
-      lang={lang}
-      t={t}
-    />
-  );
+  const renderCard = (vehicle) => {
+    const key = String(vehicle.id || '').split('-')[0];
+    return (
+      <VehicleCard
+        key={`${group.id}-${key || vehicle.id}`}
+        vehicle={vehicle}
+        routeTitle={routeTitle}
+        routeId={group.routeId}
+        lang={lang}
+        t={t}
+        categoryImage={imageByCar[key] || ''}
+      />
+    );
+  };
 
   return (
     <div className="flex flex-col gap-3 sm:gap-4 min-w-0 w-full">
@@ -217,6 +224,16 @@ export default function FleetSection() {
     [fleetRoutes, carCatalog, fleetShowcase],
   );
 
+  const imageByCar = useMemo(() => {
+    const map = {};
+    (carCatalog || []).forEach((car) => {
+      const id = String(car?.id || '').trim();
+      const url = String(car?.imageUrl || '').trim();
+      if (id && url) map[id] = url;
+    });
+    return map;
+  }, [carCatalog]);
+
   const byId = useMemo(() => {
     const map = {};
     for (const g of homeSections) map[g.id] = g;
@@ -254,8 +271,8 @@ export default function FleetSection() {
             if (!left && !right) return null;
             return (
               <div key={`${leftId}-${rightId}`} className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5">
-                {left ? <ServiceFleetGroup group={left} lang={lang} t={t} cols={2} /> : <div className="hidden md:block" />}
-                {right ? <ServiceFleetGroup group={right} lang={lang} t={t} cols={2} /> : <div className="hidden md:block" />}
+                {left ? <ServiceFleetGroup group={left} lang={lang} t={t} cols={2} imageByCar={imageByCar} /> : <div className="hidden md:block" />}
+                {right ? <ServiceFleetGroup group={right} lang={lang} t={t} cols={2} imageByCar={imageByCar} /> : <div className="hidden md:block" />}
               </div>
             );
           })}

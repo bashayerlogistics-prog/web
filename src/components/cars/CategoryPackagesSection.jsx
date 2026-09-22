@@ -17,6 +17,7 @@ import {
   getVehicleSlug,
 } from '../../data/staticData';
 import { useCart } from '../../context/CartContext';
+import { useSiteContent } from '../../context/SiteContentContext';
 import AddToCartModal from '../ui/AddToCartModal';
 import PremiumSwiper from '../ui/PremiumSwiper';
 import VehicleImage from '../ui/VehicleImage';
@@ -24,7 +25,7 @@ import { buildWhatsAppUrl, buildVehicleWhatsAppMessage } from '../../utils/vehic
 
 const BATCH_SIZE = 8;
 
-function PackageCard({ item, carId, lang, t, priority = false }) {
+function PackageCard({ item, carId, lang, t, priority = false, categoryImage = '' }) {
   const { addItem } = useCart();
   const [modalItem, setModalItem] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -37,6 +38,8 @@ function PackageCard({ item, carId, lang, t, priority = false }) {
   const hoursLabel = item.durationHours
     ? ` · ${item.durationHours} ${t('booking.hour', { defaultValue: 'h' })}`
     : '';
+  // Same image as homepage "Choose Your Car" / All categories for this car name.
+  const cardImage = categoryImage || getCarImage(carId || vehicle.id) || vehicle.image;
 
   const whatsappMsg = buildVehicleWhatsAppMessage({
     lang,
@@ -57,7 +60,7 @@ function PackageCard({ item, carId, lang, t, priority = false }) {
     },
     routeTitle: item.routeTitle,
     price: vehicle.price,
-    image: vehicle.image,
+    image: cardImage,
     passengers: String(vehicle.passengers),
     durationHours: item.durationHours || undefined,
   });
@@ -83,7 +86,7 @@ function PackageCard({ item, carId, lang, t, priority = false }) {
         <div className="fleet-card__ring" aria-hidden="true" />
         <div className="fleet-card__media">
           <VehicleImage
-            src={vehicle.image || getCarImage(carId)}
+            src={cardImage}
             alt={shortName}
             className="fleet-card__image w-full"
             hoverZoom
@@ -160,6 +163,12 @@ export default function CategoryPackagesSection({
 }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
+  const { carCatalog } = useSiteContent();
+  const categoryImage = useMemo(() => {
+    const key = String(carId || '').split('-')[0];
+    const car = (carCatalog || []).find((c) => c.id === key);
+    return String(car?.imageUrl || '').trim() || getCarImage(key) || '';
+  }, [carCatalog, carId]);
   const [filter, setFilter] = useState('all');
   const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
   const sentinelRef = useRef(null);
@@ -231,7 +240,14 @@ export default function CategoryPackagesSection({
   }, [desktopItems, visibleSections]);
 
   const renderCard = (item, index = 0) => (
-    <PackageCard item={item} carId={carId} lang={lang} t={t} priority={index < 2} />
+    <PackageCard
+      item={item}
+      carId={carId}
+      lang={lang}
+      t={t}
+      priority={index < 2}
+      categoryImage={categoryImage}
+    />
   );
 
   return (
@@ -355,6 +371,7 @@ export default function CategoryPackagesSection({
                         lang={lang}
                         t={t}
                         priority={index < 2}
+                        categoryImage={categoryImage}
                       />
                     ))}
                   </div>

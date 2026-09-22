@@ -5,6 +5,7 @@ import {
   SHORT_NAMES,
   getCarDisplayName,
   resolveCarThumb,
+  getCarImage,
 } from './staticData';
 import { extraFleetRoutesForService } from './bookingLocations';
 import { AIRPORT_TRANSFER_ROUTES } from './airportPricing';
@@ -611,13 +612,20 @@ export function buildHomeFleetSections(fleetRoutes = [], showcase = {}) {
 
     if (!vehicles.length) return null;
 
+    // Stamp live category images (Choose Your Car) onto every card by car name.
+    const withCategoryImages = vehicles.map((vehicle) => {
+      const key = carKeyOf({ vehicleKey: vehicle.id });
+      const image = getCarImage(key) || vehicle.image;
+      return image && image !== vehicle.image ? { ...vehicle, image } : vehicle;
+    });
+
     return {
       id: service.id,
       title: { ar: service.badgeAr, en: service.badgeEn },
       routeId: best.route.id,
       routeTitle: best.route.title,
       tripType: best.route.tripType || service.tripType,
-      vehicles,
+      vehicles: withCategoryImages,
     };
   }).filter(Boolean);
 }

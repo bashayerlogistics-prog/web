@@ -389,6 +389,47 @@ export default function AdminCars() {
     if (cars?.length) setLiveCarCatalog(cars);
   }, [cars]);
 
+  // One-shot: push All categories images onto every matching product (by car name).
+  useEffect(() => {
+    if (loading || !cars?.length || !isCategories) return undefined;
+    const SYNC_KEY = 'bashayer-sync-cat-images-v2';
+    try {
+      if (localStorage.getItem(SYNC_KEY) === '1') return undefined;
+    } catch {
+      // continue
+    }
+    let cancelled = false;
+    setSyncingImages(true);
+    (async () => {
+      try {
+        const result = await syncAllCategoryImagesToProducts();
+        if (cancelled) return;
+        try {
+          localStorage.setItem(SYNC_KEY, '1');
+        } catch {
+          // ignore
+        }
+        await publishSite('soft');
+        await refresh({ bustCache: true });
+        if (result?.products > 0) {
+          toast.success(
+            t('admin.cars.imagesSynced', {
+              defaultValue: `Updated ${result.products} products from category images`,
+              count: result.products,
+            }),
+          );
+        }
+      } catch (err) {
+        console.warn('Category→product image sync skipped:', err?.code || err?.message || err);
+      } finally {
+        if (!cancelled) setSyncingImages(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, cars, isCategories, publishSite, refresh, toast, t]);
+
   const selectedCar = activeKey ? cars.find((c) => c.id === activeKey) : null;
 
   const getDraft = (car) => (car ? drafts[car.id] || car : null);
@@ -528,7 +569,17 @@ export default function AdminCars() {
   const handleSyncImages = async () => {
     setSyncingImages(true);
     try {
+      try {
+        localStorage.removeItem('bashayer-sync-cat-images-v2');
+      } catch {
+        // ignore
+      }
       const result = await syncAllCategoryImagesToProducts();
+      try {
+        localStorage.setItem('bashayer-sync-cat-images-v2', '1');
+      } catch {
+        // ignore
+      }
       await publishSite('soft');
       await refresh({ bustCache: true });
       toast.success(
