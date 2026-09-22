@@ -691,11 +691,11 @@ export function SiteContentProvider({ children }) {
 
       if (!cacheLooksFresh) {
         hasFreshCacheRef.current = false;
-        const refreshPromise = refresh();
+        // Fleet-first when dirty — SuperAdmin image edits must not wait on gallery/FAQ.
+        const refreshPromise = refresh({ silent: true, phase: 'fleet' });
         try {
           const serverRev = await runWithServerReads(() => getContentRevisionOnce());
           if (!cancelled && serverRev) {
-            // refresh() will write synced rev when done; seed early for listeners
             syncedRevRef.current = serverRev;
           }
         } catch {
@@ -709,16 +709,15 @@ export function SiteContentProvider({ children }) {
         const serverRev = await runWithServerReads(() => getContentRevisionOnce());
         if (cancelled) return;
 
-        // Cannot read revision → always refresh so SuperAdmin images are not stuck.
         if (!serverRev) {
           hasFreshCacheRef.current = false;
-          await refresh();
+          await refresh({ silent: true, phase: 'fleet' });
           return;
         }
 
         if (serverRev !== localRev) {
           hasFreshCacheRef.current = false;
-          await refresh();
+          await refresh({ silent: true, phase: 'fleet' });
           return;
         }
 
@@ -728,7 +727,7 @@ export function SiteContentProvider({ children }) {
         console.warn('Content revision verify failed:', err?.code || err?.message || err);
         if (!cancelled) {
           hasFreshCacheRef.current = false;
-          await refresh();
+          await refresh({ silent: true, phase: 'fleet' });
         }
       }
     };

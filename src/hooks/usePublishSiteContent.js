@@ -12,8 +12,8 @@ import {
 
 /**
  * Publish site content after SuperAdmin edits.
- * Soft (default): cheap — mark dirty + revision bump only. Open public tabs
- * refresh via contentRevision listener (no full CMS reload on every save).
+ * Soft (default): drop CMS snapshot + revision bump + fast fleet refresh
+ * so public tabs never keep old category/product images.
  * Full: wipe caches + await site refresh (Settings → Clear cache).
  */
 export function usePublishSiteContent() {
@@ -30,8 +30,12 @@ export function usePublishSiteContent() {
       } catch (err) {
         console.warn('Content revision bump failed:', err?.code || err?.message || err);
       }
-      // Non-blocking fleet paint only — never await full gallery/FAQ/CMS reload.
-      void refresh({ silent: true, phase: 'fleet' });
+      // Await fleet refresh so this tab + subsequent paints use new images.
+      try {
+        await refresh({ silent: true, phase: 'fleet' });
+      } catch (err) {
+        console.warn('Fleet refresh after publish failed:', err?.code || err?.message || err);
+      }
       return;
     }
 

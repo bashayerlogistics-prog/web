@@ -118,23 +118,23 @@ body {
   gap: 1.25rem;
 }
 
-/* Viewport-deferred home sections — reserve space without downloading JS yet */
+/* Viewport-deferred home sections — smaller reserve so mobile scrolls feel filled sooner */
 .home-defer-slot {
   content-visibility: auto;
-  contain-intrinsic-size: 1px 520px;
+  contain-intrinsic-size: 1px 360px;
 }
 
 .home-defer-slot__placeholder {
-  min-height: clamp(12rem, 28vw, 22rem);
+  min-height: clamp(8rem, 18vw, 14rem);
 }
 
 @media (max-width: 767px) {
   .home-defer-slot {
-    contain-intrinsic-size: 1px 420px;
+    contain-intrinsic-size: 1px 280px;
   }
 
   .home-defer-slot__placeholder {
-    min-height: 14rem;
+    min-height: 9rem;
   }
 }
 
@@ -5494,18 +5494,18 @@ html.dark[data-brand-surface="admin"] .shimmer-text {
 }
 
 .section-padding {
-  padding-block: 3rem;
+  padding-block: 2.25rem;
 }
 
 @media (min-width: 640px) {
   .section-padding {
-    padding-block: 4rem;
+    padding-block: 3.25rem;
   }
 }
 
 @media (min-width: 1024px) {
   .section-padding {
-    padding-block: 5rem;
+    padding-block: 4.5rem;
   }
 }
 

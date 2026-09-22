@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 export default function ScrollReveal() {
   useEffect(() => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isMobile = window.matchMedia('(max-width: 767px)').matches;
 
     const revealAll = (nodes) => {
       nodes.forEach((el) => el.classList.add('aos-inview'));
@@ -17,9 +18,14 @@ export default function ScrollReveal() {
     let targets = collect();
     if (!targets.length) return undefined;
 
-    if (prefersReduced) {
+    // Mobile / reduced motion: show immediately — no wait for scroll intersection.
+    if (prefersReduced || isMobile) {
       revealAll(targets);
-      return undefined;
+      const mo = new MutationObserver(() => {
+        revealAll(collect().filter((el) => !el.classList.contains('aos-inview')));
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+      return () => mo.disconnect();
     }
 
     const io = new IntersectionObserver(
@@ -27,14 +33,15 @@ export default function ScrollReveal() {
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;
           const el = entry.target;
-          const delay = Number(el.getAttribute('data-aos-delay') || 0);
+          const delay = Math.min(Number(el.getAttribute('data-aos-delay') || 0), 80);
           const show = () => el.classList.add('aos-inview');
           if (delay > 0) window.setTimeout(show, delay);
           else show();
           io.unobserve(el);
         });
       },
-      { threshold: 0.06, rootMargin: '0px 0px -6% 0px' },
+      // Reveal early — before the block is fully on screen (feels faster on laptop).
+      { threshold: 0.01, rootMargin: '120px 0px 15% 0px' },
     );
 
     targets.forEach((el) => io.observe(el));

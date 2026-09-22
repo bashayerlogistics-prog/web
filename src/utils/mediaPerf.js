@@ -59,20 +59,42 @@ export function lightenMediaUrl(url) {
 }
 
 /**
+ * Bust browser HTTP cache after SuperAdmin deploys / publishes.
+ * Safe for ImgBB + Firebase Storage + local paths.
+ */
+export function withMediaCacheBust(url, version) {
+  if (!url || typeof url !== 'string') return url;
+  const v = String(version || '').trim();
+  if (!v) return url;
+  try {
+    if (url.startsWith('/')) {
+      const [path, qs] = url.split('?');
+      const params = new URLSearchParams(qs || '');
+      params.set('cb', v);
+      return `${path}?${params.toString()}`;
+    }
+    const u = new URL(url);
+    u.searchParams.set('cb', v);
+    return u.toString();
+  } catch {
+    if (/[?&]cb=/.test(url)) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}cb=${encodeURIComponent(v)}`;
+  }
+}
+
+/**
  * Resize-friendly URL for cards / lightbox (CDN hosts only).
  * Local `/images/...` paths are returned as-is (already webp in repo).
  */
-export function optimizedImageUrl(url, width = 640, quality = 72) {
+export function optimizedImageUrl(url, width = 640, quality = 72, cacheBust) {
   if (!url || typeof url !== 'string') return url;
   const light = lightenMediaUrl(url);
-  if (UNSPLASH_HOST.test(light)) return withUnsplashParams(light, { w: width, q: quality });
-  if (PEXELS_IMG.test(light)) return withPexelsParams(light, { w: width });
-  // ImgBB has no resize API — keep the raw URL (query params can break some links).
-  if (IMGBB_HOST.test(light)) return light;
-  if (FIREBASE_STORAGE.test(light)) {
-    return withGenericWidth(light, width);
-  }
-  return light;
+  let out = light;
+  if (UNSPLASH_HOST.test(light)) out = withUnsplashParams(light, { w: width, q: quality });
+  else if (PEXELS_IMG.test(light)) out = withPexelsParams(light, { w: width });
+  else if (IMGBB_HOST.test(light)) out = light;
+  else if (FIREBASE_STORAGE.test(light)) out = withGenericWidth(light, width);
+  return cacheBust ? withMediaCacheBust(out, cacheBust) : out;
 }
 
 /** Prefer a compact poster/image over a video for list cards. */

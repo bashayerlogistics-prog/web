@@ -11,6 +11,7 @@ import {
 } from '../../data/staticData';
 import { useSiteContent } from '../../context/SiteContentContext';
 import { optimizedImageUrl } from '../../utils/mediaPerf';
+import { APP_CACHE_BUILD } from '../../utils/siteContentRefresh';
 import VehicleImage from '../ui/VehicleImage';
 
 const CARD_IMAGE_WIDTH = 640;
@@ -21,6 +22,7 @@ function CategoryCard({ car, lang, t }) {
     : car.nameEn || getCarDisplayName(car.id, 'en');
   const image = car.imageUrl || getCarImage(car.id);
   const focus = getCategoryCircleFocus(car.id, image);
+  const photoUrl = optimizedImageUrl(image, CARD_IMAGE_WIDTH, 70, APP_CACHE_BUILD);
 
   return (
     <Link
@@ -30,7 +32,7 @@ function CategoryCard({ car, lang, t }) {
         '--car-focus-x': String(focus.x),
         '--car-focus-y': String(focus.y),
         '--car-zoom': String(focus.zoom),
-        '--car-photo': `url("${optimizedImageUrl(image, CARD_IMAGE_WIDTH, 70)}")`,
+        '--car-photo': `url("${photoUrl}")`,
       }}
     >
       <div className="car-category-card__visual">
@@ -40,6 +42,8 @@ function CategoryCard({ car, lang, t }) {
           className="car-category-card__image"
           imgClassName="car-category-card__photo"
           width={CARD_IMAGE_WIDTH}
+          priority
+          cacheKey={String(car.updatedAt?.seconds || car.updatedAt || APP_CACHE_BUILD)}
         />
         <span className="car-category-card__shade" aria-hidden="true" />
         <span className="car-category-card__passengers">

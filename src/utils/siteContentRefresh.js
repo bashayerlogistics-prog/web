@@ -35,14 +35,15 @@ import {
 import { clearAdminDataCache } from './adminDataCache';
 
 /** Bump on every Hostinger deploy so visitors drop stale CMS snapshots once. */
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v41';
-export const APP_CACHE_BUILD = '20260922d';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v42';
+export const APP_CACHE_BUILD = '20260922e';
 const APP_CACHE_BUILD_KEY = 'bashayer-app-build';
 /** Set when SuperAdmin publishes — next public load must revalidate vs contentRevision. */
 export const SITE_CONTENT_DIRTY_KEY = 'bashayer-site-content-dirty';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
+  'bashayer-site-content-v41',
   'bashayer-site-content-v40',
   'bashayer-site-content-v39',
   'bashayer-site-content-v38',
@@ -311,10 +312,16 @@ export function clearSiteContentCache() {
 }
 
 /**
- * Soft invalidate — keep last snapshot for paint, but force revalidation so
- * SuperAdmin image/CMS changes never stick as “fresh” old cache.
+ * Soft invalidate — drop cached CMS snapshot so SuperAdmin image/CMS edits
+ * cannot paint as “fresh” old car/product images on the next load.
  */
 export function softInvalidateSiteContentCache() {
   markSiteContentDirty();
+  try {
+    localStorage.removeItem(SITE_CONTENT_CACHE_KEY);
+    localStorage.removeItem(CONTENT_REVISION_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
   broadcastSiteContentInvalidate('soft');
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { optimizedImageUrl } from '../../utils/mediaPerf';
+import { APP_CACHE_BUILD } from '../../utils/siteContentRefresh';
 
 const FALLBACK_SRC =
   'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=480&q=70&auto=format&fit=crop';
@@ -15,8 +16,10 @@ export default function VehicleImage({
   hoverZoom = false,
   width = 480,
   priority = false,
+  cacheKey = '',
 }) {
-  const resolved = optimizedImageUrl(src, width, 70) || FALLBACK_SRC;
+  const bust = cacheKey || APP_CACHE_BUILD;
+  const resolved = optimizedImageUrl(src, width, 70, bust) || FALLBACK_SRC;
   const [imgSrc, setImgSrc] = useState(resolved);
 
   useEffect(() => {

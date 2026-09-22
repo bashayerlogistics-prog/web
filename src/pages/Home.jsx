@@ -3,11 +3,13 @@ import Hero from '../components/home/Hero';
 import BookingForm from '../components/home/BookingForm';
 import { useSiteContent } from '../context/SiteContentContext';
 
+// Near-fold sections — load immediately (no scroll wait).
 const CarCategoriesSection = lazy(() => import('../components/home/CarCategoriesSection'));
+const FleetSection = lazy(() => import('../components/home/FleetSection'));
+
 const TravelReservationsSection = lazy(() => import('../components/home/TravelReservationsSection'));
 const InstantPriceSection = lazy(() => import('../components/home/InstantPriceSection'));
 const ReligiousToursSection = lazy(() => import('../components/home/ReligiousToursSection'));
-const FleetSection = lazy(() => import('../components/home/FleetSection'));
 const ServicesCatalogSection = lazy(() => import('../components/home/ServicesCatalogSection'));
 const FAQSection = lazy(() => import('../components/home/FAQSection'));
 const StatsSection = lazy(() => import('../components/home/StatsSection'));
@@ -16,10 +18,10 @@ const BlogSection = lazy(() => import('../components/home/BlogSection'));
 
 function SectionFallback() {
   return (
-    <div className="section-skeleton py-12 sm:py-16" aria-hidden>
+    <div className="section-skeleton py-8 sm:py-12" aria-hidden>
       <div className="section-container">
         <div className="section-skeleton__grid">
-          <div className="section-skeleton__card h-40 rounded-2xl bg-gray-100/80 animate-pulse" />
+          <div className="section-skeleton__card h-28 sm:h-40 rounded-2xl bg-gray-100/80 animate-pulse" />
           <div className="section-skeleton__card section-skeleton__card--hide-mobile h-40 rounded-2xl bg-gray-100/80 animate-pulse" />
         </div>
       </div>
@@ -27,8 +29,17 @@ function SectionFallback() {
   );
 }
 
-/** Load section JS/CSS only when near the viewport — keeps first paint to Hero + Booking. */
-function LazySection({ when = true, children, rootMargin = '480px 0px' }) {
+/** Immediate Suspense — no IntersectionObserver delay (categories / fleet). */
+function EagerSection({ when = true, children }) {
+  if (!when) return null;
+  return <Suspense fallback={<SectionFallback />}>{children}</Suspense>;
+}
+
+/**
+ * Defer below-fold sections until near viewport.
+ * Large rootMargin so chunks start loading well before the user reaches them.
+ */
+function LazySection({ when = true, children, rootMargin = '900px 0px' }) {
   const slotRef = useRef(null);
   const [visible, setVisible] = useState(false);
 
@@ -36,6 +47,10 @@ function LazySection({ when = true, children, rootMargin = '480px 0px' }) {
     if (!when || visible) return undefined;
     const el = slotRef.current;
     if (!el) return undefined;
+
+    // Mobile: paint sooner — less “blank then pop” while scrolling.
+    const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+    const margin = isMobile ? '1100px 0px' : rootMargin;
 
     if (typeof IntersectionObserver === 'undefined') {
       setVisible(true);
@@ -48,7 +63,7 @@ function LazySection({ when = true, children, rootMargin = '480px 0px' }) {
         setVisible(true);
         io.disconnect();
       },
-      { rootMargin, threshold: 0.01 },
+      { rootMargin: margin, threshold: 0.01 },
     );
 
     io.observe(el);
@@ -68,11 +83,29 @@ function LazySection({ when = true, children, rootMargin = '480px 0px' }) {
   );
 }
 
+function usePrefetchBelowFold() {
+  useEffect(() => {
+    const run = () => {
+      void import('../components/home/TravelReservationsSection');
+      void import('../components/home/InstantPriceSection');
+      void import('../components/home/ServicesCatalogSection');
+      void import('../components/home/FAQSection');
+    };
+    const idle = window.requestIdleCallback || ((cb) => window.setTimeout(cb, 600));
+    const id = idle(run, { timeout: 1500 });
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(id);
+      else window.clearTimeout(id);
+    };
+  }, []);
+}
+
 export default function Home() {
   const { isSectionActive } = useSiteContent();
   const showInstant = isSectionActive('instantPrice');
   const showBooking = isSectionActive('booking');
   const heroActive = isSectionActive('hero');
+  usePrefetchBelowFold();
 
   return (
     <>
@@ -82,16 +115,19 @@ export default function Home() {
           <BookingForm overlapHero={heroActive} />
         </div>
       )}
-      <LazySection when={isSectionActive('travelReservations')} rootMargin="720px 0px">
+
+      {/* Categories + Fleet: eager — SuperAdmin images must appear without scroll delay */}
+      <EagerSection when={isSectionActive('fleet')}>
+        <CarCategoriesSection />
+      </EagerSection>
+      <EagerSection when={isSectionActive('fleet')}>
+        <FleetSection />
+      </EagerSection>
+
+      <LazySection when={isSectionActive('travelReservations')}>
         <TravelReservationsSection />
       </LazySection>
-      <LazySection when={isSectionActive('fleet')} rootMargin="640px 0px">
-        <CarCategoriesSection />
-      </LazySection>
-      <LazySection when={isSectionActive('fleet')} rootMargin="560px 0px">
-        <FleetSection />
-      </LazySection>
-      <LazySection when={showInstant} rootMargin="400px 0px">
+      <LazySection when={showInstant}>
         <InstantPriceSection />
       </LazySection>
       <LazySection when={isSectionActive('religiousTours')}>
