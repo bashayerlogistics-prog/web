@@ -11,9 +11,10 @@ import {
 } from '../utils/siteContentRefresh';
 
 /**
- * Publish site content after SuperAdmin edits — all sections / pages.
- * Soft: mark dirty + BroadcastChannel + revision bump (open public tabs refresh).
- * Full: wipe CMS/admin caches then revision bump (Settings → Clear cache).
+ * Publish site content after SuperAdmin edits.
+ * Soft (default): cheap — mark dirty + revision bump only. Open public tabs
+ * refresh via contentRevision listener (no full CMS reload on every save).
+ * Full: wipe caches + await site refresh (Settings → Clear cache).
  */
 export function usePublishSiteContent() {
   const { refresh } = useSiteContent();
@@ -21,14 +22,22 @@ export function usePublishSiteContent() {
   return useCallback(async (mode = 'soft') => {
     invalidateProductsCache();
     invalidatePaymentSettingsCache();
-    clearAdminDataCache();
 
     if (mode === 'soft') {
       softInvalidateSiteContentCache();
-    } else {
-      clearAllAppCaches();
-      clearSiteContentCache();
+      try {
+        await bumpContentRevision();
+      } catch (err) {
+        console.warn('Content revision bump failed:', err?.code || err?.message || err);
+      }
+      // Non-blocking fleet paint only — never await full gallery/FAQ/CMS reload.
+      void refresh({ silent: true, phase: 'fleet' });
+      return;
     }
+
+    clearAdminDataCache();
+    clearAllAppCaches();
+    clearSiteContentCache();
 
     try {
       await bumpContentRevision();
@@ -36,8 +45,10 @@ export function usePublishSiteContent() {
       console.warn('Content revision bump failed:', err?.code || err?.message || err);
     }
 
-    if (mode !== 'soft') {
-      await refresh();
+    try {
+      await refresh({ silent: false, phase: 'full' });
+    } catch (err) {
+      console.warn('Site content refresh after publish failed:', err?.code || err?.message || err);
     }
   }, [refresh]);
 }

@@ -186,6 +186,7 @@ export function buildFleetRoutesFromProducts(activeProducts, extraRoutes = []) {
       id: vehicleId,
       name: { ar: p.nameAr, en: p.nameEn },
       image: p.imageUrl,
+      updatedAt: p.updatedAt || null,
       passengers: p.passengers || 4,
       badge: { ar: p.badgeAr || '', en: p.badgeEn || '' },
       brandTag: { ar: 'بشاير العطاء', en: 'Bashayer Logistics' },
@@ -663,7 +664,7 @@ export async function bumpContentRevision() {
     revisionBumpWaiters.push({ resolve, reject });
     if (revisionBumpTimer != null) clearTimeout(revisionBumpTimer);
     // Short coalesce so SuperAdmin saves still batch, but UAE/SA/laptop sync fast.
-    const delay = import.meta.env.DEV ? 80 : 250;
+    const delay = import.meta.env.DEV ? 40 : 80;
     revisionBumpTimer = setTimeout(async () => {
       revisionBumpTimer = null;
       const waiters = revisionBumpWaiters.splice(0);

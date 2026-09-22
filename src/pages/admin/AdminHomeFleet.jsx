@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
@@ -21,7 +21,6 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import {
-  getProductsByTripType,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -34,6 +33,7 @@ import {
   getBookingLocationsSettings,
   updateBookingLocationsSettings,
   upsertCar,
+  getAllProducts,
 } from '../../firebase/admin';
 import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
 import { useAdminDataLoader } from '../../hooks/useAdminDataLoader';
@@ -204,17 +204,16 @@ export default function AdminHomeFleet({
 
   const { data: tripBundles, loading, refresh } = useAdminDataLoader(
     async () => {
-      const [oneWay, roundTrip, hourly, showcase, sections, cars, locations] = await Promise.all([
-        getProductsByTripType('one_way'),
-        getProductsByTripType('round_trip'),
-        getProductsByTripType('hourly'),
+      // One packages query + parallel settings — faster than 3 tripType scans.
+      const [products, showcase, sections, cars, locations] = await Promise.all([
+        getAllProducts(600),
         getAdminHomeFleetShowcase(),
         getAdminHomeSections(),
         getAllCars(),
         getBookingLocationsSettings(),
       ]);
       return {
-        products: [...(oneWay || []), ...(roundTrip || []), ...(hourly || [])],
+        products: products || [],
         showcase: normalizeFleetShowcase(showcase),
         sectionActive: sections?.fleet?.active !== false,
         cars: cars || [],
@@ -222,7 +221,7 @@ export default function AdminHomeFleet({
       };
     },
     [],
-    { cacheKey: 'admin:home-fleet' },
+    { cacheKey: 'admin:home-fleet-v2', cacheTtl: 15 * 60_000 },
   );
 
   const [carCatalog, setCarCatalog] = useState(() => mergeCarCatalog([]));
@@ -442,6 +441,60 @@ export default function AdminHomeFleet({
       toast.success(current.active === false ? t('admin.homeFleet.serviceOn') : t('admin.homeFleet.serviceOff'));
     } catch {
       toast.error(t('common.error'));
+    } finally {
+      setSavingKey('');
+    }
+  };
+
+  const saveSlotImage = async (serviceId, slotIndex, payload) => {
+    const { car, routeId, imageUrl } = payload;
+    const products = byService[serviceId] || [];
+    const existing = productOnRoute(products, routeId, car);
+    const safeImage = String(imageUrl || '').trim();
+    if (!existing?.id || !safeImage) return;
+    if (String(existing.imageUrl || '').trim() === safeImage) return;
+
+    const key = `${serviceId}:${slotIndex}`;
+    setSavingKey(key);
+    try {
+      await updateProduct(existing.id, { imageUrl: safeImage });
+      // Keep category ("Choose Your Car") in sync for the same car name.
+      const catalogCar = carCatalog.find((c) => c.id === car);
+      if (catalogCar) {
+        try {
+          await upsertCar(car, {
+            nameEn: catalogCar.nameEn,
+            nameAr: catalogCar.nameAr,
+            modelEn: catalogCar.modelEn || catalogCar.nameEn,
+            modelAr: catalogCar.modelAr || catalogCar.nameAr,
+            imageUrl: safeImage,
+            passengers: Number(catalogCar.passengers) || 4,
+            vip: Boolean(catalogCar.vip),
+            sortOrder: Number(catalogCar.sortOrder) || 0,
+            active: catalogCar.active !== false,
+            forms: catalogCar.forms,
+          });
+          setCarCatalog((list) => list.map((c) => (
+            c.id === car ? { ...c, imageUrl: safeImage, updatedAt: Date.now() } : c
+          )));
+        } catch (err) {
+          console.warn('Category image mirror failed:', err?.code || err?.message || err);
+        }
+      }
+      setLocalProducts((list) => {
+        const base = Array.isArray(list) ? list : (tripBundles?.products || []);
+        return base.map((p) => (
+          p.id === existing.id
+            ? { ...p, imageUrl: safeImage, updatedAt: Date.now() }
+            : p
+        ));
+      });
+      await publishSite('soft');
+      await refresh({ bustCache: true });
+      toast.success(t('admin.fleet.updated'));
+    } catch (err) {
+      console.error('Fleet image save failed', err);
+      toast.error(t('admin.fleet.saveFailed'));
     } finally {
       setSavingKey('');
     }
@@ -730,6 +783,7 @@ export default function AdminHomeFleet({
       onChangeRoute={(routeId) => changeRoute(serviceId, routeId)}
       onToggleService={() => toggleService(serviceId)}
       onSaveSlot={(slotIndex, payload) => saveSlot(serviceId, slotIndex, payload)}
+      onSaveSlotImage={(slotIndex, payload) => saveSlotImage(serviceId, slotIndex, payload)}
       onToggleProduct={toggleProduct}
       onDeleteProduct={removeProduct}
       onOpenAdd={(routeId) => openAdd(serviceId, routeId)}
@@ -958,6 +1012,7 @@ function ServiceEditor({
   onChangeRoute,
   onToggleService,
   onSaveSlot,
+  onSaveSlotImage,
   onToggleProduct,
   onDeleteProduct,
   onOpenAdd,
@@ -1096,6 +1151,7 @@ function ServiceEditor({
                   car={car}
                   saving={savingKey === `${serviceId}:${slotIndex}` || savingKey === productOnRoute(products, routeId, car)?.id}
                   onSave={(payload) => onSaveSlot(slotIndex, payload)}
+                  onImageSave={(payload) => onSaveSlotImage?.(slotIndex, payload)}
                   onToggle={onToggleProduct}
                   onDelete={onDeleteProduct}
                 />
@@ -1289,7 +1345,7 @@ function ServiceEditor({
   );
 }
 
-function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSave, onToggle, onDelete }) {
+function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSave, onImageSave, onToggle, onDelete }) {
   const [carId, setCarId] = useState(car);
   const currentCar = carId || car;
   const live = productOnRoute(products, routeId, currentCar);
@@ -1300,6 +1356,7 @@ function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSav
   const [nameEn, setNameEn] = useState(live?.nameEn || getCarDisplayName(currentCar, 'en'));
   const [nameAr, setNameAr] = useState(live?.nameAr || getCarDisplayName(currentCar, 'ar'));
   const [imageUrl, setImageUrl] = useState(live?.imageUrl || resolveCarThumb(currentCar, ''));
+  const imageSaveTimerRef = useRef(null);
 
   useEffect(() => {
     setCarId(car);
@@ -1313,6 +1370,27 @@ function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSav
     setNameAr(live?.nameAr || getCarDisplayName(currentCar, 'ar'));
     setImageUrl(live?.imageUrl || resolveCarThumb(currentCar, ''));
   }, [live?.id, live?.price, live?.pickupPrice, live?.dropoffPrice, live?.nameEn, live?.nameAr, live?.imageUrl, currentCar, routeId]);
+
+  // Upload / paste image → persist + publish immediately (do not wait for Update price).
+  useEffect(() => {
+    if (!onImageSave || !live?.id) return undefined;
+    const next = String(imageUrl || '').trim();
+    const prev = String(live.imageUrl || '').trim();
+    if (!next || next === prev) return undefined;
+
+    if (imageSaveTimerRef.current) window.clearTimeout(imageSaveTimerRef.current);
+    imageSaveTimerRef.current = window.setTimeout(() => {
+      onImageSave({
+        car: currentCar,
+        routeId,
+        imageUrl: next,
+      });
+    }, 350);
+
+    return () => {
+      if (imageSaveTimerRef.current) window.clearTimeout(imageSaveTimerRef.current);
+    };
+  }, [imageUrl, live?.id, live?.imageUrl, currentCar, routeId, onImageSave]);
 
   const exists = Boolean(live);
   const hours = live?.hours || hoursFromRouteId(routeId);

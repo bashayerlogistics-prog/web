@@ -262,7 +262,7 @@ export async function addBookingTimelineEntry(bookingId, entry) {
 }
 
 /** In-memory cache — fleet tabs share reads within a short TTL */
-const PRODUCTS_CACHE_TTL_MS = 10 * 60_000;
+const PRODUCTS_CACHE_TTL_MS = 15 * 60_000;
 const productsByTripTypeCache = new Map();
 
 function readProductsCache(tripType) {
@@ -1328,8 +1328,11 @@ export async function upsertCar(carId, data) {
 /**
  * Update car catalog + push name/image to every package for that car key.
  * Returns how many packages were updated.
+ * @param {object} [opts]
+ * @param {() => void | Promise<void>} [opts.onCarSaved] — fires right after vehicles/{id}
+ *   write so SuperAdmin can publish category images before the package batch finishes.
  */
-export async function updateCarAndSyncPackages(carId, data, previous = {}) {
+export async function updateCarAndSyncPackages(carId, data, previous = {}, opts = {}) {
   const id = String(carId || '').trim();
   const nameEn = String(data.nameEn || '').trim();
   const nameAr = String(data.nameAr || '').trim();
@@ -1347,6 +1350,12 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}) {
     active: data.active !== false,
     forms: data.forms || { booking: true, instantPrice: true, religiousTours: true },
   });
+
+  try {
+    await opts.onCarSaved?.();
+  } catch (err) {
+    console.warn('onCarSaved after car upsert failed:', err?.code || err?.message || err);
+  }
 
   const products = await getAllProducts();
   const matching = products.filter(
@@ -1381,6 +1390,72 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}) {
   invalidateProductsCache();
   await logActivity('car_synced_packages', { carId: id, count: matching.length });
   return matching.length;
+}
+
+/**
+ * Copy each category/car catalog image onto every matching fleet product
+ * (same vehicleKey / car name). Force overwrite so public cards match
+ * "Choose Your Car" immediately.
+ */
+export async function syncAllCategoryImagesToProducts() {
+  await waitForAdminAuth();
+  const [cars, products] = await Promise.all([getAllCars(50), getAllProducts(600)]);
+  const defaults = getDefaultCarCatalog();
+  const byId = new Map();
+
+  defaults.forEach((car) => {
+    if (car?.id) byId.set(car.id, { ...car });
+  });
+  (cars || []).forEach((car) => {
+    const id = String(car?.id || '').trim();
+    if (!id) return;
+    byId.set(id, { ...(byId.get(id) || {}), ...car, id });
+  });
+
+  const catalog = [...byId.values()].filter((car) => String(car.imageUrl || '').trim());
+  if (!catalog.length) {
+    return { cars: 0, products: 0, skipped: products.length };
+  }
+
+  const imageByCar = new Map(
+    catalog.map((car) => [car.id, String(car.imageUrl || '').trim()]),
+  );
+
+  let updated = 0;
+  const BATCH_SIZE = 400;
+  const pending = [];
+
+  for (const product of products) {
+    const carKey = String(product.vehicleKey || product.carKey || '')
+      .split('-')[0]
+      .trim()
+      .toLowerCase();
+    if (!carKey) continue;
+    const imageUrl = imageByCar.get(carKey);
+    if (!imageUrl) continue;
+    if (String(product.imageUrl || '').trim() === imageUrl) continue;
+    pending.push({ id: product.id, imageUrl, carKey });
+  }
+
+  for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+    const slice = pending.slice(i, i + BATCH_SIZE);
+    const batch = writeBatch(db);
+    slice.forEach((item) => {
+      batch.update(doc(db, 'packages', item.id), {
+        imageUrl: item.imageUrl,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    await batch.commit();
+    updated += slice.length;
+  }
+
+  invalidateProductsCache();
+  await logActivity('category_images_synced_to_products', {
+    cars: catalog.length,
+    products: updated,
+  });
+  return { cars: catalog.length, products: updated, skipped: products.length - updated };
 }
 
 /**

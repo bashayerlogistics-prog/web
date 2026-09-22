@@ -78,7 +78,7 @@ import {
 } from '../firebase/content';
 import { runWithServerReads } from '../firebase/reads';
 
-import { FLEET_ROUTES, ROUND_TRIP_FLEET_ROUTES, SERVICES, BLOG_POSTS, ROUTE_CARDS, FAQ_ITEMS, SOCIAL_LINKS, DEFAULT_GALLERY_ITEMS, setLiveCarCatalog, getDefaultCarCatalog, getLiveCarCatalog, getCarImage } from '../data/staticData';
+import { FLEET_ROUTES, ROUND_TRIP_FLEET_ROUTES, SERVICES, BLOG_POSTS, ROUTE_CARDS, FAQ_ITEMS, SOCIAL_LINKS, DEFAULT_GALLERY_ITEMS, setLiveCarCatalog, getDefaultCarCatalog, getLiveCarCatalog, getCarImage, resolveFleetVehicleImage } from '../data/staticData';
 
 import { HOURLY_FLEET_ROUTES, setExtraHourlyCities } from '../data/hourlyPricing';
 import { DEFAULT_BOOKING_LOCATIONS, syntheticFleetRoutesFromLocations } from '../data/bookingLocations';
@@ -131,9 +131,8 @@ const CACHE_KEY = SITE_CONTENT_CACHE_KEY;
 // a cached one-shot load; enable only for an intentional preview environment.
 const USE_PUBLIC_REALTIME = import.meta.env.VITE_ENABLE_PUBLIC_REALTIME === 'true';
 
-// Short TTL — SuperAdmin image/CMS edits must not linger. contentRevision still
-// forces an immediate refresh when the server is ahead.
-const SITE_CONTENT_CACHE_MS = 2 * 60 * 1000;
+// Longer TTL for speed — contentRevision bump still forces an immediate refresh.
+const SITE_CONTENT_CACHE_MS = 15 * 60 * 1000;
 
 const STATIC_FLEET = [...FLEET_ROUTES, ...ROUND_TRIP_FLEET_ROUTES, ...HOURLY_FLEET_ROUTES];
 
@@ -274,10 +273,12 @@ export function SiteContentProvider({ children }) {
   const refreshInFlightRef = useRef(null);
   const scheduleRefreshTimerRef = useRef(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts = {}) => {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
 
-    setLoading(true);
+    const silent = opts.silent === true;
+    const phase = opts.phase === 'fleet' ? 'fleet' : 'full';
+    if (!silent) setLoading(true);
 
     const run = runWithServerReads(async () => {
     try {
@@ -330,6 +331,18 @@ export function SiteContentProvider({ children }) {
         instantPrice: nextInstantPrice,
         bookingLocations: nextBookingLocations,
       });
+
+      // Soft publish / fleet edits — skip heavy secondary CMS (gallery, FAQ…).
+      if (phase === 'fleet') {
+        const rev = await getContentRevisionOnce();
+        if (rev) {
+          writeStoredContentRevision(rev);
+          syncedRevRef.current = rev;
+        }
+        hasFreshCacheRef.current = true;
+        clearSiteContentDirty();
+        return;
+      }
 
       // Phase 2 — secondary CMS (gallery, FAQ, footer…)
       const [
@@ -413,7 +426,7 @@ export function SiteContentProvider({ children }) {
 
     } finally {
 
-      setLoading(false);
+      if (!silent) setLoading(false);
 
     }
     });
@@ -425,14 +438,14 @@ export function SiteContentProvider({ children }) {
 
   }, [persistCache]);
 
-  const schedulePublicRefresh = useCallback(() => {
+  const schedulePublicRefresh = useCallback((phase = 'full') => {
     hasFreshCacheRef.current = false;
     markSiteContentDirty();
     if (scheduleRefreshTimerRef.current) window.clearTimeout(scheduleRefreshTimerRef.current);
     scheduleRefreshTimerRef.current = window.setTimeout(() => {
       scheduleRefreshTimerRef.current = null;
-      refresh();
-    }, import.meta.env.DEV ? 80 : 200);
+      refresh({ silent: true, phase });
+    }, import.meta.env.DEV ? 40 : 80);
   }, [refresh]);
 
 
@@ -739,10 +752,14 @@ export function SiteContentProvider({ children }) {
 
       const type = event?.data?.type;
 
-      // soft + invalidate both mean SuperAdmin published — refresh once (coalesced)
-      if (type !== 'soft' && type !== 'invalidate') return;
+      // soft → fleet-only (fast). invalidate → full CMS reload.
+      if (type === 'soft') {
+        schedulePublicRefresh('fleet');
+        return;
+      }
+      if (type !== 'invalidate') return;
 
-      schedulePublicRefresh();
+      schedulePublicRefresh('full');
 
     };
 
@@ -761,7 +778,8 @@ export function SiteContentProvider({ children }) {
         if (cancelled || !rev) return;
         // Only skip when this browser already refreshed to this exact revision.
         if (rev === syncedRevRef.current && hasFreshCacheRef.current) return;
-        schedulePublicRefresh();
+        // Publish bumps usually touch fleet/cars — prefer fast path.
+        schedulePublicRefresh('fleet');
       },
       (err) => console.warn('Content revision listener failed:', err?.code || err?.message),
     );
@@ -801,7 +819,13 @@ export function SiteContentProvider({ children }) {
 
         const car = byId[key];
 
-        const resolved = car?.imageUrl || getCarImage(key);
+        // Product image wins; newer category/car catalog wins so category edits
+        // appear immediately (before package sync finishes).
+        const resolved = resolveFleetVehicleImage(
+          key,
+          v.image,
+          car?.imageUrl,
+        );
         if (!resolved) return v;
 
         return { ...v, image: resolved };

@@ -474,6 +474,38 @@ export function getCarImage(carKey) {
   return preferBundledCarImage(key, '');
 }
 
+/** Firestore Timestamp / Date / ms → epoch ms (0 when unknown). */
+export function toMillis(value) {
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value?.toMillis === 'function') {
+    try {
+      return value.toMillis() || 0;
+    } catch {
+      return 0;
+    }
+  }
+  if (typeof value?.seconds === 'number') return value.seconds * 1000;
+  if (value instanceof Date) return value.getTime() || 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Public fleet card image — always match "Choose Your Car" for that car name.
+ * Category/car catalog is source of truth; product image is fallback only.
+ */
+export function resolveFleetVehicleImage(
+  carKey,
+  productImageUrl,
+  carImageUrl,
+) {
+  const key = String(carKey || '').split('-')[0];
+  const productImg = isUsableImageUrl(productImageUrl) ? String(productImageUrl).trim() : '';
+  const carImg = isUsableImageUrl(carImageUrl) ? String(carImageUrl).trim() : '';
+  return preferBundledCarImage(key, carImg || productImg);
+}
+
 /** Resolve product/car thumb with local fallback for admin tables. */
 export function resolveCarThumb(carKey, productImageUrl) {
   const key = String(carKey || '').split('-')[0];

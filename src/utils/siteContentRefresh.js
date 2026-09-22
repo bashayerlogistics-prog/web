@@ -35,14 +35,17 @@ import {
 import { clearAdminDataCache } from './adminDataCache';
 
 /** Bump on every Hostinger deploy so visitors drop stale CMS snapshots once. */
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v37';
-export const APP_CACHE_BUILD = '20260920i';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v40';
+export const APP_CACHE_BUILD = '20260922c';
 const APP_CACHE_BUILD_KEY = 'bashayer-app-build';
 /** Set when SuperAdmin publishes — next public load must revalidate vs contentRevision. */
 export const SITE_CONTENT_DIRTY_KEY = 'bashayer-site-content-dirty';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
+  'bashayer-site-content-v39',
+  'bashayer-site-content-v38',
+  'bashayer-site-content-v37',
   'bashayer-site-content-v33',
   'bashayer-site-content-v32',
   'bashayer-site-content-v31',

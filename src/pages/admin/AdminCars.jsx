@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Download, Eye, EyeOff, Save, Plus } from 'lucide-react';
+import { ArrowLeft, Download, Eye, EyeOff, Save, Plus, Images } from 'lucide-react';
 import {
   getAllCars,
   seedDefaultCars,
   updateCarAndSyncPackages,
   createCarWithPackages,
+  syncAllCategoryImagesToProducts,
 } from '../../firebase/admin';
 import MediaUpload from '../../components/admin/MediaUpload';
 import AddCarModal from '../../components/admin/AddCarModal';
@@ -49,7 +50,7 @@ function useAdminFleetBase() {
 }
 
 /** Index: car cards → separate admin pages */
-function AdminCarsIndex({ cars, seeding, onSeed, onAdd, lang, t, basePath, isCategories, atMax }) {
+function AdminCarsIndex({ cars, seeding, syncing, onSeed, onSyncImages, onAdd, lang, t, basePath, isCategories, atMax }) {
   return (
     <div className="space-y-4 sm:space-y-6">
       <AdminPageHeader
@@ -69,6 +70,19 @@ function AdminCarsIndex({ cars, seeding, onSeed, onAdd, lang, t, basePath, isCat
         >
           <Plus className="w-4 h-4" />
           <span className="hidden sm:inline">{t('admin.cars.addNew')}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onSyncImages}
+          disabled={syncing}
+          className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-emerald-500/30 font-bold text-sm text-emerald-700 hover:bg-emerald-500/5 touch-target disabled:opacity-50"
+        >
+          <Images className="w-4 h-4" />
+          <span className="hidden sm:inline">
+            {syncing
+              ? t('admin.cars.syncingImages', { defaultValue: 'Syncing…' })
+              : t('admin.cars.syncImagesToProducts', { defaultValue: 'Sync images → products' })}
+          </span>
         </button>
         <button
           type="button"
@@ -362,6 +376,7 @@ export default function AdminCars() {
   const [drafts, setDrafts] = useState({});
   const [savingId, setSavingId] = useState(null);
   const [seeding, setSeeding] = useState(false);
+  const [syncingImages, setSyncingImages] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [nameConfirm, setNameConfirm] = useState(null);
@@ -441,6 +456,28 @@ export default function AdminCars() {
           modelEn: original?.modelEn,
           modelAr: original?.modelAr,
         },
+        {
+          // Publish as soon as the car doc is written so category/hero images
+          // appear on the public site without waiting for every package sync.
+          onCarSaved: async () => {
+            setLiveCarCatalog(
+              mergeCarCatalog(
+                (Array.isArray(dbCars) ? dbCars : []).map((c) => (
+                  c.id === targetId
+                    ? {
+                      ...c,
+                      imageUrl: draft.imageUrl,
+                      nameEn: draft.nameEn,
+                      nameAr: draft.nameAr,
+                      updatedAt: Date.now(),
+                    }
+                    : c
+                )),
+              ),
+            );
+            await publishSite('soft');
+          },
+        },
       );
       await publishSite('soft');
       const ok = await refresh({ bustCache: true });
@@ -454,7 +491,7 @@ export default function AdminCars() {
       setLiveCarCatalog(
         mergeCarCatalog(
           (Array.isArray(dbCars) ? dbCars : []).map((c) =>
-            (c.id === targetId ? { ...c, imageUrl: draft.imageUrl, nameEn: draft.nameEn, nameAr: draft.nameAr } : c),
+            (c.id === targetId ? { ...c, imageUrl: draft.imageUrl, nameEn: draft.nameEn, nameAr: draft.nameAr, updatedAt: Date.now() } : c),
           ),
         ),
       );
@@ -485,6 +522,26 @@ export default function AdminCars() {
       toast.error(t('admin.cars.seedFailed'));
     } finally {
       setSeeding(false);
+    }
+  };
+
+  const handleSyncImages = async () => {
+    setSyncingImages(true);
+    try {
+      const result = await syncAllCategoryImagesToProducts();
+      await publishSite('soft');
+      await refresh({ bustCache: true });
+      toast.success(
+        t('admin.cars.imagesSynced', {
+          defaultValue: `Updated ${result.products} products from category images`,
+          count: result.products,
+        }),
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error(t('admin.cars.syncImagesFailed', { defaultValue: 'Image sync failed' }));
+    } finally {
+      setSyncingImages(false);
     }
   };
 
@@ -593,7 +650,9 @@ export default function AdminCars() {
       <AdminCarsIndex
         cars={cars}
         seeding={seeding}
+        syncing={syncingImages}
         onSeed={handleSeed}
+        onSyncImages={handleSyncImages}
         onAdd={() => {
           if (atMaxCars) {
             toast.warning(t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }));
