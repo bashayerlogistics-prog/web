@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Image as ImageIcon, Upload, Eye, X, AlertCircle } from 'lucide-react';
+import { Image as ImageIcon, Upload, Eye, X, AlertCircle, AlertTriangle } from 'lucide-react';
 import {
   uploadMedia,
   isVideoFile,
@@ -17,6 +17,22 @@ function formatFileSize(bytes) {
 
 function isVideoUrl(url) {
   return /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(url || '');
+}
+
+function bilingualText(i18n, key, params = {}) {
+  return {
+    en: i18n.t(key, { ...params, lng: 'en' }),
+    ar: i18n.t(key, { ...params, lng: 'ar' }),
+  };
+}
+
+function BilingualLines({ en, ar, className = '' }) {
+  return (
+    <span className={`block space-y-1 ${className}`}>
+      <span className="block" dir="ltr" lang="en">{en}</span>
+      <span className="block" dir="rtl" lang="ar">{ar}</span>
+    </span>
+  );
 }
 
 export default function MediaUpload({
@@ -36,16 +52,29 @@ export default function MediaUpload({
   videoMode = false,
   sizeHint,
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(videoMode);
   const [fileInfo, setFileInfo] = useState(null);
+  const [sizeAlert, setSizeAlert] = useState(null);
 
   const sourceMaxBytes = SOURCE_IMAGE_MAX_MB * 1024 * 1024;
   const isVideo = isVideoUrl(value);
+
+  const sizeHintText = sizeHint
+    ? { en: sizeHint, ar: sizeHint }
+    : bilingualText(i18n, 'admin.media.maxSize', { max: maxSizeKB, sourceMax: SOURCE_IMAGE_MAX_MB });
+
+  const showSizeAlert = (messageKey, params) => {
+    setSizeAlert({
+      title: bilingualText(i18n, 'admin.media.sizeAlertTitle'),
+      body: bilingualText(i18n, messageKey, params),
+      hint: bilingualText(i18n, 'admin.media.sizeAlertHint'),
+    });
+  };
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -64,12 +93,10 @@ export default function MediaUpload({
     }
 
     if (file.size > sourceMaxBytes) {
-      window.alert(
-        t('admin.media.sourceTooLarge', {
-          max: SOURCE_IMAGE_MAX_MB,
-          size: formatFileSize(file.size),
-        }),
-      );
+      showSizeAlert('admin.media.sourceTooLarge', {
+        max: SOURCE_IMAGE_MAX_MB,
+        size: formatFileSize(file.size),
+      });
       e.target.value = '';
       return;
     }
@@ -84,19 +111,15 @@ export default function MediaUpload({
         const optimized = err.optimizedBytes
           || Number(String(err.message).split(':')[2])
           || 0;
-        window.alert(
-          t('admin.media.stillTooLarge', {
-            max: maxSizeKB,
-            size: formatFileSize(optimized || file.size),
-          }),
-        );
+        showSizeAlert('admin.media.stillTooLarge', {
+          max: maxSizeKB,
+          size: formatFileSize(optimized || file.size),
+        });
       } else if (err?.code === 'SOURCE_TOO_LARGE' || String(err?.message || '').startsWith('SOURCE_TOO_LARGE')) {
-        window.alert(
-          t('admin.media.sourceTooLarge', {
-            max: SOURCE_IMAGE_MAX_MB,
-            size: formatFileSize(file.size),
-          }),
-        );
+        showSizeAlert('admin.media.sourceTooLarge', {
+          max: SOURCE_IMAGE_MAX_MB,
+          size: formatFileSize(file.size),
+        });
       } else {
         const message = err.message || t('common.error');
         window.alert(t('admin.media.uploadFailed', { error: message }));
@@ -196,9 +219,11 @@ export default function MediaUpload({
       <p className="text-xs text-amber-700 dark:text-gold-light flex items-start gap-1.5 leading-relaxed">
         <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
         <span>
-          {videoMode
-            ? t('admin.media.videoUrlOnly')
-            : (sizeHint || t('admin.media.maxSize', { max: maxSizeKB, sourceMax: SOURCE_IMAGE_MAX_MB }))}
+          {videoMode ? (
+            t('admin.media.videoUrlOnly')
+          ) : (
+            <BilingualLines en={sizeHintText.en} ar={sizeHintText.ar} />
+          )}
           {fileInfo && ` · ${fileInfo.name} (${formatFileSize(fileInfo.size)})`}
         </span>
       </p>
@@ -237,6 +262,47 @@ export default function MediaUpload({
               <img src={value} alt="" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" />
             )}
             <p className="mt-3 text-white/70 text-xs truncate max-w-full">{value}</p>
+          </div>
+        </div>
+      )}
+
+      {sizeAlert && (
+        <div
+          className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSizeAlert(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="media-size-alert-title"
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-white dark:bg-[#180b2a] border border-amber-200 dark:border-gold/30 shadow-2xl p-5 sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-gold/15 dark:text-gold">
+                <AlertTriangle className="w-5 h-5" />
+              </span>
+              <div className="min-w-0 flex-1 space-y-3">
+                <h3 id="media-size-alert-title" className="text-base font-extrabold text-brand dark:text-gold leading-snug">
+                  <BilingualLines en={sizeAlert.title.en} ar={sizeAlert.title.ar} />
+                </h3>
+                <div className="rounded-xl bg-amber-50 dark:bg-gold/10 border border-amber-100 dark:border-gold/20 px-3 py-2.5 text-sm text-amber-900 dark:text-gold-light leading-relaxed">
+                  <BilingualLines en={sizeAlert.body.en} ar={sizeAlert.body.ar} />
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                  <BilingualLines en={sizeAlert.hint.en} ar={sizeAlert.hint.ar} />
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSizeAlert(null)}
+              className="mt-5 w-full rounded-xl bg-brand text-white py-2.5 text-sm font-bold hover:opacity-95"
+            >
+              <span dir="ltr">OK</span>
+              <span className="mx-2 opacity-50">·</span>
+              <span dir="rtl">حسناً</span>
+            </button>
           </div>
         </div>
       )}

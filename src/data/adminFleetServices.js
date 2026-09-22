@@ -5,7 +5,6 @@ import {
   SHORT_NAMES,
   getCarDisplayName,
   resolveCarThumb,
-  getCarImage,
 } from './staticData';
 import { extraFleetRoutesForService } from './bookingLocations';
 import { AIRPORT_TRANSFER_ROUTES } from './airportPricing';
@@ -478,6 +477,18 @@ function routeMatchesService(route, serviceId) {
   const tagged = vehicles.filter((v) => String(v.fleetServiceId || '').trim());
   if (tagged.some((v) => String(v.fleetServiceId).trim() === serviceId)) return true;
   if (tagged.length && tagged.length === vehicles.length) return false;
+
+  // Match using each vehicle's own tripType/tag — not only the route shell.
+  // Fixes Train / Hourly / Ziyarat / Within City when packages share route ids.
+  if (vehicles.some((vehicle) => service.matchProduct({
+    tripType: vehicle.tripType || route.tripType,
+    routeId: route.id,
+    category: route.category || vehicle.category,
+    fleetServiceId: vehicle.fleetServiceId,
+  }))) {
+    return true;
+  }
+
   return service.matchProduct(routeAsProduct(route));
 }
 
@@ -612,20 +623,13 @@ export function buildHomeFleetSections(fleetRoutes = [], showcase = {}) {
 
     if (!vehicles.length) return null;
 
-    // Stamp live category images (Choose Your Car) onto every card by car name.
-    const withCategoryImages = vehicles.map((vehicle) => {
-      const key = carKeyOf({ vehicleKey: vehicle.id });
-      const image = getCarImage(key) || vehicle.image;
-      return image && image !== vehicle.image ? { ...vehicle, image } : vehicle;
-    });
-
     return {
       id: service.id,
       title: { ar: service.badgeAr, en: service.badgeEn },
       routeId: best.route.id,
       routeTitle: best.route.title,
       tripType: best.route.tripType || service.tripType,
-      vehicles: withCategoryImages,
+      vehicles,
     };
   }).filter(Boolean);
 }

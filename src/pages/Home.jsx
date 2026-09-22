@@ -116,6 +116,11 @@ export default function Home() {
         </div>
       )}
 
+      {/* Plan Your Journey — right after hero/booking (matches homeSections order) */}
+      <EagerSection when={isSectionActive('travelReservations')}>
+        <TravelReservationsSection />
+      </EagerSection>
+
       {/* Categories + Fleet: eager — SuperAdmin images must appear without scroll delay */}
       <EagerSection when={isSectionActive('fleet')}>
         <CarCategoriesSection />
@@ -124,9 +129,6 @@ export default function Home() {
         <FleetSection />
       </EagerSection>
 
-      <LazySection when={isSectionActive('travelReservations')}>
-        <TravelReservationsSection />
-      </LazySection>
       <LazySection when={showInstant}>
         <InstantPriceSection />
       </LazySection>

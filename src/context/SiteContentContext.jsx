@@ -249,6 +249,10 @@ export function SiteContentProvider({ children }) {
   });
 
   const [loading, setLoading] = useState(false);
+  // False until first live packages fetch — avoids STATIC seed / stale cache image flash.
+  const [fleetHydrated, setFleetHydrated] = useState(
+    () => Boolean(initialCache.isFresh && initialSnapshot.fleetRoutes?.length),
+  );
 
   useEffect(() => {
     const hourlyCities = (bookingLocations?.cities || DEFAULT_BOOKING_LOCATIONS.cities)
@@ -311,7 +315,8 @@ export function SiteContentProvider({ children }) {
       const nextHero = buildHeroFromFirestore(heroData);
       const nextInstantPrice = buildInstantPriceFromFirestore(instantPriceData);
 
-      setFleetRoutes(nextFleetRoutes.length ? nextFleetRoutes : cacheRef.current.fleetRoutes);
+      setFleetRoutes(nextFleetRoutes);
+      setFleetHydrated(true);
       setLiveCarCatalog(nextCars);
       setCarCatalog(getLiveCarCatalog());
       setServices(nextServices.length ? nextServices : cacheRef.current.services);
@@ -322,7 +327,7 @@ export function SiteContentProvider({ children }) {
       setBookingLocations(nextBookingLocations);
 
       persistCache({
-        fleetRoutes: nextFleetRoutes.length ? nextFleetRoutes : cacheRef.current.fleetRoutes,
+        fleetRoutes: nextFleetRoutes,
         carCatalog: nextCars,
         services: nextServices.length ? nextServices : cacheRef.current.services,
         sections: nextSections,
@@ -438,6 +443,14 @@ export function SiteContentProvider({ children }) {
 
   }, [persistCache]);
 
+  // New browsers / dirty cache: pull live fleet immediately (no STATIC image flash wait).
+  useEffect(() => {
+    if (!needsLivePublicContent) return undefined;
+    if (hasFreshCacheRef.current && fleetHydrated) return undefined;
+    void refresh({ silent: true, phase: 'fleet' });
+    return undefined;
+  }, [needsLivePublicContent, refresh, fleetHydrated]);
+
   const schedulePublicRefresh = useCallback((phase = 'full') => {
     hasFreshCacheRef.current = false;
     markSiteContentDirty();
@@ -483,13 +496,15 @@ export function SiteContentProvider({ children }) {
 
           setFleetRoutes(routes);
 
+          setFleetHydrated(true);
+
           persistCache({ fleetRoutes: routes });
 
         },
 
         (err) => console.warn('Products listener failed:', err),
 
-        300,
+        1200,
 
       ),
 
@@ -818,8 +833,7 @@ export function SiteContentProvider({ children }) {
 
         const car = byId[key];
 
-        // Product image wins; newer category/car catalog wins so category edits
-        // appear immediately (before package sync finishes).
+        // Product image wins; category/car catalog only fills empty product slots.
         const resolved = resolveFleetVehicleImage(
           key,
           v.image,
@@ -913,6 +927,8 @@ export function SiteContentProvider({ children }) {
 
     loading,
 
+    fleetHydrated,
+
     refresh,
 
   }), [
@@ -960,6 +976,8 @@ export function SiteContentProvider({ children }) {
     checkSection,
 
     loading,
+
+    fleetHydrated,
 
     refresh,
 
@@ -1050,6 +1068,8 @@ export function useSiteContent() {
       isSectionActive: (id) => isSectionActive(fallback.sections, id),
 
       loading: false,
+
+      fleetHydrated: true,
 
       refresh: () => {},
 

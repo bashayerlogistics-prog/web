@@ -38,8 +38,8 @@ function PackageCard({ item, carId, lang, t, priority = false, categoryImage = '
   const hoursLabel = item.durationHours
     ? ` · ${item.durationHours} ${t('booking.hour', { defaultValue: 'h' })}`
     : '';
-  // Same image as homepage "Choose Your Car" / All categories for this car name.
-  const cardImage = categoryImage || getCarImage(carId || vehicle.id) || vehicle.image;
+  // Fleet product image first; category / catalog only as fallback.
+  const cardImage = vehicle.image || categoryImage || getCarImage(carId || vehicle.id);
 
   const whatsappMsg = buildVehicleWhatsAppMessage({
     lang,

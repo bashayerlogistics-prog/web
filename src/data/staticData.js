@@ -215,8 +215,8 @@ function isFirebaseStorageUrl(url) {
 function isRemoteCmsImageUrl(url) {
   const value = String(url || '').trim();
   if (!/^https?:\/\//i.test(value)) return false;
-  // Known-dead legacy CDN paths — keep bundled art instead.
-  if (value.includes('supabase.co/storage') && value.includes('vehicle-images')) return false;
+  // Dead legacy Supabase vehicle CDN — never show on public (any /storage path).
+  if (/supabase\.co\/storage/i.test(value)) return false;
   return true;
 }
 
@@ -463,7 +463,7 @@ function isUsableImageUrl(url) {
   if (!value) return false;
   // Prefer local + https; skip known-dead remote vehicle CDN paths when local exists.
   if (value.startsWith('/')) return true;
-  if (value.includes('supabase.co/storage') && value.includes('vehicle-images')) return false;
+  if (/supabase\.co\/storage/i.test(value)) return false;
   return /^https?:\/\//i.test(value);
 }
 
@@ -492,8 +492,8 @@ export function toMillis(value) {
 }
 
 /**
- * Public fleet card image — always match "Choose Your Car" for that car name.
- * Category/car catalog is source of truth; product image is fallback only.
+ * Public fleet card image — SuperAdmin product upload wins.
+ * Category / car catalog / bundled art only fill empty product slots.
  */
 export function resolveFleetVehicleImage(
   carKey,
@@ -503,7 +503,7 @@ export function resolveFleetVehicleImage(
   const key = String(carKey || '').split('-')[0];
   const productImg = isUsableImageUrl(productImageUrl) ? String(productImageUrl).trim() : '';
   const carImg = isUsableImageUrl(carImageUrl) ? String(carImageUrl).trim() : '';
-  return preferBundledCarImage(key, carImg || productImg);
+  return preferBundledCarImage(key, productImg || carImg);
 }
 
 /** Resolve product/car thumb with local fallback for admin tables. */

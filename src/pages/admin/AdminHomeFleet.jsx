@@ -34,6 +34,7 @@ import {
   updateBookingLocationsSettings,
   upsertCar,
   getAllProducts,
+  syncCarCatalogImagesToProducts,
 } from '../../firebase/admin';
 import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
 import { useAdminDataLoader } from '../../hooks/useAdminDataLoader';
@@ -206,7 +207,7 @@ export default function AdminHomeFleet({
     async () => {
       // One packages query + parallel settings — faster than 3 tripType scans.
       const [products, showcase, sections, cars, locations] = await Promise.all([
-        getAllProducts(600),
+        getAllProducts(1200),
         getAdminHomeFleetShowcase(),
         getAdminHomeSections(),
         getAllCars(),
@@ -232,6 +233,7 @@ export default function AdminHomeFleet({
   const [sectionOn, setSectionOn] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const appliedTaurusCamryRef = useRef(false);
   const allProducts = localProducts || tripBundles?.products || [];
   const showcase = localShowcase || tripBundles?.showcase || emptyFleetShowcase();
   const cities = localCities;
@@ -249,6 +251,49 @@ export default function AdminHomeFleet({
       setLocalRoutes(built.routes);
     }
   }, [tripBundles?.products, tripBundles?.showcase, tripBundles?.sectionActive, tripBundles?.cars, tripBundles?.locations]);
+
+  // One-shot: push live category images for Taurus + Camry onto every fleet package
+  // (Train / Airport / Between Cities / Hourly / Ziyarat / Within City) so public matches SuperAdmin.
+  useEffect(() => {
+    if (loading || appliedTaurusCamryRef.current) return undefined;
+    const SYNC_KEY = 'fleet-force-taurus-camry-images-v2';
+    try {
+      if (localStorage.getItem(SYNC_KEY) === '1') {
+        appliedTaurusCamryRef.current = true;
+        return undefined;
+      }
+    } catch {
+      // continue
+    }
+    let cancelled = false;
+    appliedTaurusCamryRef.current = true;
+    (async () => {
+      try {
+        const result = await syncCarCatalogImagesToProducts(['taurus', 'camry'], { force: true });
+        if (cancelled) return;
+        try {
+          localStorage.setItem(SYNC_KEY, '1');
+        } catch {
+          // ignore
+        }
+        await publishSite('soft');
+        await refresh({ bustCache: true });
+        if (result?.products > 0) {
+          toast.success(
+            lang === 'ar'
+              ? `تم تحديث صور فورد تورس + تويوتا كامري على ${result.products} باقة — مباشرة على الموقع`
+              : `Taurus + Camry images updated on ${result.products} packages — live on public site`,
+          );
+        }
+      } catch (err) {
+        appliedTaurusCamryRef.current = false;
+        console.warn('Taurus/Camry image push skipped:', err?.code || err?.message || err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, publishSite, refresh, toast, lang]);
 
   const carChoices = useMemo(() => {
     const ids = [...FLEET_CARS];
@@ -448,46 +493,89 @@ export default function AdminHomeFleet({
 
   const saveSlotImage = async (serviceId, slotIndex, payload) => {
     const { car, routeId, imageUrl } = payload;
+    const service = getFleetService(serviceId);
     const products = byService[serviceId] || [];
     const existing = productOnRoute(products, routeId, car);
     const safeImage = String(imageUrl || '').trim();
-    if (!existing?.id || !safeImage) return;
-    if (String(existing.imageUrl || '').trim() === safeImage) return;
+    if (!car || !routeId) return;
+    // Allow clear (empty) only when a Firestore product already exists.
+    if (!safeImage && !existing?.id) return;
+    if (existing?.id && String(existing.imageUrl || '').trim() === safeImage) return;
 
     const key = `${serviceId}:${slotIndex}`;
     setSavingKey(key);
     try {
-      await updateProduct(existing.id, { imageUrl: safeImage });
-      // Keep category ("Choose Your Car") in sync for the same car name.
-      const catalogCar = carCatalog.find((c) => c.id === car);
-      if (catalogCar) {
+      let productId = existing?.id || '';
+      if (productId) {
         try {
-          await upsertCar(car, {
-            nameEn: catalogCar.nameEn,
-            nameAr: catalogCar.nameAr,
-            modelEn: catalogCar.modelEn || catalogCar.nameEn,
-            modelAr: catalogCar.modelAr || catalogCar.nameAr,
-            imageUrl: safeImage,
-            passengers: Number(catalogCar.passengers) || 4,
-            vip: Boolean(catalogCar.vip),
-            sortOrder: Number(catalogCar.sortOrder) || 0,
-            active: catalogCar.active !== false,
-            forms: catalogCar.forms,
-          });
-          setCarCatalog((list) => list.map((c) => (
-            c.id === car ? { ...c, imageUrl: safeImage, updatedAt: Date.now() } : c
-          )));
+          await updateProduct(productId, { imageUrl: safeImage });
         } catch (err) {
-          console.warn('Category image mirror failed:', err?.code || err?.message || err);
+          if (err?.code === 'not-found') {
+            productId = '';
+          } else {
+            throw err;
+          }
         }
       }
+
+      if (!productId) {
+        if (!safeImage) return;
+        const price = Number(existing?.price)
+          || Number(existing?.pickupPrice)
+          || 0;
+        const created = buildNewFleetProduct(service, { car, routeId, price });
+        if (service.layout === 'round_trip') {
+          created.pickupPrice = Number(existing?.pickupPrice) || created.pickupPrice || price;
+          created.dropoffPrice = Number(existing?.dropoffPrice) || created.dropoffPrice || 0;
+          created.price = created.pickupPrice + created.dropoffPrice || price;
+          created.originalPrice = created.price;
+        }
+        const createdId = await createProduct({
+          ...created,
+          nameEn: existing?.nameEn || created.nameEn,
+          nameAr: existing?.nameAr || created.nameAr,
+          imageUrl: safeImage,
+          active: true,
+        });
+        productId = createdId || productId;
+      }
+
+      const limit = HOME_FLEET_SERVICE_COUNTS[serviceId] || 2;
+      const currentCars = [...(showcase[serviceId]?.carIds || [])];
+      while (currentCars.length < limit) currentCars.push('');
+      currentCars[slotIndex] = car;
+      try {
+        await persistShowcase(serviceId, {
+          routeId,
+          carIds: currentCars.filter(Boolean),
+          active: showcase[serviceId]?.active !== false,
+        });
+      } catch (err) {
+        console.warn('Fleet showcase pin failed after image save', err);
+      }
+
       setLocalProducts((list) => {
         const base = Array.isArray(list) ? list : (tripBundles?.products || []);
-        return base.map((p) => (
-          p.id === existing.id
-            ? { ...p, imageUrl: safeImage, updatedAt: Date.now() }
-            : p
-        ));
+        if (existing?.id) {
+          return base.map((p) => (
+            p.id === existing.id
+              ? { ...p, imageUrl: safeImage, updatedAt: Date.now() }
+              : p
+          ));
+        }
+        return [
+          ...base,
+          {
+            ...(existing || {}),
+            id: productId || `temp-${serviceId}-${car}-${routeId}`,
+            routeId,
+            vehicleKey: existing?.vehicleKey || `${car}-${routeId}`,
+            fleetServiceId: serviceId,
+            imageUrl: safeImage,
+            active: true,
+            updatedAt: Date.now(),
+          },
+        ];
       });
       await publishSite('soft');
       await refresh({ bustCache: true });
@@ -1355,8 +1443,13 @@ function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSav
   const [dropoffPrice, setDropoffPrice] = useState(live?.dropoffPrice ?? '');
   const [nameEn, setNameEn] = useState(live?.nameEn || getCarDisplayName(currentCar, 'en'));
   const [nameAr, setNameAr] = useState(live?.nameAr || getCarDisplayName(currentCar, 'ar'));
-  const [imageUrl, setImageUrl] = useState(live?.imageUrl || resolveCarThumb(currentCar, ''));
+  const [imageUrl, setImageUrl] = useState(() => (
+    live ? String(live.imageUrl || '').trim() : resolveCarThumb(currentCar, '')
+  ));
   const imageSaveTimerRef = useRef(null);
+  const syncedImageRef = useRef(
+    live ? String(live.imageUrl || '').trim() : String(resolveCarThumb(currentCar, '') || '').trim(),
+  );
 
   useEffect(() => {
     setCarId(car);
@@ -1368,18 +1461,26 @@ function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSav
     setDropoffPrice(live?.dropoffPrice ?? '');
     setNameEn(live?.nameEn || getCarDisplayName(currentCar, 'en'));
     setNameAr(live?.nameAr || getCarDisplayName(currentCar, 'ar'));
-    setImageUrl(live?.imageUrl || resolveCarThumb(currentCar, ''));
+    const nextImage = live
+      // Respect empty SuperAdmin clears — never re-fill with catalog thumb (that re-saved old art).
+      ? String(live.imageUrl || '').trim()
+      : resolveCarThumb(currentCar, '');
+    syncedImageRef.current = nextImage;
+    setImageUrl(nextImage);
   }, [live?.id, live?.price, live?.pickupPrice, live?.dropoffPrice, live?.nameEn, live?.nameAr, live?.imageUrl, currentCar, routeId]);
 
-  // Upload / paste image → persist + publish immediately (do not wait for Update price).
+  // Upload / paste / remove image → persist + publish immediately (creates package if missing).
   useEffect(() => {
-    if (!onImageSave || !live?.id) return undefined;
+    if (!onImageSave || !currentCar || !routeId) return undefined;
     const next = String(imageUrl || '').trim();
-    const prev = String(live.imageUrl || '').trim();
-    if (!next || next === prev) return undefined;
+    const prev = syncedImageRef.current;
+    if (next === prev) return undefined;
+    // Skip initial empty↔empty; allow clear when previous had a URL.
+    if (!next && !prev) return undefined;
 
     if (imageSaveTimerRef.current) window.clearTimeout(imageSaveTimerRef.current);
     imageSaveTimerRef.current = window.setTimeout(() => {
+      syncedImageRef.current = next;
       onImageSave({
         car: currentCar,
         routeId,
@@ -1390,7 +1491,7 @@ function CarSlot({ service, lang, t, cars, products, routeId, car, saving, onSav
     return () => {
       if (imageSaveTimerRef.current) window.clearTimeout(imageSaveTimerRef.current);
     };
-  }, [imageUrl, live?.id, live?.imageUrl, currentCar, routeId, onImageSave]);
+  }, [imageUrl, currentCar, routeId, onImageSave]);
 
   const exists = Boolean(live);
   const hours = live?.hours || hoursFromRouteId(routeId);

@@ -310,8 +310,8 @@ export function sanitizeFirestoreData(data) {
 }
 
 // Products / Packages
-export async function getAllProducts(maxItems = 300) {
-  const size = Math.max(1, Math.min(500, Number(maxItems) || 300));
+export async function getAllProducts(maxItems = 1200) {
+  const size = Math.max(1, Math.min(1200, Number(maxItems) || 1200));
   try {
     const q = query(collection(db, 'packages'), orderBy('sortOrder', 'asc'), limit(size));
     const snapshot = await getDocs(q);
@@ -953,7 +953,7 @@ export async function replaceDefaultBlogs(items) {
   return created;
 }
 
-const BROKEN_IMAGE_PATTERNS = ['picsum.photos', 'placeholder'];
+const BROKEN_IMAGE_PATTERNS = ['picsum.photos', 'placeholder', 'supabase.co/storage'];
 
 function isBrokenImageUrl(url) {
   if (!url) return true;
@@ -1326,7 +1326,9 @@ export async function upsertCar(carId, data) {
 }
 
 /**
- * Update car catalog + push name/image to every package for that car key.
+ * Update car catalog + push names to every package for that car key.
+ * Does NOT overwrite package imageUrl — fleet product images stay independent
+ * (SuperAdmin /admin/fleet owns those; /admin/categories owns catalog art).
  * Returns how many packages were updated.
  * @param {object} [opts]
  * @param {() => void | Promise<void>} [opts.onCarSaved] — fires right after vehicles/{id}
@@ -1373,9 +1375,12 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}, opts 
       const payload = {
         carModelEn: nameEn,
         carModelAr: nameAr,
-        imageUrl,
         updatedAt: serverTimestamp(),
       };
+      // Only fill empty package images — never clobber SuperAdmin fleet uploads.
+      if (imageUrl && !String(p.imageUrl || '').trim()) {
+        payload.imageUrl = imageUrl;
+      }
       if (nameEn) {
         payload.nameEn = replaceCarNamePrefix(p.nameEn, prevEn, nameEn) || p.nameEn;
       }
@@ -1393,12 +1398,17 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}, opts 
 }
 
 /**
- * Copy each category/car catalog image onto every matching fleet product
- * (same vehicleKey / car name). Force overwrite so public cards match
- * "Choose Your Car" immediately.
+ * Copy category/car catalog images onto matching fleet products.
+ * @param {string[]} [carIds] — limit to these car keys (default: all catalog cars)
+ * @param {{ force?: boolean }} [opts] — force=true overwrites existing product images
  */
-export async function syncAllCategoryImagesToProducts() {
+export async function syncCarCatalogImagesToProducts(carIds = null, opts = {}) {
   await waitForAdminAuth();
+  const force = opts.force === true;
+  const only = Array.isArray(carIds) && carIds.length
+    ? new Set(carIds.map((id) => String(id || '').trim().toLowerCase()).filter(Boolean))
+    : null;
+
   const [cars, products] = await Promise.all([getAllCars(50), getAllProducts(600)]);
   const defaults = getDefaultCarCatalog();
   const byId = new Map();
@@ -1412,13 +1422,18 @@ export async function syncAllCategoryImagesToProducts() {
     byId.set(id, { ...(byId.get(id) || {}), ...car, id });
   });
 
-  const catalog = [...byId.values()].filter((car) => String(car.imageUrl || '').trim());
+  const catalog = [...byId.values()].filter((car) => {
+    const id = String(car.id || '').trim().toLowerCase();
+    if (!String(car.imageUrl || '').trim()) return false;
+    if (only && !only.has(id)) return false;
+    return true;
+  });
   if (!catalog.length) {
     return { cars: 0, products: 0, skipped: products.length };
   }
 
   const imageByCar = new Map(
-    catalog.map((car) => [car.id, String(car.imageUrl || '').trim()]),
+    catalog.map((car) => [String(car.id).trim().toLowerCase(), String(car.imageUrl || '').trim()]),
   );
 
   let updated = 0;
@@ -1431,9 +1446,12 @@ export async function syncAllCategoryImagesToProducts() {
       .trim()
       .toLowerCase();
     if (!carKey) continue;
+    if (only && !only.has(carKey)) continue;
     const imageUrl = imageByCar.get(carKey);
     if (!imageUrl) continue;
-    if (String(product.imageUrl || '').trim() === imageUrl) continue;
+    const current = String(product.imageUrl || '').trim();
+    if (!force && current) continue;
+    if (current === imageUrl) continue;
     pending.push({ id: product.id, imageUrl, carKey });
   }
 
@@ -1454,8 +1472,15 @@ export async function syncAllCategoryImagesToProducts() {
   await logActivity('category_images_synced_to_products', {
     cars: catalog.length,
     products: updated,
+    force,
+    carIds: only ? [...only] : null,
   });
   return { cars: catalog.length, products: updated, skipped: products.length - updated };
+}
+
+/** Fill empty fleet product images only (never overwrite). */
+export async function syncAllCategoryImagesToProducts() {
+  return syncCarCatalogImagesToProducts(null, { force: false });
 }
 
 /**

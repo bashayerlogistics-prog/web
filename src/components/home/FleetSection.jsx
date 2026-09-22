@@ -15,7 +15,7 @@ import PremiumSwiper from '../ui/PremiumSwiper';
 import VehicleImage from '../ui/VehicleImage';
 import { buildWhatsAppUrl, buildVehicleWhatsAppMessage } from '../../utils/vehicleHelpers';
 
-function VehicleCard({ vehicle, routeTitle, routeId, lang, t, categoryImage }) {
+function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
   const { addItem } = useCart();
   const [modalItem, setModalItem] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -24,8 +24,8 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t, categoryImage }) {
   const shortName = getShortVehicleName(vehicle.id, lang);
   const slug = getVehicleSlug(vehicle.id, routeId);
   const routeLabel = routeTitle[lang] || routeTitle.ar;
-  // Always match "Choose Your Car" / All categories image for this car name.
-  const cardImage = categoryImage || getCarImage(vehicle.id) || vehicle.image;
+  // SuperAdmin fleet product image first; bundled / catalog only as fallback.
+  const cardImage = vehicle.image || getCarImage(vehicle.id);
 
   const discount =
     vehicle.originalPrice && vehicle.price
@@ -76,6 +76,7 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t, categoryImage }) {
             alt={shortName}
             className="fleet-card__image w-full"
             hoverZoom
+            cacheKey={String(vehicle.updatedAt?.seconds || vehicle.updatedAt || vehicle.image || '')}
           />
           <div className="fleet-card__media-gradient" aria-hidden="true" />
 
@@ -148,7 +149,7 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t, categoryImage }) {
   );
 }
 
-function ServiceFleetGroup({ group, lang, t, cols = 2, imageByCar = {} }) {
+function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
   const title = group.title[lang] || group.title.ar;
   const routeTitle = group.routeTitle;
 
@@ -178,7 +179,6 @@ function ServiceFleetGroup({ group, lang, t, cols = 2, imageByCar = {} }) {
         routeId={group.routeId}
         lang={lang}
         t={t}
-        categoryImage={imageByCar[key] || ''}
       />
     );
   };
@@ -218,27 +218,35 @@ function ServiceFleetGroup({ group, lang, t, cols = 2, imageByCar = {} }) {
 export default function FleetSection() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
-  const { fleetRoutes, carCatalog, fleetShowcase } = useSiteContent();
+  const { fleetRoutes, fleetShowcase, fleetHydrated } = useSiteContent();
   const homeSections = useMemo(
-    () => buildHomeFleetSections(fleetRoutes, fleetShowcase),
-    [fleetRoutes, carCatalog, fleetShowcase],
+    () => (fleetHydrated ? buildHomeFleetSections(fleetRoutes, fleetShowcase) : []),
+    [fleetRoutes, fleetShowcase, fleetHydrated],
   );
-
-  const imageByCar = useMemo(() => {
-    const map = {};
-    (carCatalog || []).forEach((car) => {
-      const id = String(car?.id || '').trim();
-      const url = String(car?.imageUrl || '').trim();
-      if (id && url) map[id] = url;
-    });
-    return map;
-  }, [carCatalog]);
 
   const byId = useMemo(() => {
     const map = {};
     for (const g of homeSections) map[g.id] = g;
     return map;
   }, [homeSections]);
+
+  if (!fleetHydrated) {
+    return (
+      <section id="fleet" className="section-padding overflow-x-clip relative" aria-busy="true">
+        <div className="section-container relative z-10">
+          <div className="section-header">
+            <div className="h-4 w-28 rounded-full bg-gray-100 animate-pulse" />
+            <div className="h-8 w-64 max-w-full rounded-xl bg-gray-100 animate-pulse mt-2" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5 mt-8">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-52 rounded-2xl bg-gray-100/80 animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (!homeSections.length) return null;
 
@@ -271,8 +279,8 @@ export default function FleetSection() {
             if (!left && !right) return null;
             return (
               <div key={`${leftId}-${rightId}`} className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5">
-                {left ? <ServiceFleetGroup group={left} lang={lang} t={t} cols={2} imageByCar={imageByCar} /> : <div className="hidden md:block" />}
-                {right ? <ServiceFleetGroup group={right} lang={lang} t={t} cols={2} imageByCar={imageByCar} /> : <div className="hidden md:block" />}
+                {left ? <ServiceFleetGroup group={left} lang={lang} t={t} cols={2} /> : <div className="hidden md:block" />}
+                {right ? <ServiceFleetGroup group={right} lang={lang} t={t} cols={2} /> : <div className="hidden md:block" />}
               </div>
             );
           })}

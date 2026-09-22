@@ -22,6 +22,7 @@ export function usePublishSiteContent() {
   return useCallback(async (mode = 'soft') => {
     invalidateProductsCache();
     invalidatePaymentSettingsCache();
+    clearAdminDataCache();
 
     if (mode === 'soft') {
       softInvalidateSiteContentCache();
@@ -30,16 +31,14 @@ export function usePublishSiteContent() {
       } catch (err) {
         console.warn('Content revision bump failed:', err?.code || err?.message || err);
       }
-      // Await fleet refresh so this tab + subsequent paints use new images.
       try {
-        await refresh({ silent: true, phase: 'fleet' });
+        await refresh({ silent: true, phase: 'fleet', bustCache: true });
       } catch (err) {
         console.warn('Fleet refresh after publish failed:', err?.code || err?.message || err);
       }
       return;
     }
 
-    clearAdminDataCache();
     clearAllAppCaches();
     clearSiteContentCache();
 
@@ -50,7 +49,7 @@ export function usePublishSiteContent() {
     }
 
     try {
-      await refresh({ silent: false, phase: 'full' });
+      await refresh({ silent: false, phase: 'full', bustCache: true });
     } catch (err) {
       console.warn('Site content refresh after publish failed:', err?.code || err?.message || err);
     }

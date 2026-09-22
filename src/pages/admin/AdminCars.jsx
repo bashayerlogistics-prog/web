@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Download, Eye, EyeOff, Save, Plus, Images } from 'lucide-react';
+import { ArrowLeft, Download, Eye, EyeOff, Save, Plus } from 'lucide-react';
 import {
   getAllCars,
   seedDefaultCars,
   updateCarAndSyncPackages,
   createCarWithPackages,
-  syncAllCategoryImagesToProducts,
 } from '../../firebase/admin';
 import MediaUpload from '../../components/admin/MediaUpload';
 import AddCarModal from '../../components/admin/AddCarModal';
@@ -50,7 +49,7 @@ function useAdminFleetBase() {
 }
 
 /** Index: car cards → separate admin pages */
-function AdminCarsIndex({ cars, seeding, syncing, onSeed, onSyncImages, onAdd, lang, t, basePath, isCategories, atMax }) {
+function AdminCarsIndex({ cars, seeding, onSeed, onAdd, lang, t, basePath, isCategories, atMax }) {
   return (
     <div className="space-y-4 sm:space-y-6">
       <AdminPageHeader
@@ -70,19 +69,6 @@ function AdminCarsIndex({ cars, seeding, syncing, onSeed, onSyncImages, onAdd, l
         >
           <Plus className="w-4 h-4" />
           <span className="hidden sm:inline">{t('admin.cars.addNew')}</span>
-        </button>
-        <button
-          type="button"
-          onClick={onSyncImages}
-          disabled={syncing}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-emerald-500/30 font-bold text-sm text-emerald-700 hover:bg-emerald-500/5 touch-target disabled:opacity-50"
-        >
-          <Images className="w-4 h-4" />
-          <span className="hidden sm:inline">
-            {syncing
-              ? t('admin.cars.syncingImages', { defaultValue: 'Syncing…' })
-              : t('admin.cars.syncImagesToProducts', { defaultValue: 'Sync images → products' })}
-          </span>
         </button>
         <button
           type="button"
@@ -376,7 +362,6 @@ export default function AdminCars() {
   const [drafts, setDrafts] = useState({});
   const [savingId, setSavingId] = useState(null);
   const [seeding, setSeeding] = useState(false);
-  const [syncingImages, setSyncingImages] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [nameConfirm, setNameConfirm] = useState(null);
@@ -389,46 +374,8 @@ export default function AdminCars() {
     if (cars?.length) setLiveCarCatalog(cars);
   }, [cars]);
 
-  // One-shot: push All categories images onto every matching product (by car name).
-  useEffect(() => {
-    if (loading || !cars?.length || !isCategories) return undefined;
-    const SYNC_KEY = 'bashayer-sync-cat-images-v2';
-    try {
-      if (localStorage.getItem(SYNC_KEY) === '1') return undefined;
-    } catch {
-      // continue
-    }
-    let cancelled = false;
-    setSyncingImages(true);
-    (async () => {
-      try {
-        const result = await syncAllCategoryImagesToProducts();
-        if (cancelled) return;
-        try {
-          localStorage.setItem(SYNC_KEY, '1');
-        } catch {
-          // ignore
-        }
-        await publishSite('soft');
-        await refresh({ bustCache: true });
-        if (result?.products > 0) {
-          toast.success(
-            t('admin.cars.imagesSynced', {
-              defaultValue: `Updated ${result.products} products from category images`,
-              count: result.products,
-            }),
-          );
-        }
-      } catch (err) {
-        console.warn('Category→product image sync skipped:', err?.code || err?.message || err);
-      } finally {
-        if (!cancelled) setSyncingImages(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, cars, isCategories, publishSite, refresh, toast, t]);
+  // Categories and fleet product images stay independent — no auto overwrite.
+  // Use the manual "Sync empty images" action only to fill blank product slots.
 
   const selectedCar = activeKey ? cars.find((c) => c.id === activeKey) : null;
 
@@ -566,36 +513,6 @@ export default function AdminCars() {
     }
   };
 
-  const handleSyncImages = async () => {
-    setSyncingImages(true);
-    try {
-      try {
-        localStorage.removeItem('bashayer-sync-cat-images-v2');
-      } catch {
-        // ignore
-      }
-      const result = await syncAllCategoryImagesToProducts();
-      try {
-        localStorage.setItem('bashayer-sync-cat-images-v2', '1');
-      } catch {
-        // ignore
-      }
-      await publishSite('soft');
-      await refresh({ bustCache: true });
-      toast.success(
-        t('admin.cars.imagesSynced', {
-          defaultValue: `Updated ${result.products} products from category images`,
-          count: result.products,
-        }),
-      );
-    } catch (err) {
-      console.error(err);
-      toast.error(t('admin.cars.syncImagesFailed', { defaultValue: 'Image sync failed' }));
-    } finally {
-      setSyncingImages(false);
-    }
-  };
-
   const handleAddCar = async (payload) => {
     if (liveFleetCarCount(cars) >= MAX_FLEET_CARS) {
       toast.warning(t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }));
@@ -701,9 +618,7 @@ export default function AdminCars() {
       <AdminCarsIndex
         cars={cars}
         seeding={seeding}
-        syncing={syncingImages}
         onSeed={handleSeed}
-        onSyncImages={handleSyncImages}
         onAdd={() => {
           if (atMaxCars) {
             toast.warning(t('admin.bookingForms.carsBarMaxReached', { max: MAX_FLEET_CARS }));

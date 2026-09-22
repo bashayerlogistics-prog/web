@@ -54,7 +54,10 @@ import { dedupeFleetProducts } from '../utils/productDedupe';
 export { buildTravelReservationsFromFirestore, DEFAULT_TRAVEL_RESERVATIONS };
 
 async function fetchActive(collectionName, maxItems = 100) {
-  const size = Math.max(1, Math.min(300, Number(maxItems) || 100));
+  // Fleet packages: allow a high cap — site has 800+ packages and SuperAdmin
+  // image edits must appear on the public homepage for every service.
+  const hardCap = collectionName === 'packages' ? 1200 : 300;
+  const size = Math.max(1, Math.min(hardCap, Number(maxItems) || 100));
   try {
     const q = query(
       collection(db, collectionName),
@@ -78,8 +81,7 @@ async function fetchActive(collectionName, maxItems = 100) {
 }
 
 export async function getActiveProducts() {
-  // Fleet packages can exceed the default CMS page size; keep a hard cap.
-  return fetchActive('packages', 300);
+  return fetchActive('packages', 1200);
 }
 
 export async function getActiveServices() {
@@ -155,20 +157,21 @@ export function buildFleetRoutesFromProducts(activeProducts, extraRoutes = []) {
     if (!routeId) continue;
 
     const staticRoute = staticById.get(routeId);
-    // Skip legacy/orphan route ids that are not in the fleet catalog
-    if (!staticRoute) continue;
-
+    // Always keep SuperAdmin packages — synthesize a route shell when the id is custom.
     if (!routeMap[routeId]) {
       routeMap[routeId] = {
         id: routeId,
-        title: staticRoute.title || { ar: routeId, en: routeId },
-        pickupLabel: staticRoute.pickupLabel,
-        dropoffLabel: staticRoute.dropoffLabel,
-        tripType: staticRoute.tripType || p.tripType || 'one_way',
-        category: staticRoute.category || p.category || undefined,
-        hours: staticRoute.hours,
-        baseCityId: staticRoute.baseCityId,
-        destinationKey: staticRoute.destinationKey,
+        title: staticRoute?.title || {
+          ar: p.nameAr || routeId,
+          en: p.nameEn || routeId,
+        },
+        pickupLabel: staticRoute?.pickupLabel,
+        dropoffLabel: staticRoute?.dropoffLabel,
+        tripType: staticRoute?.tripType || p.tripType || 'one_way',
+        category: staticRoute?.category || p.category || undefined,
+        hours: staticRoute?.hours,
+        baseCityId: staticRoute?.baseCityId,
+        destinationKey: staticRoute?.destinationKey,
         vehicles: [],
         _cars: new Set(),
       };
@@ -182,6 +185,7 @@ export function buildFleetRoutesFromProducts(activeProducts, extraRoutes = []) {
     if (!car || routeMap[routeId]._cars.has(uniq)) continue;
     routeMap[routeId]._cars.add(uniq);
 
+    const tripType = p.tripType || staticRoute?.tripType || routeMap[routeId].tripType || 'one_way';
     routeMap[routeId].vehicles.push({
       id: vehicleId,
       name: { ar: p.nameAr, en: p.nameEn },
@@ -197,7 +201,7 @@ export function buildFleetRoutesFromProducts(activeProducts, extraRoutes = []) {
       hourlyRate: p.hourlyRate,
       hours: p.hours,
       hidePrice: p.hidePrice ?? false,
-      tripType: p.tripType || staticRoute.tripType || 'one_way',
+      tripType,
       fleetServiceId: p.fleetServiceId || '',
       bookingFormId: p.bookingFormId || '',
       vip: p.vip || false,
@@ -902,7 +906,8 @@ function sortByOrder(items) {
 
 export function subscribeToActiveCollection(collectionName, onData, onError, maxItems = 100) {
   let unsubscribe = () => {};
-  const size = Math.max(1, Math.min(300, Number(maxItems) || 100));
+  const hardCap = collectionName === 'packages' ? 1200 : 300;
+  const size = Math.max(1, Math.min(hardCap, Number(maxItems) || 100));
 
   const runQuery = (withOrder) => {
     unsubscribe();

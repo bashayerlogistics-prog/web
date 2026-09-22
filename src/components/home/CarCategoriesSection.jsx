@@ -64,7 +64,7 @@ function CategoryCard({ car, lang, t }) {
 export default function CarCategoriesSection() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
-  const { carCatalog } = useSiteContent();
+  const { carCatalog, fleetHydrated } = useSiteContent();
 
   const cars = useMemo(() => {
     const live = (carCatalog?.length ? carCatalog : getLiveCarCatalog()).filter(
@@ -81,7 +81,7 @@ export default function CarCategoriesSection() {
   }, [carCatalog]);
 
   return (
-    <section id="vehicles" className="section-padding overflow-x-clip relative">
+    <section id="vehicles" className="section-padding overflow-x-clip relative" aria-busy={!fleetHydrated}>
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-10 end-0 w-72 h-72 bg-brand/5 rounded-full blur-[120px]" />
         <div className="absolute bottom-10 start-0 w-64 h-64 bg-gold/8 rounded-full blur-[100px]" />
@@ -105,9 +105,16 @@ export default function CarCategoriesSection() {
           data-aos="fade-up"
           data-aos-delay="80"
         >
-          {cars.map((car) => (
-            <CategoryCard key={car.id} car={car} lang={lang} t={t} />
-          ))}
+          {!fleetHydrated
+            ? BOOKING_CAR_TYPES.map((id) => (
+              <div key={id} className="car-category-card animate-pulse">
+                <div className="car-category-card__visual bg-gray-100 min-h-[10rem] rounded-2xl" />
+                <div className="h-4 w-24 mx-auto mt-3 rounded bg-gray-100" />
+              </div>
+            ))
+            : cars.map((car) => (
+              <CategoryCard key={car.id} car={car} lang={lang} t={t} />
+            ))}
         </div>
       </div>
     </section>

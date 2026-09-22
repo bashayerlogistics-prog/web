@@ -1,6 +1,4 @@
 import {
-  FLEET_ROUTES,
-  ROUND_TRIP_FLEET_ROUTES,
   SERVICES,
   BLOG_POSTS,
   ROUTE_CARDS,
@@ -10,7 +8,6 @@ import {
   DEFAULT_GALLERY_ITEMS,
   getDefaultCarCatalog,
 } from '../data/staticData';
-import { HOURLY_FLEET_ROUTES } from '../data/hourlyPricing';
 import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
 import { DEFAULT_HOME_SECTIONS, mergeHomeSections } from '../data/homeSections';
 import { emptyFleetShowcase, normalizeFleetShowcase } from '../data/adminFleetServices';
@@ -35,14 +32,17 @@ import {
 import { clearAdminDataCache } from './adminDataCache';
 
 /** Bump on every Hostinger deploy so visitors drop stale CMS snapshots once. */
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v42';
-export const APP_CACHE_BUILD = '20260922e';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v45';
+export const APP_CACHE_BUILD = '20260922h';
 const APP_CACHE_BUILD_KEY = 'bashayer-app-build';
 /** Set when SuperAdmin publishes — next public load must revalidate vs contentRevision. */
 export const SITE_CONTENT_DIRTY_KEY = 'bashayer-site-content-dirty';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
+  'bashayer-site-content-v44',
+  'bashayer-site-content-v43',
+  'bashayer-site-content-v42',
   'bashayer-site-content-v41',
   'bashayer-site-content-v40',
   'bashayer-site-content-v39',
@@ -91,8 +91,6 @@ const EXTRA_CACHE_KEYS = [
 
 export const SYNC_CHANNEL = 'bashayer-site-content';
 
-const STATIC_FLEET = [...FLEET_ROUTES, ...ROUND_TRIP_FLEET_ROUTES, ...HOURLY_FLEET_ROUTES];
-
 function pickNonEmptyArray(value, fallback) {
   return Array.isArray(value) && value.length > 0 ? value : fallback;
 }
@@ -110,12 +108,14 @@ function mergeBlogImagesFromDefaults(blogs) {
 
 /**
  * Repair cached snapshots so empty arrays / partial sections never blank the homepage.
+ * Fleet routes are an exception: never inject STATIC_FLEET seed art — that flashes
+ * old car images on new browsers before Firestore arrives.
  */
 export function sanitizeSiteContentCache(data) {
   if (!data || typeof data !== 'object') return null;
 
   return {
-    fleetRoutes: pickNonEmptyArray(data.fleetRoutes, STATIC_FLEET),
+    fleetRoutes: Array.isArray(data.fleetRoutes) ? data.fleetRoutes : [],
     services: pickNonEmptyArray(data.services, SERVICES),
     blogs: mergeBlogImagesFromDefaults(pickNonEmptyArray(data.blogs, BLOG_POSTS)),
     routeCards: pickNonEmptyArray(data.routeCards, ROUTE_CARDS),
@@ -141,7 +141,7 @@ export function sanitizeSiteContentCache(data) {
 /** Defaults when no cache exists at all. */
 export function defaultSiteContentSnapshot() {
   return sanitizeSiteContentCache({
-    fleetRoutes: STATIC_FLEET,
+    fleetRoutes: [],
     services: SERVICES,
     blogs: BLOG_POSTS,
     routeCards: ROUTE_CARDS,
