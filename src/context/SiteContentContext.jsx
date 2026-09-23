@@ -125,7 +125,7 @@ import {
   clearFirebaseIndexedDatabases,
 
 } from '../utils/siteContentRefresh';
-import { isMysqlCmsEnabled, mysqlFetchHome, mysqlFetchCollection, mysqlFetchSettings } from '../api/mysqlApi';
+import { isMysqlCmsEnabled, mysqlFetchHome, mysqlFetchCollection, mysqlFetchSettings, mysqlFetchRevision } from '../api/mysqlApi';
 
 
 
@@ -832,22 +832,27 @@ export function SiteContentProvider({ children }) {
 
     let cancelled = false;
 
-    // Cheap 1-doc server check: laptop / KSA / UAE must share the same CMS revision.
-    // If local cache is behind (or never synced), pull fresh content from Firestore.
+    // Cheap revision check: laptop / phone / KSA / UAE share the same CMS revision.
+    // MySQL mode → Hostinger revision API. Firebase mode → Firestore contentRevision.
     // When already dirty / TTL-stale, refresh immediately in parallel so old images
-    // do not linger 10–15s waiting on the revision round-trip.
+    // do not linger waiting on the revision round-trip.
     const verify = async () => {
       const localRev = syncedRevRef.current || readStoredContentRevision();
       const cacheLooksFresh = hasFreshCacheRef.current && !isSiteContentDirty();
+      const readServerRev = async () => {
+        if (isMysqlCmsEnabled()) return mysqlFetchRevision();
+        return runWithServerReads(() => getContentRevisionOnce());
+      };
 
       if (!cacheLooksFresh) {
         hasFreshCacheRef.current = false;
         // Fleet-first when dirty — SuperAdmin image edits must not wait on gallery/FAQ.
-        const refreshPromise = refresh({ silent: true, phase: 'fleet' });
+        const refreshPromise = refresh({ silent: true, phase: 'fleet', forceServer: true });
         try {
-          const serverRev = await runWithServerReads(() => getContentRevisionOnce());
+          const serverRev = await readServerRev();
           if (!cancelled && serverRev) {
             syncedRevRef.current = serverRev;
+            writeStoredContentRevision(serverRev);
           }
         } catch {
           // refresh still in flight
@@ -857,18 +862,18 @@ export function SiteContentProvider({ children }) {
       }
 
       try {
-        const serverRev = await runWithServerReads(() => getContentRevisionOnce());
+        const serverRev = await readServerRev();
         if (cancelled) return;
 
         if (!serverRev) {
           hasFreshCacheRef.current = false;
-          await refresh({ silent: true, phase: 'fleet' });
+          await refresh({ silent: true, phase: 'fleet', forceServer: true });
           return;
         }
 
         if (serverRev !== localRev) {
           hasFreshCacheRef.current = false;
-          await refresh({ silent: true, phase: 'fleet' });
+          await refresh({ silent: true, phase: 'fleet', forceServer: true });
           return;
         }
 
@@ -878,7 +883,7 @@ export function SiteContentProvider({ children }) {
         console.warn('Content revision verify failed:', err?.code || err?.message || err);
         if (!cancelled) {
           hasFreshCacheRef.current = false;
-          await refresh({ silent: true, phase: 'fleet' });
+          await refresh({ silent: true, phase: 'fleet', forceServer: true });
         }
       }
     };
@@ -919,6 +924,29 @@ export function SiteContentProvider({ children }) {
   // Live publish signal for open tabs (all countries / networks / admin).
   useEffect(() => {
     let cancelled = false;
+
+    // MySQL: poll Hostinger revision every 8s (shared hosting has no Firestore-style push).
+    if (isMysqlCmsEnabled()) {
+      const poll = async () => {
+        try {
+          const rev = await mysqlFetchRevision();
+          if (cancelled || !rev) return;
+          if (rev === syncedRevRef.current && hasFreshCacheRef.current) return;
+          syncedRevRef.current = rev;
+          writeStoredContentRevision(rev);
+          schedulePublicRefresh('fleet');
+        } catch (err) {
+          console.warn('MySQL revision poll failed:', err?.message || err);
+        }
+      };
+      void poll();
+      const timer = window.setInterval(poll, 8000);
+      return () => {
+        cancelled = true;
+        window.clearInterval(timer);
+        if (scheduleRefreshTimerRef.current) window.clearTimeout(scheduleRefreshTimerRef.current);
+      };
+    }
 
     const unsub = subscribeContentRevision(
       (rev) => {

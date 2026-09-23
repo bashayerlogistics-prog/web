@@ -109,6 +109,11 @@ export async function mysqlBumpRevision() {
   });
 }
 
+export async function mysqlFetchRevision() {
+  const data = await getJson(mysqlApiUrl('revision'));
+  return Number(data.revision) || 0;
+}
+
 export async function mysqlUpsertVehicle(payload) {
   return getJson(mysqlApiUrl('vehicle_upsert'), {
     method: 'POST',

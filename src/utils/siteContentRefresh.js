@@ -32,15 +32,16 @@ import {
 import { clearAdminDataCache } from './adminDataCache';
 
 /** Bump on every Hostinger deploy so visitors drop stale CMS snapshots once. */
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v50';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v51';
 /** Bump to force full wipe of localStorage + Firestore IndexedDB + HTTP Cache API. */
-export const APP_CACHE_BUILD = '20260923h';
+export const APP_CACHE_BUILD = '20260923i';
 const APP_CACHE_BUILD_KEY = 'bashayer-app-build';
 /** Set when SuperAdmin publishes — next public load must revalidate vs contentRevision. */
 export const SITE_CONTENT_DIRTY_KEY = 'bashayer-site-content-dirty';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
+  'bashayer-site-content-v50',
   'bashayer-site-content-v49',
   'bashayer-site-content-v48',
   'bashayer-site-content-v47',
