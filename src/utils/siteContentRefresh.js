@@ -32,17 +32,18 @@ import {
 import { clearAdminDataCache } from './adminDataCache';
 
 /** Bump on every Hostinger deploy so visitors drop stale CMS snapshots once. */
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v51';
-/** Bump to force full wipe of localStorage + Firestore IndexedDB + HTTP Cache API. */
-export const APP_CACHE_BUILD = '20260923i';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v52';
+/** Bump to force full wipe of localStorage + Firestore IndexedDB + HTTP Cache API.
+ *  MUST match the BUILD string in index.html (same bashayer-app-build key). */
+export const APP_CACHE_BUILD = '20260923j';
 const APP_CACHE_BUILD_KEY = 'bashayer-app-build';
 /** Set when SuperAdmin publishes — next public load must revalidate vs contentRevision. */
 export const SITE_CONTENT_DIRTY_KEY = 'bashayer-site-content-dirty';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
+  'bashayer-site-content-v51',
   'bashayer-site-content-v50',
-  'bashayer-site-content-v49',
   'bashayer-site-content-v48',
   'bashayer-site-content-v47',
   'bashayer-site-content-v46',
@@ -374,12 +375,15 @@ export function clearSiteContentCache() {
 /**
  * Soft invalidate — mark dirty so the next refresh revalidates vs contentRevision.
  * Keep the last snapshot for instant paint (do not blank categories/fleet).
+ * Also drop branding cache so new colors apply on the next paint / other devices.
  */
 export function softInvalidateSiteContentCache() {
   markSiteContentDirty();
   try {
     // Drop revision only — snapshot stays until refresh writes the new one.
     localStorage.removeItem(CONTENT_REVISION_STORAGE_KEY);
+    localStorage.removeItem('rafiq_branding');
+    localStorage.removeItem('rafiq_branding_at');
   } catch {
     // ignore
   }

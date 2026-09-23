@@ -88,15 +88,7 @@ export default function CustomerAuthGate({ children }) {
   }
 
   return (
-    <Suspense
-      fallback={
-        <LoadingAuthProvider>
-          <div className="min-h-[50svh] grid place-items-center" role="status" aria-label="Loading">
-            <div className="h-8 w-8 rounded-full border-2 border-brand/25 border-t-gold animate-spin" />
-          </div>
-        </LoadingAuthProvider>
-      }
-    >
+    <Suspense fallback={<LoadingAuthProvider>{children}</LoadingAuthProvider>}>
       <ClerkAuthTree>{children}</ClerkAuthTree>
     </Suspense>
   );

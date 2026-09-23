@@ -59,6 +59,7 @@ export async function mysqlFetchHome() {
   return {
     revision: data.revision || 0,
     homepage: data.homepage || null,
+    branding: data.branding || null,
     vehicles: (data.vehicles || []).map((v) => ({
       ...v,
       imageUrl: absoluteCmsUrl(v.imageUrl),
@@ -124,7 +125,8 @@ export async function mysqlUpsertVehicle(payload) {
     body: JSON.stringify({
       ...payload,
       imageUrl: payload.imageUrl || '',
-      syncPackages: payload.syncPackages !== false,
+      // Opt-in only — category/catalog image must not overwrite fleet product images.
+      syncPackages: payload.syncPackages === true,
     }),
   });
 }

@@ -6,6 +6,7 @@ import AppShell from './components/layout/AppShell';
 import SecurityNotFound from './pages/SecurityNotFound';
 import ProtectedRoute from './pages/ProtectedRoute';
 import Home from './pages/Home';
+import Cart from './pages/Cart';
 import PublicAppShell from './components/layout/PublicAppShell';
 import { BrandingProvider } from './context/BrandingContext';
 import './i18n';
@@ -22,7 +23,6 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Checkout = lazy(() => import('./pages/Checkout'));
 const PaymentReturn = lazy(() => import('./pages/PaymentReturn'));
-const Cart = lazy(() => import('./pages/Cart'));
 const VehicleDetail = lazy(() => import('./pages/VehicleDetail'));
 const CarCategory = lazy(() => import('./pages/CarCategory'));
 const TrackBooking = lazy(() => import('./pages/TrackBooking'));
@@ -167,14 +167,8 @@ export default function App() {
                 <Route path="sso-callback" element={<LazyRoute><SSOCallback /></LazyRoute>} />
                 <Route path="forgot-password" element={<LazyRoute><ForgotPassword /></LazyRoute>} />
                 <Route path="booking/search" element={<LazyRoute><BookingSearch /></LazyRoute>} />
-                <Route
-                  path="cart"
-                  element={
-                    <ProtectedRoute>
-                      <LazyRoute><Cart /></LazyRoute>
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Cart is guest-fast: localStorage items paint immediately; login only on confirm. */}
+                <Route path="cart" element={<Cart />} />
                 <Route path="vehicles/:slug" element={<LazyRoute><VehicleDetail /></LazyRoute>} />
                 <Route path="cars/:carId" element={<LazyRoute><CarCategory /></LazyRoute>} />
                 <Route path="gallery" element={<LazyRoute><Gallery /></LazyRoute>} />

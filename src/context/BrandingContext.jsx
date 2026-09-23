@@ -6,14 +6,23 @@ import { runWithServerReads } from '../firebase/reads';
 import { DEFAULT_BRANDING, getFontFamily, resolveUserFont } from '../data/brandingDefaults';
 import { buildBrandingCssVars } from '../utils/colorUtils';
 import { loadGoogleFont } from '../utils/fontUtils';
+import { isMysqlCmsEnabled } from '../api/mysqlApi';
 
 const BrandingContext = createContext(null);
 const BRANDING_CACHE_KEY = 'rafiq_branding';
 const BRANDING_AT_KEY = 'rafiq_branding_at';
 const BRANDING_SYNC_CHANNEL = 'bashayer-site-content';
+/** Stale local palette older than this is never painted — fetch live first. */
+const BRANDING_CACHE_MAX_MS = 5 * 60 * 1000;
 
 function readCachedBranding() {
   try {
+    const at = Number(localStorage.getItem(BRANDING_AT_KEY) || 0);
+    if (at && Date.now() - at > BRANDING_CACHE_MAX_MS) {
+      localStorage.removeItem(BRANDING_CACHE_KEY);
+      localStorage.removeItem(BRANDING_AT_KEY);
+      return null;
+    }
     const raw = localStorage.getItem(BRANDING_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
@@ -142,17 +151,29 @@ function applyBrandingToDom(branding, isAdminRoute) {
 }
 
 async function fetchLiveBranding() {
+  // MySQL path skips Firestore IndexedDB entirely (no old-color flash).
+  if (isMysqlCmsEnabled()) {
+    return getBrandingSettings();
+  }
   return runWithServerReads(() => getBrandingSettings());
 }
 
-const bootCached = typeof window !== 'undefined' ? readCachedBranding() : null;
+/** Prefer early HTML bootstrap branding when present (new devices). */
+function readBootBranding() {
+  if (typeof window !== 'undefined' && window.__bashayerLiveBranding) {
+    return { ...DEFAULT_BRANDING, ...window.__bashayerLiveBranding };
+  }
+  return readCachedBranding();
+}
+
+const bootCached = typeof window !== 'undefined' ? readBootBranding() : null;
 const bootBranding = bootCached || DEFAULT_BRANDING;
 if (typeof document !== 'undefined' && bootCached) {
   applyBrandingToDom(bootBranding, window.location.pathname.startsWith('/admin'));
 }
 
 export function BrandingProvider({ children }) {
-  // Instant paint from last live cache; server revalidates quietly.
+  // Instant paint from last live cache / HTML bootstrap; server revalidates immediately.
   const [branding, setBranding] = useState(bootBranding);
   const [loading, setLoading] = useState(!bootCached);
   const [ready, setReady] = useState(Boolean(bootCached));
@@ -160,7 +181,9 @@ export function BrandingProvider({ children }) {
   const isAdminRoute = location.pathname.startsWith('/admin');
   const brandingRef = useRef(branding);
   brandingRef.current = branding;
-  const hasServerBrandRef = useRef(false);
+  const hasServerBrandRef = useRef(
+    typeof window !== 'undefined' && Boolean(window.__bashayerLiveBranding),
+  );
   const sigRef = useRef(brandingSignature(bootBranding));
 
   const applyBranding = useCallback((partial) => {
@@ -196,24 +219,24 @@ export function BrandingProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
 
-    // Cold start only — returning visitors already painted from cache; listener is enough.
-    if (!bootCached) {
-      fetchLiveBranding().then((data) => {
-        if (cancelled) return;
-        hasServerBrandRef.current = true;
-        commitBranding(data);
-        setLoading(false);
-        setReady(true);
-      }).catch(() => {
-        if (cancelled) return;
-        setLoading(false);
-        setReady(true);
-      });
-    }
+    // ALWAYS revalidate — even with local cache — so new colors/images land fast
+    // on every device (incl. Google profiles). Never wait only on Firestore cache.
+    fetchLiveBranding().then((data) => {
+      if (cancelled) return;
+      hasServerBrandRef.current = true;
+      commitBranding(data);
+      setLoading(false);
+      setReady(true);
+    }).catch(() => {
+      if (cancelled) return;
+      setLoading(false);
+      setReady(true);
+    });
 
     const unsub = subscribeBrandingSettings((data, meta) => {
       if (cancelled) return;
-      if (meta?.fromCache && (hasServerBrandRef.current || bootCached)) return;
+      // Ignore stale IndexedDB when we already have a live server read.
+      if (meta?.fromCache && hasServerBrandRef.current) return;
       if (!meta?.fromCache) hasServerBrandRef.current = true;
       commitBranding(data);
       setLoading(false);

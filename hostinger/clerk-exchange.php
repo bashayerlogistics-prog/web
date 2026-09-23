@@ -35,12 +35,26 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
   exit;
 }
 
-// === CONFIG (placeholders replaced on deploy) ===
-const CLERK_SECRET_KEY = '__CLERK_SECRET_KEY__';
-const FIREBASE_PROJECT_ID = '__FIREBASE_PROJECT_ID__';
-const FIREBASE_CLIENT_EMAIL = '__FIREBASE_CLIENT_EMAIL__';
-const FIREBASE_PRIVATE_KEY_B64 = '__FIREBASE_PRIVATE_KEY_B64__';
-const ADMIN_EMAIL = 'sulemanmr551@gmail.com';
+// === CONFIG — prefer clerk-config.php on Hostinger (survives deploys), else inject placeholders ===
+$__clerkBridge = [
+  'CLERK_SECRET_KEY' => '__CLERK_SECRET_KEY__',
+  'FIREBASE_PROJECT_ID' => '__FIREBASE_PROJECT_ID__',
+  'FIREBASE_CLIENT_EMAIL' => '__FIREBASE_CLIENT_EMAIL__',
+  'FIREBASE_PRIVATE_KEY_B64' => '__FIREBASE_PRIVATE_KEY_B64__',
+  'ADMIN_EMAIL' => 'sulemanmr551@gmail.com',
+];
+$__clerkConfigFile = __DIR__ . '/clerk-config.php';
+if (is_file($__clerkConfigFile)) {
+  $loaded = require $__clerkConfigFile;
+  if (is_array($loaded)) {
+    $__clerkBridge = array_merge($__clerkBridge, $loaded);
+  }
+}
+define('CLERK_SECRET_KEY', (string) ($__clerkBridge['CLERK_SECRET_KEY'] ?? ''));
+define('FIREBASE_PROJECT_ID', (string) ($__clerkBridge['FIREBASE_PROJECT_ID'] ?? ''));
+define('FIREBASE_CLIENT_EMAIL', (string) ($__clerkBridge['FIREBASE_CLIENT_EMAIL'] ?? ''));
+define('FIREBASE_PRIVATE_KEY_B64', (string) ($__clerkBridge['FIREBASE_PRIVATE_KEY_B64'] ?? ''));
+define('ADMIN_EMAIL', (string) ($__clerkBridge['ADMIN_EMAIL'] ?? 'sulemanmr551@gmail.com'));
 // ================================================
 
 function isConfigured($value) {
@@ -97,12 +111,14 @@ function requireBridgeConfig() {
   if (!isConfigured(CLERK_SECRET_KEY) || strpos(CLERK_SECRET_KEY, 'sk_') !== 0) {
     jsonExit(503, [
       'error' => 'Clerk secret is not configured on Hostinger.',
+      'hint' => 'Add GitHub secret CLERK_SECRET_KEY (sk_live_… / sk_test_…) and redeploy, OR upload public_html/clerk-config.php from clerk-config.sample.php.',
       'code' => 'failed-precondition',
     ]);
   }
   if (!isConfigured(FIREBASE_CLIENT_EMAIL) || !isConfigured(FIREBASE_PRIVATE_KEY_B64) || !isConfigured(FIREBASE_PROJECT_ID)) {
     jsonExit(503, [
       'error' => 'Firebase service account is not configured on Hostinger.',
+      'hint' => 'Add GitHub secret FIREBASE_SERVICE_ACCOUNT (full JSON) and redeploy, or set keys in clerk-config.php.',
       'code' => 'failed-precondition',
     ]);
   }

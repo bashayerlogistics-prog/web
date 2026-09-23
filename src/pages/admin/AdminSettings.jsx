@@ -98,6 +98,7 @@ export default function AdminSettings() {
       await updateBrandingSettings(payload);
       applyBranding(payload);
       await refreshBranding();
+      void publishSite('soft');
       if (!silent) toast.success(t('admin.settings.brandingSaved'));
     } catch {
       toast.error(t('common.error'));
@@ -169,6 +170,9 @@ export default function AdminSettings() {
     setSavingColors(true);
     try {
       await updateBrandingSettings(updated);
+      applyBranding(updated);
+      await refreshBranding();
+      void publishSite('soft');
       toast.success(t('admin.settings.paletteApplied', { name: palette.name }));
     } catch {
       toast.error(t('common.error'));

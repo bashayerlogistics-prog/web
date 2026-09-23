@@ -189,7 +189,19 @@ export function SiteContentProvider({ children }) {
   const { pathname } = useLocation();
   // Price-facing public routes load CMS once (cached). Auth/admin skip Firestore.
   const needsLivePublicContent = pathNeedsPublicCms(pathname);
-  const initialCache = useMemo(() => loadCachedContent(), []);
+  const isAdminPath = Boolean(pathname?.startsWith('/admin'));
+  const mysqlCms = isMysqlCmsEnabled();
+  const initialCache = useMemo(() => {
+    // SuperAdmin + MySQL: never boot from public localStorage (old Firestore flash).
+    if (
+      typeof window !== 'undefined'
+      && window.location.pathname.startsWith('/admin')
+      && isMysqlCmsEnabled()
+    ) {
+      return { snapshot: defaultSiteContentSnapshot(), isFresh: false, fromCache: false };
+    }
+    return loadCachedContent();
+  }, []);
   const initialSnapshot = initialCache.snapshot;
   const hadPersistedCache = initialCache.fromCache;
   const hasFreshCacheRef = useRef(initialCache.isFresh);
@@ -304,6 +316,16 @@ export function SiteContentProvider({ children }) {
       if (isMysqlCmsEnabled()) {
         const home = await mysqlFetchHome();
         const nextCars = Array.isArray(home.vehicles) ? home.vehicles : [];
+        // Cache live branding for splash / next cold start (no broadcast — avoids refresh loops).
+        if (home.branding && typeof home.branding === 'object' && home.branding.primaryColor) {
+          try {
+            window.__bashayerLiveBranding = home.branding;
+            localStorage.setItem('rafiq_branding', JSON.stringify(home.branding));
+            localStorage.setItem('rafiq_branding_at', String(Date.now()));
+          } catch {
+            // ignore
+          }
+        }
         const nextBookingLocations = buildBookingLocationsFromFirestore(
           await mysqlFetchSettings('bookingLocations').catch(() => null),
         );
@@ -587,6 +609,13 @@ export function SiteContentProvider({ children }) {
     void refresh({ silent: true, phase: 'fleet' });
     return undefined;
   }, [needsLivePublicContent, refresh, fleetHydrated]);
+
+  // SuperAdmin always pulls live Hostinger MySQL — never sit on public snapshot.
+  useEffect(() => {
+    if (!isAdminPath || !mysqlCms) return undefined;
+    void refresh({ silent: true, phase: 'full', forceServer: true });
+    return undefined;
+  }, [isAdminPath, mysqlCms, refresh]);
 
   const schedulePublicRefresh = useCallback((phase = 'full') => {
     hasFreshCacheRef.current = false;
@@ -979,36 +1008,17 @@ export function SiteContentProvider({ children }) {
 
 
   const displayFleetRoutes = useMemo(() => {
-
-    if (!carCatalog?.length) return fleetRoutes;
-
-    const byId = Object.fromEntries(carCatalog.map((c) => [c.id, c]));
-
     return fleetRoutes.map((route) => ({
-
       ...route,
-
       vehicles: (route.vehicles || []).map((v) => {
-
         const key = String(v.id || '').split('-')[0];
-
-        const car = byId[key];
-
-        // Product image wins; category/car catalog only fills empty product slots.
-        const resolved = resolveFleetVehicleImage(
-          key,
-          v.image,
-          car?.imageUrl,
-        );
+        // Product image only — category CMS image must not override fleet cards.
+        const resolved = resolveFleetVehicleImage(key, v.image);
         if (!resolved) return v;
-
         return { ...v, image: resolved };
-
       }),
-
     }));
-
-  }, [fleetRoutes, carCatalog]);
+  }, [fleetRoutes]);
 
 
 

@@ -2,26 +2,57 @@ import { doc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from './db';
 import { fsGetDoc } from './reads';
 import { DEFAULT_BRANDING } from '../data/brandingDefaults';
+import {
+  isMysqlCmsEnabled,
+  mysqlFetchSettings,
+  mysqlUpsertSettings,
+  mysqlBumpRevision,
+} from '../api/mysqlApi';
+import { bumpContentRevision } from './content';
 
 function normalizeBranding(data) {
   return {
     ...DEFAULT_BRANDING,
     ...data,
     userFontAr: data?.userFontAr || data?.userFont || DEFAULT_BRANDING.userFontAr,
-    userFontEn: data?.userFontEn || DEFAULT_BRANDING.userFontEn,
+    userFontEn: data?.userFontEn || data?.userFont || DEFAULT_BRANDING.userFontEn,
     logoUrl: String(data?.logoUrl || '').trim() || DEFAULT_BRANDING.logoUrl,
     faviconUrl: String(data?.faviconUrl || '').trim() || DEFAULT_BRANDING.faviconUrl,
   };
 }
 
-export async function getBrandingSettings() {
+async function getBrandingFromFirestore() {
   try {
     const snap = await fsGetDoc(doc(db, 'siteSettings', 'branding'));
-    if (!snap.exists()) return { ...DEFAULT_BRANDING };
+    if (!snap.exists()) return null;
     return normalizeBranding(snap.data());
   } catch {
-    return { ...DEFAULT_BRANDING };
+    return null;
   }
+}
+
+export async function getBrandingSettings() {
+  // MySQL first — new devices / Google profiles get live colors without Firestore lag.
+  if (isMysqlCmsEnabled()) {
+    try {
+      const data = await mysqlFetchSettings('branding');
+      if (data && typeof data === 'object' && (data.primaryColor || data.secondaryColor)) {
+        return normalizeBranding(data);
+      }
+    } catch {
+      // fall through to Firestore
+    }
+  }
+
+  const fromFs = await getBrandingFromFirestore();
+  if (fromFs) {
+    // One-time migrate live Firestore palette → MySQL so cold devices stop flashing defaults.
+    if (isMysqlCmsEnabled()) {
+      void mysqlUpsertSettings('branding', fromFs, { merge: true }).catch(() => {});
+    }
+    return fromFs;
+  }
+  return { ...DEFAULT_BRANDING };
 }
 
 /**
@@ -50,10 +81,41 @@ export function subscribeBrandingSettings(onData) {
 }
 
 export async function updateBrandingSettings(data) {
-  await setDoc(doc(db, 'siteSettings', 'branding'), {
+  const payload = {
     ...data,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Dual-write so Hostinger visitors + Firebase both see the new palette immediately.
+  if (isMysqlCmsEnabled()) {
+    try {
+      await mysqlUpsertSettings('branding', payload, { merge: true });
+      await mysqlBumpRevision();
+    } catch (err) {
+      console.warn('MySQL branding upsert failed:', err?.message || err);
+    }
+  }
+
+  await setDoc(doc(db, 'siteSettings', 'branding'), {
+    ...payload,
     updatedAt: serverTimestamp(),
   }, { merge: true });
+
+  try {
+    await bumpContentRevision();
+  } catch {
+    // ignore
+  }
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('rafiq_branding');
+      localStorage.removeItem('rafiq_branding_at');
+    }
+  } catch {
+    // ignore
+  }
+
   try {
     if (typeof BroadcastChannel !== 'undefined') {
       const channel = new BroadcastChannel('bashayer-site-content');

@@ -272,7 +272,7 @@ export async function addBookingTimelineEntry(bookingId, entry) {
 }
 
 /** In-memory cache — fleet tabs share reads within a short TTL (keep low = fresher UI). */
-const PRODUCTS_CACHE_TTL_MS = 30_000;
+const PRODUCTS_CACHE_TTL_MS = isMysqlCmsEnabled() ? 5_000 : 30_000;
 const productsByTripTypeCache = new Map();
 
 function readProductsCache(tripType) {
@@ -323,12 +323,9 @@ export function sanitizeFirestoreData(data) {
 export async function getAllProducts(maxItems = 1200) {
   const size = Math.max(1, Math.min(1200, Number(maxItems) || 1200));
   if (isMysqlCmsEnabled()) {
-    try {
-      const items = await mysqlFetchPackages({ all: true });
-      return (items || []).slice(0, size);
-    } catch (err) {
-      console.warn('MySQL getAllProducts failed, trying Firestore:', err?.message || err);
-    }
+    // Never fall back to Firestore IndexedDB — that paints yesterday's packages first.
+    const items = await mysqlFetchPackages({ all: true });
+    return (items || []).slice(0, size);
   }
   try {
     const q = query(collection(db, 'packages'), orderBy('sortOrder', 'asc'), limit(size));
@@ -1409,12 +1406,9 @@ function replaceCarNamePrefix(fullName, oldName, newName) {
 
 export async function getAllCars(maxItems = 50) {
   if (isMysqlCmsEnabled()) {
-    try {
-      const items = await mysqlFetchVehicles();
-      return (items || []).slice(0, Math.max(1, Math.min(100, Number(maxItems) || 50)));
-    } catch (err) {
-      console.warn('MySQL getAllCars failed, trying Firestore:', err?.message || err);
-    }
+    // Never fall back to Firestore — SuperAdmin must not flash old vehicle CMS.
+    const items = await mysqlFetchVehicles();
+    return (items || []).slice(0, Math.max(1, Math.min(100, Number(maxItems) || 50)));
   }
   const size = Math.max(1, Math.min(100, Number(maxItems) || 50));
   try {
@@ -1466,12 +1460,14 @@ export async function upsertCar(carId, data) {
 }
 
 /**
- * Update car catalog + push names (and changed image) to every package for that car key.
- * When SuperAdmin changes the catalog image, ALL matching packages get the new image
- * so homepage / Round Trip / fleet cards update together.
+ * Update car catalog + push names to every package for that car key.
+ * Category / Choose Your Car images stay on vehicles only — fleet product images
+ * are independent (edit under Fleet Prices). Opt in with opts.syncImages or
+ * syncCarCatalogImagesToProducts() for a manual fill of empty product slots.
  * @param {object} [opts]
  * @param {() => void | Promise<void>} [opts.onCarSaved] — after vehicles/{id} write
  * @param {boolean} [opts.backgroundSync] — return after car save; sync packages in background
+ * @param {boolean} [opts.syncImages] — rare: also copy catalog image onto matching packages
  * @param {(count: number) => void} [opts.onPackagesSynced]
  */
 export async function updateCarAndSyncPackages(carId, data, previous = {}, opts = {}) {
@@ -1481,8 +1477,9 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}, opts 
   const imageUrl = String(data.imageUrl || '').trim();
   const prevImage = String(previous.imageUrl || '').trim();
   const imageChanged = Boolean(imageUrl && imageUrl !== prevImage);
+  const syncImages = opts.syncImages === true;
 
-  // Hostinger MySQL — one upsert + SQL package image sync (ultra-fast).
+  // Hostinger MySQL — vehicle upsert only (never auto-overwrite package images).
   if (isMysqlCmsEnabled()) {
     await mysqlUpsertVehicle({
       id,
@@ -1496,7 +1493,7 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}, opts 
       sortOrder: Number(data.sortOrder) || 0,
       active: data.active !== false,
       forms: data.forms || { booking: true, instantPrice: true, religiousTours: true },
-      syncPackages: true,
+      syncPackages: syncImages,
     });
     try {
       await opts.onCarSaved?.();
@@ -1550,9 +1547,8 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}, opts 
           carModelAr: nameAr,
           updatedAt: serverTimestamp(),
         };
-        const currentImg = String(p.imageUrl || '').trim();
-        // Catalog image change → push to every package for this car (all public sections).
-        if (imageUrl && (imageChanged || !currentImg || currentImg === prevImage)) {
+        // Images stay independent unless SuperAdmin opts into syncImages.
+        if (syncImages && imageUrl && (imageChanged || !String(p.imageUrl || '').trim() || String(p.imageUrl || '').trim() === prevImage)) {
           payload.imageUrl = imageUrl;
         }
         if (nameEn) {
@@ -1568,7 +1564,7 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}, opts 
     }
 
     invalidateProductsCache();
-    await logActivity('car_synced_packages', { carId: id, count: updated, imageChanged });
+    await logActivity('car_synced_packages', { carId: id, count: updated, imageChanged: syncImages && imageChanged });
     return updated;
   };
 

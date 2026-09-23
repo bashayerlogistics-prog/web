@@ -209,7 +209,7 @@ export default function AdminBookingForms() {
   const [confirm, setConfirm] = useState(null);
   const [successOpen, setSuccessOpen] = useState(false);
   const [products, setProducts] = useState([]);
-  const [carCatalog, setCarCatalog] = useState(() => mergeCarCatalog([]));
+  const [carCatalog, setCarCatalog] = useState([]);
   const [togglingCarId, setTogglingCarId] = useState('');
   const [addingCar, setAddingCar] = useState(false);
 
@@ -243,7 +243,7 @@ export default function AdminBookingForms() {
         setInstantCopy(copyFromInstant(instantData));
         setReligiousCopy(copyFromReligious(religiousData));
         setProducts([...(oneWay || []), ...(roundTrip || []), ...(hourly || [])]);
-        setCarCatalog(mergeCarCatalog(dbCars));
+        setCarCatalog(mergeCarCatalog(Array.isArray(dbCars) ? dbCars : []));
         setOpenSectionId(builtTrip.options[0]?.id || null);
       } catch {
         if (!cancelled) toast.error(t('common.error'));
@@ -424,7 +424,7 @@ export default function AdminBookingForms() {
     try {
       const result = await createCarWithPackages(payload);
       const dbCars = await getAllCars();
-      setCarCatalog(mergeCarCatalog(dbCars));
+      setCarCatalog(mergeCarCatalog(Array.isArray(dbCars) ? dbCars : []));
       await reloadPriceProducts();
       await publishSite();
       toast.success(t('admin.cars.addNewSuccess', { id: result.id, count: result.packagesCreated }));

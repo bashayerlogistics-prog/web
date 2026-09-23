@@ -9,20 +9,24 @@ import {
 } from '../utils/adminDataCache';
 import { withTimeout } from '../utils/withTimeout';
 import { runWithServerReads } from '../firebase/reads';
+import { isMysqlCmsEnabled } from '../api/mysqlApi';
 
-/** Focus/visibility refetch — avoid hammering Firestore while typing. */
+/** Focus/visibility refetch — avoid hammering while typing. */
 const ADMIN_FOCUS_REFETCH_MS = 3 * 60_000;
 
 /**
- * SuperAdmin loader — session memory for instant tab switches,
- * always revalidate from server in background (no localStorage first-paint flash).
+ * SuperAdmin loader.
+ * MySQL mode: never paint session memory first (that was yesterday's / Firestore flash).
+ * Firebase mode: short memory for instant tab switches, then server revalidate.
  */
 export function useAdminDataLoader(loadFn, deps = [], options = {}) {
   const { isAdmin } = useAdminAuth();
+  const mysql = isMysqlCmsEnabled();
   const memoryKey = options.cacheKey || adminCacheKey(deps) || loadFn?.name || 'admin-data';
-  const memoryTtl = options.memoryTtl ?? ADMIN_SESSION_MEMORY_TTL_MS;
+  const memoryTtl = options.memoryTtl ?? (mysql ? 0 : ADMIN_SESSION_MEMORY_TTL_MS);
 
-  const bootMemory = isAdmin ? readAdminMemoryCache(memoryKey, memoryTtl) : null;
+  // MySQL: always wait for Hostinger — no stale memory first paint.
+  const bootMemory = (!mysql && isAdmin) ? readAdminMemoryCache(memoryKey, memoryTtl) : null;
   const [data, setData] = useState(() => bootMemory);
   const [loading, setLoading] = useState(() => bootMemory == null);
   const [refreshing, setRefreshing] = useState(false);
@@ -40,7 +44,7 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
     const fromServer = opts.fromServer ?? opts.bustCache ?? true;
     const requestId = ++requestIdRef.current;
 
-    if (opts.bustCache) {
+    if (opts.bustCache || mysql) {
       clearAdminDataCache(memoryKey);
     }
 
@@ -48,13 +52,14 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
     else if (!hasLoadedRef.current) setLoading(true);
 
     try {
-      const load = () => withTimeout(loadFnRef.current(), 12000, 'admin-data');
-      const result = fromServer
+      const load = () => withTimeout(loadFnRef.current(), mysql ? 15000 : 12000, 'admin-data');
+      // MySQL already hits Hostinger HTTP — skip Firestore server-read wrapper.
+      const result = (!mysql && fromServer)
         ? await runWithServerReads(load)
         : await load();
       if (requestId !== requestIdRef.current) return false;
       lastFetchAtRef.current = Date.now();
-      writeAdminMemoryCache(memoryKey, result);
+      if (!mysql) writeAdminMemoryCache(memoryKey, result);
       startTransition(() => {
         setData(result);
         setError('');
@@ -64,7 +69,7 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
     } catch (err) {
       if (requestId !== requestIdRef.current) return false;
       console.error('Admin data load error:', err);
-      if (!hasLoadedRef.current) {
+      if (!hasLoadedRef.current && !mysql) {
         const cached = readAdminMemoryCache(memoryKey, Infinity);
         if (cached != null) {
           setData(cached);
@@ -73,7 +78,7 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
           return true;
         }
       }
-      setError(err.code || 'load-failed');
+      setError(err.code || err.message || 'load-failed');
       return false;
     } finally {
       if (requestId === requestIdRef.current) {
@@ -81,7 +86,7 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
         setRefreshing(false);
       }
     }
-  }, [isAdmin, memoryKey]);
+  }, [isAdmin, memoryKey, mysql]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -92,12 +97,19 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
       return;
     }
 
+    if (mysql) {
+      hasLoadedRef.current = false;
+      setData(null);
+      setLoading(true);
+      refresh({ silent: false, fromServer: true, bustCache: true });
+      return;
+    }
+
     const mem = readAdminMemoryCache(memoryKey, memoryTtl);
     if (mem != null) {
       setData(mem);
       hasLoadedRef.current = true;
       setLoading(false);
-      // Background revalidate — UI stays smooth
       refresh({ silent: true, fromServer: true });
       return;
     }
@@ -106,7 +118,7 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
     setData(null);
     refresh({ silent: false, fromServer: true, bustCache: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, memoryKey, ...deps]);
+  }, [isAdmin, memoryKey, mysql, ...deps]);
 
   useEffect(() => {
     if (!isAdmin) return undefined;

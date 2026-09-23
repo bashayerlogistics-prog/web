@@ -224,7 +224,7 @@ export default function AdminHomeFleet({
     { cacheKey: 'admin:home-fleet-v3' },
   );
 
-  const [carCatalog, setCarCatalog] = useState(() => mergeCarCatalog([]));
+  const [carCatalog, setCarCatalog] = useState([]);
   const [localProducts, setLocalProducts] = useState(null);
   const [localShowcase, setLocalShowcase] = useState(null);
   const [localCities, setLocalCities] = useState([]);
@@ -242,7 +242,7 @@ export default function AdminHomeFleet({
     if (tripBundles?.products) setLocalProducts(tripBundles.products);
     if (tripBundles?.showcase) setLocalShowcase(tripBundles.showcase);
     if (typeof tripBundles?.sectionActive === 'boolean') setSectionOn(tripBundles.sectionActive);
-    if (tripBundles?.cars) setCarCatalog(mergeCarCatalog(tripBundles.cars));
+    if (Array.isArray(tripBundles?.cars)) setCarCatalog(mergeCarCatalog(tripBundles.cars));
     if (tripBundles?.locations) {
       const built = cloneBookingLocations(tripBundles.locations);
       setLocalCities(built.cities);

@@ -4,7 +4,7 @@ const ROUTE_LOADERS = {
   '/login': () => import('../pages/Login'),
   '/register': () => import('../pages/Register'),
   '/forgot-password': () => import('../pages/ForgotPassword'),
-  '/cart': () => import('../pages/Cart'),
+  // /cart is eager in App.jsx — no chunk prefetch needed
   '/track': () => import('../pages/TrackBooking'),
   '/dashboard': () => import('../pages/Dashboard'),
   '/checkout': () => import('../pages/Checkout'),

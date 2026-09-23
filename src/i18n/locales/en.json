@@ -691,18 +691,19 @@
       "backup": "Backup & Migration"
     },
     "categories": {
-      "hubSubtitle": "Edit category cards shown on the homepage.",
-      "detailSubtitle": "Edit this category name, image & passengers.",
+      "hubSubtitle": "Edit Choose Your Car cards on the homepage. Images here do not change Fleet Prices.",
+      "detailSubtitle": "Category image for Choose Your Car only — Fleet Prices products keep their own photos.",
       "openPage": "Open category →",
       "backToList": "All categories",
       "notFound": "Category not found",
       "nameEn": "Category name (EN) — sidebar & homepage",
-      "nameAr": "Category name (AR) — sidebar & homepage"
+      "nameAr": "Category name (AR) — sidebar & homepage",
+      "image": "Category image (Choose Your Car)"
     },
     "cars": {
-      "subtitle": "Edit fleet car name, model & image for the whole site.",
-      "hubSubtitle": "Open a car to edit name, model & image.",
-      "detailSubtitle": "Edit this car — syncs to products & booking.",
+      "subtitle": "Edit car name, model & catalog image (Choose Your Car). Fleet product photos are edited under Fleet Prices.",
+      "hubSubtitle": "Open a car to edit name, model & catalog image.",
+      "detailSubtitle": "Updates names on booking; catalog image does not overwrite Fleet Prices product photos.",
       "openPage": "Open car page →",
       "backToList": "All cars",
       "notFound": "Car not found",
@@ -719,7 +720,7 @@
       "modelEn": "Model (EN)",
       "modelAr": "Model (AR)",
       "passengers": "Passengers",
-      "image": "Car image",
+      "image": "Catalog image (Choose Your Car — not Fleet Prices)",
       "save": "Save — update site & database",
       "saving": "Saving…",
       "saved": "Car updated — synced to {{count}} products",

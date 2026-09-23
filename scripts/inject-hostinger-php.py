@@ -39,6 +39,12 @@ def inject_file(path: pathlib.Path, *, moyasar=False, clerk=False):
         text = repl(text, '__FIREBASE_CLIENT_EMAIL__', client_email)
         text = repl(text, '__FIREBASE_PRIVATE_KEY_B64__', pk_b64)
     if clerk:
+        if not clerk_secret or not clerk_secret.startswith('sk_'):
+            raise SystemExit(
+                'ERROR: GitHub secret CLERK_SECRET_KEY is missing or invalid.\n'
+                'Add Settings → Secrets → Actions → CLERK_SECRET_KEY = sk_live_… or sk_test_…\n'
+                'Or upload public_html/clerk-config.php on Hostinger (see clerk-config.sample.php).'
+            )
         text = repl(text, '__CLERK_SECRET_KEY__', clerk_secret)
     path.write_text(text, encoding='utf-8')
 

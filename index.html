@@ -6,7 +6,7 @@
     <script>
       /* Hard wipe stale CMS / Firebase caches BEFORE React or Firestore boot. */
       (function () {
-        var BUILD = '20260923h';
+        var BUILD = '20260923j';
         var BUILD_KEY = 'bashayer-app-build';
         try {
           if (localStorage.getItem(BUILD_KEY) === BUILD) return;
@@ -125,6 +125,56 @@
 
         applySplashBranding();
 
+        // Live branding ASAP — new Google profiles / devices have no localStorage.
+        // Must finish before splash hides so visitors never see default purple then jump.
+        (function fetchLiveBrandingEarly() {
+          var urls = [
+            '/api/index.php?action=settings&id=branding',
+            'https://bashayer-logistics.com/api/index.php?action=settings&id=branding',
+          ];
+          var done = false;
+          function applyLive(data) {
+            if (done || !data || typeof data !== 'object') return;
+            var payload = data.data && typeof data.data === 'object' ? data.data : data;
+            if (!payload.primaryColor && !payload.secondaryColor) return;
+            done = true;
+            try {
+              window.__bashayerLiveBranding = payload;
+              localStorage.setItem('rafiq_branding', JSON.stringify(payload));
+              localStorage.setItem('rafiq_branding_at', String(Date.now()));
+            } catch (e) { /* ignore */ }
+            if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(payload.primaryColor || '')) {
+              // Re-run splash vars with live palette
+              try {
+                localStorage.setItem('rafiq_branding', JSON.stringify(payload));
+              } catch (e2) { /* ignore */ }
+              applySplashBranding();
+            }
+            if (typeof window.__bashayerOnBrandingReady === 'function') {
+              window.__bashayerOnBrandingReady();
+            }
+            window.__bashayerBrandingReady = true;
+          }
+          function tryUrl(i) {
+            if (i >= urls.length || done) {
+              window.__bashayerBrandingReady = true;
+              if (typeof window.__bashayerOnBrandingReady === 'function') {
+                window.__bashayerOnBrandingReady();
+              }
+              return;
+            }
+            fetch(urls[i], { credentials: 'omit', cache: 'no-store' })
+              .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+              .then(function (json) {
+                if (json && json.ok === false) throw new Error('api');
+                applyLive(json);
+                if (!done) tryUrl(i + 1);
+              })
+              .catch(function () { tryUrl(i + 1); });
+          }
+          tryUrl(0);
+        })();
+
         var fonts = {
           ar: ['lang-font-ar', 'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap'],
           en: ['lang-font-en', 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap'],
@@ -234,16 +284,28 @@
           if (splash) splash.classList.add('is-hidden');
           document.body.classList.remove('splash-active');
         }
+        function hideWhenReady() {
+          // Prefer live branding before first paint for cold profiles.
+          if (window.__bashayerBrandingReady || localStorage.getItem('rafiq_branding')) {
+            requestAnimationFrame(hideSplash);
+            return;
+          }
+          window.__bashayerOnBrandingReady = function () {
+            requestAnimationFrame(hideSplash);
+          };
+          // Hard cap — never hang splash offline.
+          setTimeout(hideSplash, 900);
+        }
         var root = document.getElementById('root');
         if (root) {
           new MutationObserver(function (_m, observer) {
             if (root.childElementCount > 0) {
-              requestAnimationFrame(hideSplash);
+              hideWhenReady();
               observer.disconnect();
             }
           }).observe(root, { childList: true });
         }
-        setTimeout(hideSplash, 1600);
+        setTimeout(hideSplash, 1800);
       })();
     </script>
     <script type="module" src="/src/main.jsx"></script>

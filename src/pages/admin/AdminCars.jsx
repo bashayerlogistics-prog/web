@@ -303,7 +303,11 @@ function AdminCarDetail({
             onChange={(url) => setField('imageUrl', url)}
             folder="vehicles"
             allowUrl
-            label={t('admin.cars.image')}
+            label={
+              isCategories
+                ? t('admin.categories.image')
+                : t('admin.cars.image')
+            }
           />
         </div>
 
@@ -367,7 +371,11 @@ export default function AdminCars() {
   const [nameConfirm, setNameConfirm] = useState(null);
 
   const { data: dbCars, loading, refresh } = useAdminDataLoader(getAllCars);
-  const cars = useMemo(() => mergeCarCatalog(dbCars), [dbCars]);
+  // While loading, do NOT merge default catalog (old bundled WebP flash).
+  const cars = useMemo(() => {
+    if (!Array.isArray(dbCars)) return [];
+    return mergeCarCatalog(dbCars);
+  }, [dbCars]);
   const atMaxCars = liveFleetCarCount(cars) >= MAX_FLEET_CARS;
 
   useEffect(() => {

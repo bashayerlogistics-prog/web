@@ -7,7 +7,7 @@ import {
 import {
   getVehicleSlug,
   getVehicleTypeFeatures,
-  getCarImage,
+  resolveFleetVehicleImage,
   PICKUP_LOCATIONS,
   DESTINATION_LOCATIONS,
   PASSENGER_OPTIONS,
@@ -54,7 +54,7 @@ export default function VehicleDetail() {
   const features = getVehicleTypeFeatures(vehicle.id);
   const displayName = shortName?.[lang] || shortName?.ar || vehicle.name[lang];
   const routeTitle = route.title;
-  const vehicleImage = vehicle.image || getCarImage(vehicle.id);
+  const vehicleImage = resolveFleetVehicleImage(vehicle.id, vehicle.image);
 
   const pickupLabel = PICKUP_LOCATIONS.find((p) => p.id === pickupId)?.label[lang];
   const destinationLabel = DESTINATION_LOCATIONS.find((d) => d.id === destinationId)?.label[lang];

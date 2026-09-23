@@ -69,12 +69,14 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **New re
 **Customer login bridge (Hostinger PHP, no Blaze)**
 
 | Secret | Notes |
-|--------|--------|
-| `CLERK_SECRET_KEY` | Clerk Dashboard → API Keys → Secret key (`sk_test_` / `sk_live_`) |
+|--------|-------|
+| `CLERK_SECRET_KEY` | Clerk Dashboard → API Keys → **Secret key** (`sk_test_` / `sk_live_`) — **required** or login bridge returns 503 |
 | `FIREBASE_SERVICE_ACCOUNT` | same JSON as Moyasar (shared) |
 | `VITE_CLERK_EXCHANGE_URL` | optional; defaults to `https://YOUR-DOMAIN/clerk-exchange.php` |
 
-Without `CLERK_SECRET_KEY` + `FIREBASE_SERVICE_ACCOUNT`, Clerk OTP still works but `/dashboard` will not open.
+Without `CLERK_SECRET_KEY` + `FIREBASE_SERVICE_ACCOUNT`, Clerk OTP may work but Firebase session / `/dashboard` will fail with *"Clerk secret is not configured on Hostinger."*
+
+**Quick fix without waiting for GitHub:** upload `clerk-config.php` to Hostinger `public_html` (copy from `hostinger/clerk-config.sample.php`, fill `sk_…` + Firebase SA fields). That file is not overwritten by deploy.
 
 **Firebase (rules + functions)**
 

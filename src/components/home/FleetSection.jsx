@@ -5,7 +5,7 @@ import { ShoppingCart, MessageCircle, Info, Users, Check } from 'lucide-react';
 import {
   getVehicleSlug,
   getShortVehicleName,
-  getCarImage,
+  resolveFleetVehicleImage,
 } from '../../data/staticData';
 import { buildHomeFleetSections, HOME_FLEET_PAIRS } from '../../data/adminFleetServices';
 import { useSiteContent } from '../../context/SiteContentContext';
@@ -24,8 +24,8 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t, priority = false }
   const shortName = getShortVehicleName(vehicle.id, lang);
   const slug = getVehicleSlug(vehicle.id, routeId);
   const routeLabel = routeTitle[lang] || routeTitle.ar;
-  // Live package/CMS image first — bundled fallback only when empty.
-  const cardImage = vehicle.image || getCarImage(vehicle.id) || '';
+  // Product/package image only — never inherit Choose Your Car / category CMS.
+  const cardImage = resolveFleetVehicleImage(vehicle.id, vehicle.image) || '';
   const imageBust = String(
     vehicle.updatedAt?.seconds || vehicle.updatedAt || vehicle.image || '',
   );

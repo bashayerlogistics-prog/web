@@ -188,15 +188,20 @@ if ($action === 'home') {
   $vehicles = $pdo->query('SELECT id, name_en, name_ar, image_url, passengers, vip, sort_order, forms_json, updated_at FROM vehicles WHERE active = 1 ORDER BY sort_order ASC')->fetchAll();
   $packages = $pdo->query('SELECT id, route_id, vehicle_key, fleet_service_id, trip_type, name_en, name_ar, image_url, price, original_price, pickup_price, dropoff_price, hourly_rate, hours, passengers, hide_price, sort_order, data_json, updated_at FROM packages WHERE active = 1 ORDER BY sort_order ASC')->fetchAll();
   $homepage = null;
+  $branding = null;
   $stmt = $pdo->prepare('SELECT data_json FROM site_settings WHERE id = ?');
   $stmt->execute(['homepage']);
   $row = $stmt->fetch();
   if ($row) $homepage = json_decode($row['data_json'], true);
+  $stmt->execute(['branding']);
+  $row = $stmt->fetch();
+  if ($row) $branding = json_decode($row['data_json'], true);
   $rev = (int) $pdo->query('SELECT revision FROM content_revision WHERE id = 1')->fetchColumn();
   json_out([
     'ok' => true,
     'revision' => $rev,
     'homepage' => $homepage,
+    'branding' => $branding,
     'vehicles' => array_map(function ($r) {
       return [
         'id' => $r['id'],

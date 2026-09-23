@@ -8,7 +8,6 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
 import { usePaymentSettings } from '../hooks/usePaymentSettings';
-import { getUserProfile } from '../firebase/bookings';
 import { DEFAULT_CURRENCY, PAYMENT_METHODS } from '../data/paymentDefaults';
 import {
   buildCheckoutWhatsAppMessage,
@@ -31,6 +30,7 @@ export default function Cart() {
   const { user, clerkUser, isClerkSignedIn } = useAuth();
   const { items, removeItem, clearCart, cartCount, cartTotal } = useCart();
   const { toast } = useToast();
+  // Payment methods paint from defaults/cache; WhatsApp number resolved on submit.
   const { settings: paymentSettings } = usePaymentSettings();
 
   const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress
@@ -62,25 +62,34 @@ export default function Cart() {
     if (clerkPhone) setPhone((current) => current || clerkPhone);
   }, [user, clerkEmail, clerkName, clerkPhone]);
 
+  // Profile fill is nice-to-have — never block first paint on Firestore.
   useEffect(() => {
     if (!user?.uid) return undefined;
     let cancelled = false;
-    getUserProfile(user.uid)
-      .then((profile) => {
-        if (cancelled || !profile) return;
-        if (profile.displayName) setName((current) => current || profile.displayName);
-        if (profile.email) setEmail((current) => current || profile.email);
-        if (profile.phone) setPhone((current) => current || profile.phone);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    const idle = window.requestIdleCallback || ((cb) => window.setTimeout(cb, 600));
+    const id = idle(() => {
+      import('../firebase/bookings')
+        .then(({ getUserProfile }) => getUserProfile(user.uid))
+        .then((profile) => {
+          if (cancelled || !profile) return;
+          if (profile.displayName) setName((current) => current || profile.displayName);
+          if (profile.email) setEmail((current) => current || profile.email);
+          if (profile.phone) setPhone((current) => current || profile.phone);
+        })
+        .catch(() => {});
+    });
+    return () => {
+      cancelled = true;
+      if (window.cancelIdleCallback) window.cancelIdleCallback(id);
+      else window.clearTimeout(id);
+    };
   }, [user?.uid]);
 
   /* Warm checkout chunks only when cart has items */
   useEffect(() => {
     if (items.length === 0) return undefined;
     const idle = window.requestIdleCallback
-      || ((cb) => window.setTimeout(cb, 400));
+      || ((cb) => window.setTimeout(cb, 800));
     const id = idle(() => {
       import('../firebase/payment').catch(() => {});
       import('../components/ui/MoyasarCheckoutForm').catch(() => {});

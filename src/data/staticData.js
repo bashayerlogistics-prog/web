@@ -504,18 +504,18 @@ export function toMillis(value) {
 }
 
 /**
- * Public fleet card image — SuperAdmin product upload wins.
- * Category / car catalog / bundled art only fill empty product slots.
+ * Public fleet card image — product upload only.
+ * Category / Choose Your Car (vehicles.imageUrl) stays separate; empty slots
+ * use bundled art, never the live category CMS image.
  */
 export function resolveFleetVehicleImage(
   carKey,
   productImageUrl,
-  carImageUrl,
+  _carImageUrl,
 ) {
   const key = String(carKey || '').split('-')[0];
   const productImg = isUsableImageUrl(productImageUrl) ? String(productImageUrl).trim() : '';
-  const carImg = isUsableImageUrl(carImageUrl) ? String(carImageUrl).trim() : '';
-  return preferBundledCarImage(key, productImg || carImg);
+  return preferBundledCarImage(key, productImg);
 }
 
 /** Resolve product/car thumb with local fallback for admin tables. */
