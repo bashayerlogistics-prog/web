@@ -24,6 +24,16 @@ import { normalizeFleetShowcase } from '../data/adminFleetServices';
 import { getDefaultProducts, getDefaultServices, getDefaultBlogs } from '../data/contentSeeds';
 import { getDefaultCarCatalog, isPlaceholderSocialUrl, BOOKING_CAR_TYPES } from '../data/staticData';
 import { mergeCarCatalog, liveFleetCarCount, MAX_FLEET_CARS } from '../utils/carCatalogHelpers';
+import {
+  isMysqlCmsEnabled,
+  mysqlFetchVehicles,
+  mysqlFetchPackages,
+  mysqlFetchSettings,
+  mysqlUpsertVehicle,
+  mysqlUpsertPackage,
+  mysqlDeletePackage,
+  mysqlUpsertSettings,
+} from '../api/mysqlApi';
 
 export async function upsertUserDocument(userId, data) {
   await setDoc(doc(db, 'users', userId), { ...data, updatedAt: serverTimestamp() }, { merge: true });
@@ -312,6 +322,14 @@ export function sanitizeFirestoreData(data) {
 // Products / Packages
 export async function getAllProducts(maxItems = 1200) {
   const size = Math.max(1, Math.min(1200, Number(maxItems) || 1200));
+  if (isMysqlCmsEnabled()) {
+    try {
+      const items = await mysqlFetchPackages({ all: true });
+      return (items || []).slice(0, size);
+    } catch (err) {
+      console.warn('MySQL getAllProducts failed, trying Firestore:', err?.message || err);
+    }
+  }
   try {
     const q = query(collection(db, 'packages'), orderBy('sortOrder', 'asc'), limit(size));
     const snapshot = await getDocs(q);
@@ -328,8 +346,18 @@ export async function getProductsByTripType(tripType) {
   if (cached) return cached;
 
   let result;
-  if (!tripType) {
-    result = await getAllProducts();
+  if (!tripType || isMysqlCmsEnabled()) {
+    const all = await getAllProducts(tripType ? 1200 : undefined);
+    result = tripType
+      ? all.filter((p) => {
+          if (p.tripType === tripType) return true;
+          const rid = String(p.routeId || '');
+          if (tripType === 'round_trip') return rid.startsWith('rt-');
+          if (tripType === 'hourly') return rid.startsWith('hr-');
+          if (tripType === 'one_way') return rid.startsWith('ow-');
+          return false;
+        })
+      : all;
   } else {
     try {
       const q = query(
@@ -360,6 +388,15 @@ export async function getProductsByTripType(tripType) {
 
 export async function createProduct(data) {
   await waitForAdminAuth();
+  if (isMysqlCmsEnabled()) {
+    const res = await mysqlUpsertPackage({
+      ...data,
+      active: data.active ?? true,
+    });
+    invalidateProductsCache();
+    await logActivity('product_created', { productId: res.id });
+    return res.id;
+  }
   const payload = sanitizeFirestoreData({
     ...data,
     active: data.active ?? true,
@@ -376,6 +413,12 @@ export async function updateProduct(productId, data) {
   await waitForAdminAuth();
   const id = String(productId || '').trim();
   if (!id) throw new Error('missing-product-id');
+  if (isMysqlCmsEnabled()) {
+    await mysqlUpsertPackage({ ...data, id });
+    invalidateProductsCache();
+    await logActivity('product_updated', { productId: id });
+    return;
+  }
   const payload = sanitizeFirestoreData({ ...data, updatedAt: serverTimestamp() });
   await updateDoc(doc(db, 'packages', id), payload);
   invalidateProductsCache();
@@ -384,6 +427,12 @@ export async function updateProduct(productId, data) {
 
 export async function deleteProduct(productId) {
   await waitForAdminAuth();
+  if (isMysqlCmsEnabled()) {
+    await mysqlDeletePackage(productId);
+    invalidateProductsCache();
+    await logActivity('product_deleted', { productId });
+    return;
+  }
   await deleteDoc(doc(db, 'packages', productId));
   invalidateProductsCache();
   await logActivity('product_deleted', { productId });
@@ -392,6 +441,27 @@ export async function deleteProduct(productId) {
 /** Apply Excel bulk price rows. Skips empty prices. Publishes via caller. */
 export async function applyBulkFleetPrices({ updates = [], creates = [] }) {
   await waitForAdminAuth();
+  if (isMysqlCmsEnabled()) {
+    let updated = 0;
+    let created = 0;
+    const concurrency = 8;
+    const runChunk = async (items, fn) => {
+      for (let i = 0; i < items.length; i += concurrency) {
+        await Promise.all(items.slice(i, i + concurrency).map(fn));
+      }
+    };
+    await runChunk(updates, async (item) => {
+      await mysqlUpsertPackage({ id: item.id, ...item.patch });
+      updated += 1;
+    });
+    await runChunk(creates, async (payload) => {
+      await mysqlUpsertPackage({ ...payload, active: payload.active ?? true });
+      created += 1;
+    });
+    invalidateProductsCache();
+    await logActivity('prices_bulk_updated', { updated, created });
+    return { updated, created };
+  }
   let updated = 0;
   let created = 0;
   const queue = [
@@ -1116,6 +1186,13 @@ export async function updateBookingTripTypesSettings(data) {
 }
 
 export async function getBookingLocationsSettings() {
+  if (isMysqlCmsEnabled()) {
+    try {
+      return await mysqlFetchSettings('bookingLocations');
+    } catch (err) {
+      console.warn('MySQL bookingLocations failed:', err?.message || err);
+    }
+  }
   try {
     const snap = await getDoc(doc(db, 'siteSettings', 'bookingLocations'));
     if (!snap.exists()) return null;
@@ -1128,6 +1205,11 @@ export async function getBookingLocationsSettings() {
 export async function updateBookingLocationsSettings(data) {
   const cities = Array.isArray(data?.cities) ? data.cities : [];
   const routes = Array.isArray(data?.routes) ? data.routes : [];
+  if (isMysqlCmsEnabled()) {
+    await mysqlUpsertSettings('bookingLocations', { cities, routes });
+    await logActivity('booking_locations_updated', { cities: cities.length, routes: routes.length });
+    return;
+  }
   await setDoc(doc(db, 'siteSettings', 'bookingLocations'), {
     cities,
     routes,
@@ -1156,12 +1238,25 @@ export async function updateReligiousToursSettings(data) {
 
 // Homepage sections visibility
 export async function getAdminHomeSections() {
+  if (isMysqlCmsEnabled()) {
+    try {
+      const home = await mysqlFetchSettings('homepage');
+      return mergeHomeSections(home?.sections || {});
+    } catch (err) {
+      console.warn('MySQL homepage sections failed:', err?.message || err);
+    }
+  }
   return fetchHomeSections();
 }
 
 export async function updateHomeSection(sectionId, active) {
-  const current = await fetchHomeSections();
+  const current = await getAdminHomeSections();
   const sections = { ...current, [sectionId]: { ...current[sectionId], active } };
+  if (isMysqlCmsEnabled()) {
+    await mysqlUpsertSettings('homepage', { sections }, { merge: true });
+    await logActivity('home_section_updated', { sectionId, active });
+    return sections;
+  }
   await setDoc(doc(db, 'siteSettings', 'homepage'), {
     sections,
     updatedAt: serverTimestamp(),
@@ -1172,6 +1267,11 @@ export async function updateHomeSection(sectionId, active) {
 
 export async function updateAllHomeSections(sections) {
   const merged = mergeHomeSections(sections);
+  if (isMysqlCmsEnabled()) {
+    await mysqlUpsertSettings('homepage', { sections: merged }, { merge: true });
+    await logActivity('home_sections_bulk_updated', {});
+    return merged;
+  }
   await setDoc(doc(db, 'siteSettings', 'homepage'), {
     sections: merged,
     updatedAt: serverTimestamp(),
@@ -1181,13 +1281,26 @@ export async function updateAllHomeSections(sections) {
 }
 
 export async function getAdminHomeFleetShowcase() {
+  if (isMysqlCmsEnabled()) {
+    try {
+      const home = await mysqlFetchSettings('homepage');
+      return normalizeFleetShowcase(home?.fleetShowcase);
+    } catch (err) {
+      console.warn('MySQL fleetShowcase failed:', err?.message || err);
+    }
+  }
   return fetchHomeFleetShowcase();
 }
 
 export async function updateHomeFleetShowcase(patch) {
   await waitForAdminAuth();
-  const current = await fetchHomeFleetShowcase();
+  const current = await getAdminHomeFleetShowcase();
   const next = normalizeFleetShowcase({ ...current, ...patch });
+  if (isMysqlCmsEnabled()) {
+    await mysqlUpsertSettings('homepage', { fleetShowcase: next }, { merge: true });
+    await logActivity('home_fleet_showcase_updated', {});
+    return next;
+  }
   await setDoc(doc(db, 'siteSettings', 'homepage'), sanitizeFirestoreData({
     fleetShowcase: next,
     updatedAt: serverTimestamp(),
@@ -1295,6 +1408,14 @@ function replaceCarNamePrefix(fullName, oldName, newName) {
 }
 
 export async function getAllCars(maxItems = 50) {
+  if (isMysqlCmsEnabled()) {
+    try {
+      const items = await mysqlFetchVehicles();
+      return (items || []).slice(0, Math.max(1, Math.min(100, Number(maxItems) || 50)));
+    } catch (err) {
+      console.warn('MySQL getAllCars failed, trying Firestore:', err?.message || err);
+    }
+  }
   const size = Math.max(1, Math.min(100, Number(maxItems) || 50));
   try {
     const q = query(collection(db, 'vehicles'), orderBy('sortOrder', 'asc'), limit(size));
@@ -1311,6 +1432,25 @@ export async function getAllCars(maxItems = 50) {
 export async function upsertCar(carId, data) {
   const id = String(carId || '').trim();
   if (!id) throw new Error('carId required');
+  if (isMysqlCmsEnabled()) {
+    await mysqlUpsertVehicle({
+      id,
+      nameEn: data.nameEn || '',
+      nameAr: data.nameAr || '',
+      modelEn: data.modelEn || data.nameEn || '',
+      modelAr: data.modelAr || data.nameAr || '',
+      imageUrl: data.imageUrl || '',
+      passengers: Number(data.passengers) || 4,
+      vip: Boolean(data.vip),
+      sortOrder: Number(data.sortOrder) || 0,
+      active: data.active !== false,
+      forms: data.forms || { booking: true, instantPrice: true, religiousTours: true },
+      syncPackages: false,
+      ...data,
+    });
+    await logActivity('car_updated', { carId: id });
+    return id;
+  }
   await setDoc(
     doc(db, 'vehicles', id),
     {
@@ -1341,6 +1481,35 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}, opts 
   const imageUrl = String(data.imageUrl || '').trim();
   const prevImage = String(previous.imageUrl || '').trim();
   const imageChanged = Boolean(imageUrl && imageUrl !== prevImage);
+
+  // Hostinger MySQL — one upsert + SQL package image sync (ultra-fast).
+  if (isMysqlCmsEnabled()) {
+    await mysqlUpsertVehicle({
+      id,
+      nameEn,
+      nameAr,
+      modelEn: data.modelEn || nameEn,
+      modelAr: data.modelAr || nameAr,
+      imageUrl,
+      passengers: Number(data.passengers) || 4,
+      vip: Boolean(data.vip),
+      sortOrder: Number(data.sortOrder) || 0,
+      active: data.active !== false,
+      forms: data.forms || { booking: true, instantPrice: true, religiousTours: true },
+      syncPackages: true,
+    });
+    try {
+      await opts.onCarSaved?.();
+    } catch (err) {
+      console.warn('onCarSaved after MySQL car upsert failed:', err?.code || err?.message || err);
+    }
+    try {
+      opts.onPackagesSynced?.(0);
+    } catch {
+      // ignore
+    }
+    return 0;
+  }
 
   await upsertCar(id, {
     nameEn,
@@ -1516,9 +1685,16 @@ export async function createCarWithPackages(data) {
     throw new Error('Car ID must be lowercase letters, numbers, and hyphens only.');
   }
 
-  const existing = await getDoc(doc(db, 'vehicles', id));
-  if (existing.exists()) {
-    throw new Error('A car with this ID already exists.');
+  if (isMysqlCmsEnabled()) {
+    const cars = await getAllCars();
+    if (cars.some((c) => String(c.id).toLowerCase() === id)) {
+      throw new Error('A car with this ID already exists.');
+    }
+  } else {
+    const existing = await getDoc(doc(db, 'vehicles', id));
+    if (existing.exists()) {
+      throw new Error('A car with this ID already exists.');
+    }
   }
 
   const catalog = mergeCarCatalog(await getAllCars());

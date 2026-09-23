@@ -9,12 +9,12 @@ import {
   softInvalidateSiteContentCache,
 } from '../utils/siteContentRefresh';
 import { purgeClientSessionCaches } from '../utils/purgeClientSessionCaches';
+import { isMysqlCmsEnabled, mysqlBumpRevision } from '../api/mysqlApi';
 
 /**
  * Publish site content after SuperAdmin edits.
- * Soft (default): mark dirty + revision bump + non-blocking fleet refresh
- * so Save buttons return instantly (no 1200-package hang).
- * Full: wipe caches + await site refresh (Settings → Clear cache).
+ * MySQL mode: bump Hostinger revision + soft refresh (ultra-fast).
+ * Firebase mode: soft invalidate + non-blocking fleet refresh.
  */
 export function usePublishSiteContent() {
   const { refresh } = useSiteContent();
@@ -27,11 +27,11 @@ export function usePublishSiteContent() {
     if (mode === 'soft') {
       softInvalidateSiteContentCache();
       try {
-        await bumpContentRevision();
+        if (isMysqlCmsEnabled()) await mysqlBumpRevision();
+        else await bumpContentRevision();
       } catch (err) {
         console.warn('Content revision bump failed:', err?.code || err?.message || err);
       }
-      // Fire-and-forget — never block SuperAdmin Save on full fleet fetch.
       void refresh({ silent: true, phase: 'fleet', forceServer: true }).catch((err) => {
         console.warn('Fleet refresh after publish failed:', err?.code || err?.message || err);
       });
@@ -42,7 +42,8 @@ export function usePublishSiteContent() {
     clearSiteContentCache();
 
     try {
-      await bumpContentRevision();
+      if (isMysqlCmsEnabled()) await mysqlBumpRevision();
+      else await bumpContentRevision();
     } catch (err) {
       console.warn('Content revision bump failed:', err?.code || err?.message || err);
     }

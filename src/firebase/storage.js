@@ -5,6 +5,7 @@ import {
   DEFAULT_IMAGE_MAX_KB,
   SOURCE_IMAGE_MAX_MB,
 } from '../utils/compressImage';
+import { isMysqlCmsEnabled, uploadToHostinger } from '../api/mysqlApi';
 
 /** Kept for UI hints — video file upload is disabled (ImgBB images only). */
 export const VIDEO_MAX_MB = 100;
@@ -29,11 +30,7 @@ function isNetworkFetchError(err) {
 }
 
 /**
- * Images only → compress, then Firebase Storage (reliable on LAN).
- * ImgBB used as secondary when Firebase rejects (rules / not signed in).
- * @param {File} file
- * @param {string} [folder]
- * @param {{ maxSizeKB?: number }} [opts]
+ * Images only → Hostinger (MySQL mode) first, else Firebase / ImgBB.
  */
 export async function uploadMedia(file, folder = 'uploads', opts = {}) {
   if (isVideoFile(file)) {
@@ -65,7 +62,14 @@ export async function uploadMedia(file, folder = 'uploads', opts = {}) {
     throw err;
   }
 
-  // Prefer Firebase — works when ImgBB is blocked (common on LAN / KSA networks).
+  if (isMysqlCmsEnabled()) {
+    try {
+      return await uploadToHostinger(compressed, folder || 'cms');
+    } catch (hostErr) {
+      console.warn('Hostinger upload failed, falling back:', hostErr?.message || hostErr);
+    }
+  }
+
   try {
     return await uploadToFirebaseStorage(compressed, folder);
   } catch (firebaseErr) {

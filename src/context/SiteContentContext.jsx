@@ -87,7 +87,7 @@ import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
 
 import { DEFAULT_TRAVEL_RESERVATIONS } from '../data/travelReservations';
 
-import { DEFAULT_HOME_SECTIONS, isSectionActive } from '../data/homeSections';
+import { DEFAULT_HOME_SECTIONS, isSectionActive, mergeHomeSections } from '../data/homeSections';
 import { emptyFleetShowcase, normalizeFleetShowcase } from '../data/adminFleetServices';
 
 import { readLocalCache, createThrottledCacheWriter } from '../utils/localCache';
@@ -125,6 +125,7 @@ import {
   clearFirebaseIndexedDatabases,
 
 } from '../utils/siteContentRefresh';
+import { isMysqlCmsEnabled, mysqlFetchHome, mysqlFetchCollection, mysqlFetchSettings } from '../api/mysqlApi';
 
 
 
@@ -299,7 +300,94 @@ export function SiteContentProvider({ children }) {
 
     const execute = async () => {
     try {
-      // Phase 1a — fleet/categories ONLY (unblocks gray skeletons ASAP).
+      // ── Hostinger MySQL ultra-fast path (one home call) ──
+      if (isMysqlCmsEnabled()) {
+        const home = await mysqlFetchHome();
+        const nextCars = Array.isArray(home.vehicles) ? home.vehicles : [];
+        const nextBookingLocations = buildBookingLocationsFromFirestore(
+          await mysqlFetchSettings('bookingLocations').catch(() => null),
+        );
+        const extraRoutes = syntheticFleetRoutesFromLocations(nextBookingLocations);
+        const nextFleetRoutes = buildFleetRoutesFromProducts(home.packages || [], extraRoutes);
+        const homeSettings = home.homepage || {};
+        const nextSections = mergeHomeSections(homeSettings.sections || {});
+        const nextFleetShowcase = normalizeFleetShowcase(homeSettings.fleetShowcase);
+
+        setFleetRoutes(nextFleetRoutes);
+        setFleetHydrated(true);
+        setLiveCarCatalog(nextCars);
+        setCarCatalog(nextCars.length ? getLiveCarCatalog() : []);
+        setSections(nextSections);
+        setFleetShowcase(nextFleetShowcase);
+        setBookingLocations(nextBookingLocations);
+
+        persistCache({
+          fleetRoutes: nextFleetRoutes,
+          carCatalog: nextCars,
+          sections: nextSections,
+          fleetShowcase: nextFleetShowcase,
+          bookingLocations: nextBookingLocations,
+        });
+
+        if (home.revision) {
+          writeStoredContentRevision(home.revision);
+          syncedRevRef.current = home.revision;
+        }
+        hasFreshCacheRef.current = true;
+        clearSiteContentDirty();
+
+        // Background: secondary CMS collections from MySQL (non-blocking)
+        void Promise.all([
+          mysqlFetchCollection('services').catch(() => []),
+          mysqlFetchSettings('hero').catch(() => null),
+          mysqlFetchSettings('instantPrice').catch(() => null),
+          mysqlFetchCollection('faqs').catch(() => []),
+          mysqlFetchCollection('routeCards').catch(() => []),
+          mysqlFetchCollection('socialLinks').catch(() => []),
+          mysqlFetchCollection('blogs').catch(() => []),
+          mysqlFetchCollection('travelReservations').catch(() => []),
+          mysqlFetchSettings('religiousTours').catch(() => null),
+          mysqlFetchSettings('galleryHero').catch(() => null),
+          mysqlFetchSettings('bookingTripTypes').catch(() => null),
+          mysqlFetchSettings('footerCredit').catch(() => null),
+        ]).then(([
+          servicesRows, heroData, instantData, faqs, routes, social, blogs, travel,
+          religious, galleryHeroData, tripTypes, footer,
+        ]) => {
+          const nextServices = buildServicesFromFirestore(servicesRows);
+          if (nextServices.length) setServices(nextServices);
+          if (heroData) setHero(buildHeroFromFirestore(heroData));
+          if (instantData) setInstantPrice(buildInstantPriceFromFirestore(instantData));
+          const nextFaqs = buildFaqFromFirestore(faqs);
+          if (nextFaqs.length) setFaqItems(nextFaqs);
+          const nextRoutes = buildRouteCardsFromFirestore(routes);
+          if (nextRoutes.length) setRouteCards(nextRoutes);
+          const nextSocial = buildSocialLinksFromFirestore(social);
+          if (nextSocial.length) setSocialLinks(nextSocial);
+          const nextBlogs = buildBlogsFromFirestore(blogs);
+          if (nextBlogs.length) setBlogs(nextBlogs);
+          const nextTravel = buildTravelReservationsFromFirestore(travel);
+          if (nextTravel.length) setTravelReservations(nextTravel);
+          if (religious) setReligiousTours(buildReligiousToursFromFirestore(religious));
+          if (galleryHeroData) setGalleryHero(buildGalleryHeroFromFirestore(galleryHeroData));
+          if (tripTypes) setBookingTripTypes(buildBookingTripTypesFromFirestore(tripTypes));
+          if (footer) setFooterCredit(buildFooterCreditFromFirestore(footer));
+          persistCache({
+            services: nextServices.length ? nextServices : cacheRef.current.services,
+            hero: heroData ? buildHeroFromFirestore(heroData) : cacheRef.current.hero,
+            instantPrice: instantData ? buildInstantPriceFromFirestore(instantData) : cacheRef.current.instantPrice,
+            faqItems: nextFaqs.length ? nextFaqs : cacheRef.current.faqItems,
+            routeCards: nextRoutes.length ? nextRoutes : cacheRef.current.routeCards,
+            socialLinks: nextSocial.length ? nextSocial : cacheRef.current.socialLinks,
+            blogs: nextBlogs.length ? nextBlogs : cacheRef.current.blogs,
+            travelReservations: nextTravel.length ? nextTravel : cacheRef.current.travelReservations,
+          });
+        }).catch(() => {});
+
+        return;
+      }
+
+      // Phase 1a — fleet/categories ONLY (Firestore fallback)
       // Do not wait on hero / services / instantPrice before painting prices.
       const [
         activeProducts,

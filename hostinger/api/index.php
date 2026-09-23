@@ -284,9 +284,84 @@ if ($action === 'settings_upsert') {
   if ($id === '') json_out(['ok' => false, 'error' => 'id_required'], 400);
   $data = $body['data'] ?? $body;
   unset($data['id']);
+  $merge = !empty($body['merge']);
+  if ($merge) {
+    $cur = $pdo->prepare('SELECT data_json FROM site_settings WHERE id = ?');
+    $cur->execute([$id]);
+    $row = $cur->fetch();
+    $prev = $row ? json_decode($row['data_json'], true) : [];
+    if (!is_array($prev)) $prev = [];
+    $data = array_merge($prev, is_array($data) ? $data : []);
+  }
   $stmt = $pdo->prepare('INSERT INTO site_settings (id, data_json) VALUES (?,?)
     ON DUPLICATE KEY UPDATE data_json = VALUES(data_json)');
   $stmt->execute([$id, json_encode($data, JSON_UNESCAPED_UNICODE)]);
+  json_out(['ok' => true, 'id' => $id, 'revision' => bump_revision($pdo)]);
+}
+
+if ($action === 'package_upsert') {
+  require_admin($config);
+  $body = read_json_body();
+  $id = preg_replace('/[^a-zA-Z0-9_-]/', '', (string) ($body['id'] ?? ''));
+  if ($id === '') {
+    $id = 'pkg_' . bin2hex(random_bytes(8));
+  }
+  $prevRow = null;
+  $prevData = [];
+  $sel = $pdo->prepare('SELECT * FROM packages WHERE id = ?');
+  $sel->execute([$id]);
+  $prevRow = $sel->fetch();
+  if ($prevRow) {
+    $prevData = $prevRow['data_json'] ? json_decode($prevRow['data_json'], true) : [];
+    if (!is_array($prevData)) $prevData = [];
+  }
+  $merged = array_merge($prevData, $body, ['id' => $id]);
+  $routeId = (string) ($merged['routeId'] ?? $merged['route_id'] ?? ($prevRow['route_id'] ?? ''));
+  $vehicleKey = (string) ($merged['vehicleKey'] ?? $merged['vehicle_key'] ?? ($prevRow['vehicle_key'] ?? ''));
+  $fleetServiceId = (string) ($merged['fleetServiceId'] ?? $merged['fleet_service_id'] ?? ($prevRow['fleet_service_id'] ?? ''));
+  $tripType = (string) ($merged['tripType'] ?? $merged['trip_type'] ?? ($prevRow['trip_type'] ?? ''));
+  $bookingFormId = (string) ($merged['bookingFormId'] ?? $merged['booking_form_id'] ?? ($prevRow['booking_form_id'] ?? ''));
+  $nameEn = (string) ($merged['nameEn'] ?? $merged['name_en'] ?? ($prevRow['name_en'] ?? ''));
+  $nameAr = (string) ($merged['nameAr'] ?? $merged['name_ar'] ?? ($prevRow['name_ar'] ?? ''));
+  $imageUrl = (string) ($merged['imageUrl'] ?? $merged['image_url'] ?? ($prevRow['image_url'] ?? ''));
+  $price = array_key_exists('price', $merged) ? $merged['price'] : ($prevRow['price'] ?? null);
+  $originalPrice = array_key_exists('originalPrice', $merged) ? $merged['originalPrice'] : ($prevRow['original_price'] ?? null);
+  $pickupPrice = array_key_exists('pickupPrice', $merged) ? $merged['pickupPrice'] : ($prevRow['pickup_price'] ?? null);
+  $dropoffPrice = array_key_exists('dropoffPrice', $merged) ? $merged['dropoffPrice'] : ($prevRow['dropoff_price'] ?? null);
+  $hourlyRate = array_key_exists('hourlyRate', $merged) ? $merged['hourlyRate'] : ($prevRow['hourly_rate'] ?? null);
+  $hours = array_key_exists('hours', $merged) ? $merged['hours'] : ($prevRow['hours'] ?? null);
+  $passengers = array_key_exists('passengers', $merged) ? $merged['passengers'] : ($prevRow['passengers'] ?? null);
+  $hidePrice = !empty($merged['hidePrice']) ? 1 : (int) ($prevRow['hide_price'] ?? 0);
+  $active = array_key_exists('active', $merged) ? (!empty($merged['active']) ? 1 : 0) : (int) ($prevRow['active'] ?? 1);
+  $sortOrder = (int) ($merged['sortOrder'] ?? $merged['sort_order'] ?? ($prevRow['sort_order'] ?? 0));
+
+  $stmt = $pdo->prepare('INSERT INTO packages
+    (id, route_id, vehicle_key, fleet_service_id, trip_type, booking_form_id, name_en, name_ar, image_url,
+     price, original_price, pickup_price, dropoff_price, hourly_rate, hours, passengers, hide_price, active, sort_order, data_json)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON DUPLICATE KEY UPDATE
+      route_id=VALUES(route_id), vehicle_key=VALUES(vehicle_key), fleet_service_id=VALUES(fleet_service_id),
+      trip_type=VALUES(trip_type), booking_form_id=VALUES(booking_form_id), name_en=VALUES(name_en), name_ar=VALUES(name_ar),
+      image_url=VALUES(image_url), price=VALUES(price), original_price=VALUES(original_price),
+      pickup_price=VALUES(pickup_price), dropoff_price=VALUES(dropoff_price), hourly_rate=VALUES(hourly_rate),
+      hours=VALUES(hours), passengers=VALUES(passengers), hide_price=VALUES(hide_price),
+      active=VALUES(active), sort_order=VALUES(sort_order), data_json=VALUES(data_json)');
+  $stmt->execute([
+    $id, $routeId, $vehicleKey, $fleetServiceId, $tripType, $bookingFormId, $nameEn, $nameAr, $imageUrl,
+    $price, $originalPrice, $pickupPrice, $dropoffPrice, $hourlyRate, $hours, $passengers,
+    $hidePrice, $active, $sortOrder,
+    json_encode($merged, JSON_UNESCAPED_UNICODE),
+  ]);
+  json_out(['ok' => true, 'id' => $id, 'revision' => bump_revision($pdo)]);
+}
+
+if ($action === 'package_delete') {
+  require_admin($config);
+  $body = read_json_body();
+  $id = preg_replace('/[^a-zA-Z0-9_-]/', '', (string) ($body['id'] ?? $_GET['id'] ?? ''));
+  if ($id === '') json_out(['ok' => false, 'error' => 'id_required'], 400);
+  $stmt = $pdo->prepare('DELETE FROM packages WHERE id = ?');
+  $stmt->execute([$id]);
   json_out(['ok' => true, 'id' => $id, 'revision' => bump_revision($pdo)]);
 }
 

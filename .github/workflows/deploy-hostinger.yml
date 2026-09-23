@@ -46,6 +46,10 @@ jobs:
           VITE_RESEND_FROM_EMAIL: ${{ secrets.VITE_RESEND_FROM_EMAIL }}
           VITE_MOYASAR_PUBLISHABLE_KEY: ${{ secrets.VITE_MOYASAR_PUBLISHABLE_KEY }}
           VITE_MOYASAR_VERIFY_URL: ${{ secrets.VITE_MOYASAR_VERIFY_URL }}
+          VITE_DATA_BACKEND: mysql
+          VITE_MYSQL_API_URL: ${{ secrets.VITE_MYSQL_API_URL }}
+          VITE_MYSQL_ADMIN_KEY: ${{ secrets.MYSQL_ADMIN_KEY }}
+          VITE_PUBLIC_SITE_URL: https://bashayer-logistics.com
         run: npm run build
 
       - name: Prepare Hostinger package
