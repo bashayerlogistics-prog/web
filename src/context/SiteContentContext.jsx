@@ -78,9 +78,9 @@ import {
 } from '../firebase/content';
 import { runWithServerReads } from '../firebase/reads';
 
-import { FLEET_ROUTES, ROUND_TRIP_FLEET_ROUTES, SERVICES, BLOG_POSTS, ROUTE_CARDS, FAQ_ITEMS, SOCIAL_LINKS, DEFAULT_GALLERY_ITEMS, setLiveCarCatalog, getDefaultCarCatalog, getLiveCarCatalog, getCarImage, resolveFleetVehicleImage } from '../data/staticData';
+import { SERVICES, ROUTE_CARDS, FAQ_ITEMS, SOCIAL_LINKS, DEFAULT_GALLERY_ITEMS, setLiveCarCatalog, getDefaultCarCatalog, getLiveCarCatalog, getCarImage, resolveFleetVehicleImage } from '../data/staticData';
 
-import { HOURLY_FLEET_ROUTES, setExtraHourlyCities } from '../data/hourlyPricing';
+import { setExtraHourlyCities } from '../data/hourlyPricing';
 import { DEFAULT_BOOKING_LOCATIONS, syntheticFleetRoutesFromLocations } from '../data/bookingLocations';
 
 import { DEFAULT_RELIGIOUS_TOURS } from '../data/religiousTours';
@@ -122,6 +122,8 @@ import {
 
   markSiteContentDirty,
 
+  clearFirebaseIndexedDatabases,
+
 } from '../utils/siteContentRefresh';
 
 
@@ -134,14 +136,11 @@ const USE_PUBLIC_REALTIME = import.meta.env.VITE_ENABLE_PUBLIC_REALTIME === 'tru
 // Longer TTL for speed — contentRevision bump still forces an immediate refresh.
 const SITE_CONTENT_CACHE_MS = 15 * 60 * 1000;
 
-const STATIC_FLEET = [...FLEET_ROUTES, ...ROUND_TRIP_FLEET_ROUTES, ...HOURLY_FLEET_ROUTES];
-
-
 
 function loadCachedContent() {
 
   if (typeof window === 'undefined') {
-    return { snapshot: defaultSiteContentSnapshot(), isFresh: false };
+    return { snapshot: defaultSiteContentSnapshot(), isFresh: false, fromCache: false };
   }
 
   const dirty = isSiteContentDirty();
@@ -158,12 +157,14 @@ function loadCachedContent() {
           ? Boolean(readLocalCache(CACHE_KEY, 2 * 60 * 1000))
           : true
       ),
+      fromCache: true,
     };
   }
 
   return {
     snapshot: defaultSiteContentSnapshot(),
     isFresh: false,
+    fromCache: false,
   };
 
 }
@@ -189,6 +190,7 @@ export function SiteContentProvider({ children }) {
   const needsLivePublicContent = pathNeedsPublicCms(pathname);
   const initialCache = useMemo(() => loadCachedContent(), []);
   const initialSnapshot = initialCache.snapshot;
+  const hadPersistedCache = initialCache.fromCache;
   const hasFreshCacheRef = useRef(initialCache.isFresh);
   // Only advanced after a successful CMS refresh — prevents "rev matched, cache stale".
   const syncedRevRef = useRef(readStoredContentRevision());
@@ -242,17 +244,26 @@ export function SiteContentProvider({ children }) {
   );
 
   const [carCatalog, setCarCatalog] = useState(() => {
+    // Cold start (new browser/profile): never paint bundled catalog — wait for Firestore.
+    if (!hadPersistedCache) {
+      setLiveCarCatalog([]);
+      return [];
+    }
     const cached = initialSnapshot.carCatalog;
-    const cars = Array.isArray(cached) && cached.length ? cached : getDefaultCarCatalog();
+    const cars = Array.isArray(cached) && cached.length ? cached : [];
     setLiveCarCatalog(cars);
     return cars;
   });
 
   const [loading, setLoading] = useState(false);
-  // False until first live packages fetch — avoids STATIC seed / stale cache image flash.
-  const [fleetHydrated, setFleetHydrated] = useState(
-    () => Boolean(initialCache.isFresh && initialSnapshot.fleetRoutes?.length),
-  );
+  // Paint last live snapshot immediately when present; cold start waits for Firestore.
+  const [fleetHydrated, setFleetHydrated] = useState(() => {
+    if (!hadPersistedCache) return false;
+    const routes = initialSnapshot.fleetRoutes;
+    const cars = initialSnapshot.carCatalog;
+    return (Array.isArray(routes) && routes.length > 0)
+      || (Array.isArray(cars) && cars.length > 0);
+  });
 
   useEffect(() => {
     const hourlyCities = (bookingLocations?.cities || DEFAULT_BOOKING_LOCATIONS.cities)
@@ -282,63 +293,70 @@ export function SiteContentProvider({ children }) {
 
     const silent = opts.silent === true;
     const phase = opts.phase === 'fleet' ? 'fleet' : 'full';
+    // Server only when SuperAdmin marked dirty / explicit force — otherwise IndexedDB wins (fast).
+    const forceServer = opts.forceServer === true || opts.bustCache === true || isSiteContentDirty();
     if (!silent) setLoading(true);
 
-    const run = runWithServerReads(async () => {
+    const execute = async () => {
     try {
-      // Phase 1 — price/booking critical path (paint ASAP)
+      // Phase 1a — fleet/categories ONLY (unblocks gray skeletons ASAP).
+      // Do not wait on hero / services / instantPrice before painting prices.
       const [
         activeProducts,
         cars,
-        activeServices,
         homeSettings,
-        heroData,
-        instantPriceData,
         bookingLocationsData,
       ] = await Promise.all([
         getActiveProducts(),
         getCarCatalog(),
-        getActiveServices(),
         getHomepageSettings(),
-        getHeroContent(),
-        getInstantPriceContent(),
         getBookingLocationsContent(),
       ]);
 
       const nextBookingLocations = buildBookingLocationsFromFirestore(bookingLocationsData);
       const extraRoutes = syntheticFleetRoutesFromLocations(nextBookingLocations);
       const nextFleetRoutes = buildFleetRoutesFromProducts(activeProducts, extraRoutes);
-      const nextCars = Array.isArray(cars) && cars.length ? cars : getDefaultCarCatalog();
-      const nextServices = buildServicesFromFirestore(activeServices);
+      const nextCars = Array.isArray(cars) && cars.length ? cars : [];
       const nextSections = homeSettings.sections;
       const nextFleetShowcase = normalizeFleetShowcase(homeSettings.fleetShowcase);
-      const nextHero = buildHeroFromFirestore(heroData);
-      const nextInstantPrice = buildInstantPriceFromFirestore(instantPriceData);
 
       setFleetRoutes(nextFleetRoutes);
       setFleetHydrated(true);
       setLiveCarCatalog(nextCars);
-      setCarCatalog(getLiveCarCatalog());
-      setServices(nextServices.length ? nextServices : cacheRef.current.services);
+      setCarCatalog(nextCars.length ? getLiveCarCatalog() : []);
       setSections(nextSections);
       setFleetShowcase(nextFleetShowcase);
-      setHero(nextHero);
-      setInstantPrice(nextInstantPrice);
       setBookingLocations(nextBookingLocations);
 
       persistCache({
         fleetRoutes: nextFleetRoutes,
         carCatalog: nextCars,
-        services: nextServices.length ? nextServices : cacheRef.current.services,
         sections: nextSections,
         fleetShowcase: nextFleetShowcase,
-        hero: nextHero,
-        instantPrice: nextInstantPrice,
         bookingLocations: nextBookingLocations,
       });
 
       // Soft publish / fleet edits — skip heavy secondary CMS (gallery, FAQ…).
       if (phase === 'fleet') {
+        // Non-blocking: hero/services so booking UI stays fresh without delaying fleet.
+        void Promise.all([
+          getActiveServices(),
+          getHeroContent(),
+          getInstantPriceContent(),
+        ]).then(([activeServices, heroData, instantPriceData]) => {
+          const nextServices = buildServicesFromFirestore(activeServices);
+          const nextHero = buildHeroFromFirestore(heroData);
+          const nextInstantPrice = buildInstantPriceFromFirestore(instantPriceData);
+          setServices(nextServices.length ? nextServices : cacheRef.current.services);
+          setHero(nextHero);
+          setInstantPrice(nextInstantPrice);
+          persistCache({
+            services: nextServices.length ? nextServices : cacheRef.current.services,
+            hero: nextHero,
+            instantPrice: nextInstantPrice,
+          });
+        }).catch(() => {});
+
         const rev = await getContentRevisionOnce();
         if (rev) {
           writeStoredContentRevision(rev);
@@ -346,8 +364,34 @@ export function SiteContentProvider({ children }) {
         }
         hasFreshCacheRef.current = true;
         clearSiteContentDirty();
+        void clearFirebaseIndexedDatabases();
         return;
       }
+
+      // Phase 1b — remaining price-adjacent CMS (full refresh only)
+      const [
+        activeServices,
+        heroData,
+        instantPriceData,
+      ] = await Promise.all([
+        getActiveServices(),
+        getHeroContent(),
+        getInstantPriceContent(),
+      ]);
+
+      const nextServices = buildServicesFromFirestore(activeServices);
+      const nextHero = buildHeroFromFirestore(heroData);
+      const nextInstantPrice = buildInstantPriceFromFirestore(instantPriceData);
+
+      setServices(nextServices.length ? nextServices : cacheRef.current.services);
+      setHero(nextHero);
+      setInstantPrice(nextInstantPrice);
+
+      persistCache({
+        services: nextServices.length ? nextServices : cacheRef.current.services,
+        hero: nextHero,
+        instantPrice: nextInstantPrice,
+      });
 
       // Phase 2 — secondary CMS (gallery, FAQ, footer…)
       const [
@@ -422,19 +466,24 @@ export function SiteContentProvider({ children }) {
       }
       hasFreshCacheRef.current = true;
       clearSiteContentDirty();
+      void clearFirebaseIndexedDatabases();
 
     } catch (err) {
 
       // Keep lifetime cache / live listener data — never blank the page on network errors
 
       console.warn('Site content refresh failed, keeping cached data:', err);
+      // Unblock homepage skeleton on cold start even if network failed.
+      setFleetHydrated(true);
 
     } finally {
 
       if (!silent) setLoading(false);
 
     }
-    });
+    };
+
+    const run = forceServer ? runWithServerReads(execute) : Promise.resolve().then(execute);
 
     refreshInFlightRef.current = run.finally(() => {
       refreshInFlightRef.current = null;
@@ -454,6 +503,7 @@ export function SiteContentProvider({ children }) {
   const schedulePublicRefresh = useCallback((phase = 'full') => {
     hasFreshCacheRef.current = false;
     markSiteContentDirty();
+    // Keep current UI visible — silent in-place update (no skeleton hang).
     if (scheduleRefreshTimerRef.current) window.clearTimeout(scheduleRefreshTimerRef.current);
     scheduleRefreshTimerRef.current = window.setTimeout(() => {
       scheduleRefreshTimerRef.current = null;
@@ -489,10 +539,8 @@ export function SiteContentProvider({ children }) {
           const extraRoutes = syntheticFleetRoutesFromLocations(cacheRef.current.bookingLocations);
           const nextFleetRoutes = buildFleetRoutesFromProducts(products, extraRoutes);
 
-          // Live SuperAdmin truth: empty active packages stay empty (no static revive)
-          const routes = Array.isArray(products)
-            ? nextFleetRoutes
-            : (nextFleetRoutes.length ? nextFleetRoutes : STATIC_FLEET);
+          // Live SuperAdmin truth only — never revive STATIC_FLEET seed art.
+          const routes = Array.isArray(nextFleetRoutes) ? nextFleetRoutes : [];
 
           setFleetRoutes(routes);
 
@@ -511,9 +559,9 @@ export function SiteContentProvider({ children }) {
       subscribeToCarCatalog(
 
         (cars) => {
-          const next = Array.isArray(cars) && cars.length ? cars : getDefaultCarCatalog();
+          const next = Array.isArray(cars) && cars.length ? cars : [];
           setLiveCarCatalog(next);
-          setCarCatalog(getLiveCarCatalog());
+          setCarCatalog(next.length ? getLiveCarCatalog() : []);
           persistCache({ carCatalog: next });
         },
 
@@ -756,9 +804,7 @@ export function SiteContentProvider({ children }) {
 
   useEffect(() => {
 
-    if (!needsLivePublicContent || typeof BroadcastChannel === 'undefined') return undefined;
-
-
+    if (typeof BroadcastChannel === 'undefined') return undefined;
 
     const channel = new BroadcastChannel(SYNC_CHANNEL);
 
@@ -767,6 +813,7 @@ export function SiteContentProvider({ children }) {
       const type = event?.data?.type;
 
       // soft → fleet-only (fast). invalidate → full CMS reload.
+      // Runs on public + SuperAdmin so login/publish never leave stale React state.
       if (type === 'soft') {
         schedulePublicRefresh('fleet');
         return;
@@ -779,12 +826,10 @@ export function SiteContentProvider({ children }) {
 
     return () => channel.close();
 
-  }, [needsLivePublicContent, schedulePublicRefresh]);
+  }, [schedulePublicRefresh]);
 
-  // Live publish signal for open tabs (all countries / networks).
+  // Live publish signal for open tabs (all countries / networks / admin).
   useEffect(() => {
-    if (!needsLivePublicContent) return undefined;
-
     let cancelled = false;
 
     const unsub = subscribeContentRevision(
@@ -803,7 +848,7 @@ export function SiteContentProvider({ children }) {
       if (scheduleRefreshTimerRef.current) window.clearTimeout(scheduleRefreshTimerRef.current);
       unsub?.();
     };
-  }, [needsLivePublicContent, schedulePublicRefresh]);
+  }, [schedulePublicRefresh]);
 
 
 

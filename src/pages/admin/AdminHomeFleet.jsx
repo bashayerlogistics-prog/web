@@ -34,7 +34,6 @@ import {
   updateBookingLocationsSettings,
   upsertCar,
   getAllProducts,
-  syncCarCatalogImagesToProducts,
 } from '../../firebase/admin';
 import { usePublishSiteContent } from '../../hooks/usePublishSiteContent';
 import { useAdminDataLoader } from '../../hooks/useAdminDataLoader';
@@ -222,7 +221,7 @@ export default function AdminHomeFleet({
       };
     },
     [],
-    { cacheKey: 'admin:home-fleet-v2', cacheTtl: 15 * 60_000 },
+    { cacheKey: 'admin:home-fleet-v3' },
   );
 
   const [carCatalog, setCarCatalog] = useState(() => mergeCarCatalog([]));
@@ -233,7 +232,6 @@ export default function AdminHomeFleet({
   const [sectionOn, setSectionOn] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [confirm, setConfirm] = useState(null);
-  const appliedTaurusCamryRef = useRef(false);
   const allProducts = localProducts || tripBundles?.products || [];
   const showcase = localShowcase || tripBundles?.showcase || emptyFleetShowcase();
   const cities = localCities;
@@ -251,49 +249,6 @@ export default function AdminHomeFleet({
       setLocalRoutes(built.routes);
     }
   }, [tripBundles?.products, tripBundles?.showcase, tripBundles?.sectionActive, tripBundles?.cars, tripBundles?.locations]);
-
-  // One-shot: push live category images for Taurus + Camry onto every fleet package
-  // (Train / Airport / Between Cities / Hourly / Ziyarat / Within City) so public matches SuperAdmin.
-  useEffect(() => {
-    if (loading || appliedTaurusCamryRef.current) return undefined;
-    const SYNC_KEY = 'fleet-force-taurus-camry-images-v2';
-    try {
-      if (localStorage.getItem(SYNC_KEY) === '1') {
-        appliedTaurusCamryRef.current = true;
-        return undefined;
-      }
-    } catch {
-      // continue
-    }
-    let cancelled = false;
-    appliedTaurusCamryRef.current = true;
-    (async () => {
-      try {
-        const result = await syncCarCatalogImagesToProducts(['taurus', 'camry'], { force: true });
-        if (cancelled) return;
-        try {
-          localStorage.setItem(SYNC_KEY, '1');
-        } catch {
-          // ignore
-        }
-        await publishSite('soft');
-        await refresh({ bustCache: true });
-        if (result?.products > 0) {
-          toast.success(
-            lang === 'ar'
-              ? `تم تحديث صور فورد تورس + تويوتا كامري على ${result.products} باقة — مباشرة على الموقع`
-              : `Taurus + Camry images updated on ${result.products} packages — live on public site`,
-          );
-        }
-      } catch (err) {
-        appliedTaurusCamryRef.current = false;
-        console.warn('Taurus/Camry image push skipped:', err?.code || err?.message || err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, publishSite, refresh, toast, lang]);
 
   const carChoices = useMemo(() => {
     const ids = [...FLEET_CARS];

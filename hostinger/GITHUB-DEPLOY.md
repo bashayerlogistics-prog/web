@@ -19,13 +19,16 @@ hPanel → **Files** → **FTP Accounts** (or Hosting → FTP):
 
 Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
 
-**Hostinger**
+**Hostinger MySQL CMS API** (optional — enables `/api` + image migrate)
 
 | Secret | Example |
 |--------|---------|
-| `HOSTINGER_FTP_HOST` | `ftp.bashayer-logistics.com` |
-| `HOSTINGER_FTP_USER` | your FTP user |
-| `HOSTINGER_FTP_PASSWORD` | your FTP password |
+| `MYSQL_HOST` | `localhost` |
+| `MYSQL_DATABASE` | `u540543003_bashayer` |
+| `MYSQL_USER` | `u540543003_bashayer2027` |
+| `MYSQL_PASSWORD` | (hPanel MySQL password) |
+| `MYSQL_ADMIN_KEY` | long random string (same as SuperAdmin later) |
+
 
 **App build (same values as local `.env`)**
 

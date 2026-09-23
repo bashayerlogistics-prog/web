@@ -178,14 +178,15 @@ function AdminLayoutInner() {
     return () => document.documentElement.classList.remove('admin-shell-active');
   }, []);
 
+  // Light idle warm — once. Per-route prefetch on hover/focus covers the rest.
   useEffect(() => {
     const warm = () => warmAdminRoutes();
     let idleId;
     let timeoutId;
     if (typeof window.requestIdleCallback === 'function') {
-      idleId = window.requestIdleCallback(warm, { timeout: 1200 });
+      idleId = window.requestIdleCallback(warm, { timeout: 2500 });
     } else {
-      timeoutId = window.setTimeout(warm, 400);
+      timeoutId = window.setTimeout(warm, 1200);
     }
     return () => {
       if (idleId != null) window.cancelIdleCallback(idleId);
@@ -195,8 +196,6 @@ function AdminLayoutInner() {
 
   useEffect(() => {
     prefetchAdminRoute(location.pathname);
-    const timerId = window.setTimeout(() => warmAdminRoutes(), 280);
-    return () => window.clearTimeout(timerId);
   }, [location.pathname]);
 
   useEffect(() => {

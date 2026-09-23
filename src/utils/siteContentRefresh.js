@@ -32,14 +32,20 @@ import {
 import { clearAdminDataCache } from './adminDataCache';
 
 /** Bump on every Hostinger deploy so visitors drop stale CMS snapshots once. */
-export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v45';
-export const APP_CACHE_BUILD = '20260922h';
+export const SITE_CONTENT_CACHE_KEY = 'bashayer-site-content-v50';
+/** Bump to force full wipe of localStorage + Firestore IndexedDB + HTTP Cache API. */
+export const APP_CACHE_BUILD = '20260923h';
 const APP_CACHE_BUILD_KEY = 'bashayer-app-build';
 /** Set when SuperAdmin publishes — next public load must revalidate vs contentRevision. */
 export const SITE_CONTENT_DIRTY_KEY = 'bashayer-site-content-dirty';
 
 const LEGACY_CACHE_KEYS = [
   SITE_CONTENT_CACHE_KEY,
+  'bashayer-site-content-v49',
+  'bashayer-site-content-v48',
+  'bashayer-site-content-v47',
+  'bashayer-site-content-v46',
+  'bashayer-site-content-v45',
   'bashayer-site-content-v44',
   'bashayer-site-content-v43',
   'bashayer-site-content-v42',
@@ -97,10 +103,10 @@ function pickNonEmptyArray(value, fallback) {
 
 /** Fill missing blog card images from static defaults; never overwrite CMS uploads. */
 function mergeBlogImagesFromDefaults(blogs) {
-  const byService = new Map(BLOG_POSTS.map((post) => [post.serviceId, post]));
+  const byId = new Map(BLOG_POSTS.map((post) => [post.serviceId, post]));
   return (Array.isArray(blogs) ? blogs : []).map((blog) => {
     if (blog?.image) return blog;
-    const def = blog?.serviceId ? byService.get(blog.serviceId) : null;
+    const def = blog?.serviceId ? byId.get(blog.serviceId) : null;
     if (!def?.image) return blog;
     return { ...blog, image: def.image };
   });
@@ -125,7 +131,8 @@ export function sanitizeSiteContentCache(data) {
     travelReservations: buildTravelReservationsFromFirestore(
       pickNonEmptyArray(data.travelReservations, DEFAULT_TRAVEL_RESERVATIONS),
     ),
-    carCatalog: pickNonEmptyArray(data.carCatalog, getDefaultCarCatalog()),
+    // Never inject bundled catalog — that flashes old car art before Firestore.
+    carCatalog: Array.isArray(data.carCatalog) ? data.carCatalog : [],
     sections: mergeHomeSections(data.sections || {}),
     fleetShowcase: normalizeFleetShowcase(data.fleetShowcase),
     hero: buildHeroFromFirestore(data.hero ?? null),
@@ -206,6 +213,7 @@ function sweepAppPrefixedCaches() {
       if (keepPrefix.some((p) => key.startsWith(p) || key.toLowerCase().includes(p))) continue;
       if (
         key.startsWith('bashayer-')
+        || key.startsWith('bashayer_')
         || key.startsWith('rafiq_branding')
       ) {
         localStorage.removeItem(key);
@@ -221,6 +229,55 @@ async function clearHttpCaches() {
     if (typeof caches === 'undefined') return;
     const keys = await caches.keys();
     await Promise.all(keys.map((key) => caches.delete(key)));
+  } catch {
+    // ignore
+  }
+}
+
+/** Drop Firebase / Firestore IndexedDB so persistentLocalCache cannot revive old packages/cars. */
+export async function clearFirebaseIndexedDatabases() {
+  try {
+    if (typeof indexedDB === 'undefined') return;
+    const names = [];
+    if (typeof indexedDB.databases === 'function') {
+      const list = await indexedDB.databases();
+      list.forEach((entry) => {
+        if (entry?.name) names.push(entry.name);
+      });
+    } else {
+      // Older Chromium — known Firebase DB name patterns.
+      names.push(
+        'firebaseLocalStorageDb',
+        'firebase-heartbeat-database',
+        'firebase-installations-database',
+      );
+    }
+    await Promise.all(
+      names
+        .filter((name) => /firebase|firestore|bashayer|rafiq/i.test(name))
+        .map(
+          (name) => new Promise((resolve) => {
+            try {
+              const req = indexedDB.deleteDatabase(name);
+              req.onsuccess = () => resolve();
+              req.onerror = () => resolve();
+              req.onblocked = () => resolve();
+            } catch {
+              resolve();
+            }
+          }),
+        ),
+    );
+  } catch {
+    // ignore
+  }
+}
+
+async function unregisterServiceWorkers() {
+  try {
+    if (!('serviceWorker' in navigator)) return;
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((reg) => reg.unregister()));
   } catch {
     // ignore
   }
@@ -265,18 +322,20 @@ export function clearAllAppCaches() {
     // ignore
   }
   void clearHttpCaches();
+  void clearFirebaseIndexedDatabases();
+  void unregisterServiceWorkers();
 }
 
 /**
- * One-shot per deploy: visitors and SuperAdmin drop old localStorage so new
- * Hostinger JS + Firestore data paint immediately (hashed assets stay cached).
+ * One-shot per deploy / build bump: HARD wipe of CMS snapshot, HTTP Cache API,
+ * Firebase IndexedDB, and service workers so new Chrome profiles and returning
+ * visitors never paint yesterday's car images.
  */
 export function purgeStaleBrowserCaches() {
   if (typeof localStorage === 'undefined') return;
   try {
     if (localStorage.getItem(APP_CACHE_BUILD_KEY) === APP_CACHE_BUILD) return;
     clearAllAppCaches();
-    // Force first public paint to revalidate against Firestore contentRevision.
     markSiteContentDirty();
     localStorage.setItem(APP_CACHE_BUILD_KEY, APP_CACHE_BUILD);
   } catch {
@@ -312,13 +371,13 @@ export function clearSiteContentCache() {
 }
 
 /**
- * Soft invalidate — drop cached CMS snapshot so SuperAdmin image/CMS edits
- * cannot paint as “fresh” old car/product images on the next load.
+ * Soft invalidate — mark dirty so the next refresh revalidates vs contentRevision.
+ * Keep the last snapshot for instant paint (do not blank categories/fleet).
  */
 export function softInvalidateSiteContentCache() {
   markSiteContentDirty();
   try {
-    localStorage.removeItem(SITE_CONTENT_CACHE_KEY);
+    // Drop revision only — snapshot stays until refresh writes the new one.
     localStorage.removeItem(CONTENT_REVISION_STORAGE_KEY);
   } catch {
     // ignore

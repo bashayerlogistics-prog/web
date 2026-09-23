@@ -4,6 +4,59 @@
     <meta charset="UTF-8" />
     <meta name="theme-color" content="#3e0f77" />
     <script>
+      /* Hard wipe stale CMS / Firebase caches BEFORE React or Firestore boot. */
+      (function () {
+        var BUILD = '20260923h';
+        var BUILD_KEY = 'bashayer-app-build';
+        try {
+          if (localStorage.getItem(BUILD_KEY) === BUILD) return;
+          var keep = {
+            language: 1,
+            rafiq_theme: 1,
+            bashayer_admin_session: 1,
+            bashayer_cart: 1,
+            bashayer_remember_email: 1,
+            bashayer_chat_guest_id: 1,
+          };
+          var i, key;
+          for (i = localStorage.length - 1; i >= 0; i -= 1) {
+            key = localStorage.key(i);
+            if (!key || keep[key]) continue;
+            if (key.indexOf('clerk') === 0 || key.indexOf('__clerk') === 0) continue;
+            if (
+              key.indexOf('bashayer') === 0
+              || key.indexOf('rafiq_') === 0
+              || key.indexOf('firebase') === 0
+            ) {
+              localStorage.removeItem(key);
+            }
+          }
+          try { sessionStorage.removeItem('bashayer-seed-once'); } catch (e) { /* ignore */ }
+          localStorage.setItem('bashayer-site-content-dirty', String(Date.now()));
+          localStorage.setItem(BUILD_KEY, BUILD);
+          if (typeof caches !== 'undefined') {
+            caches.keys().then(function (keys) {
+              keys.forEach(function (k) { caches.delete(k); });
+            }).catch(function () {});
+          }
+          if (typeof indexedDB !== 'undefined' && indexedDB.databases) {
+            indexedDB.databases().then(function (list) {
+              (list || []).forEach(function (db) {
+                if (db && db.name && /firebase|firestore|bashayer|rafiq/i.test(db.name)) {
+                  try { indexedDB.deleteDatabase(db.name); } catch (e) { /* ignore */ }
+                }
+              });
+            }).catch(function () {});
+          }
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+              regs.forEach(function (r) { r.unregister(); });
+            }).catch(function () {});
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
+    <script>
       (function () {
         var lang = localStorage.getItem('language');
         if (lang !== 'en' && lang !== 'ar') lang = 'ar';
@@ -32,10 +85,10 @@
         }
 
         function applySplashBranding() {
+          // Last live branding for instant splash (same visit profile). Server revalidates in React.
           var primary = '#3e0f77';
           var secondary = '#d5a027';
           var logoUrl = '';
-          var faviconUrl = '';
           try {
             var raw = localStorage.getItem('rafiq_branding');
             if (raw) {
@@ -44,9 +97,8 @@
               if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(data.primaryColor || '')) primary = data.primaryColor;
               if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(data.secondaryColor || '')) secondary = data.secondaryColor;
               if (typeof data.logoUrl === 'string') logoUrl = data.logoUrl.trim();
-              if (typeof data.faviconUrl === 'string') faviconUrl = data.faviconUrl.trim();
             }
-          } catch (e) { /* ignore cache errors */ }
+          } catch (e) { /* ignore */ }
 
           var brandDark = mix(primary, '#000000', 24);
           var brandDeep = mix(primary, '#000000', 52);
@@ -62,22 +114,6 @@
 
           var themeMeta = document.querySelector('meta[name="theme-color"]');
           if (themeMeta) themeMeta.setAttribute('content', primary);
-
-          var iconHref = faviconUrl || logoUrl;
-          if (iconHref) {
-            function setIconLink(rel) {
-              var link = document.querySelector('link[rel="' + rel + '"]');
-              if (!link) {
-                link = document.createElement('link');
-                link.rel = rel;
-                document.head.appendChild(link);
-              }
-              link.href = iconHref;
-            }
-            setIconLink('icon');
-            setIconLink('shortcut icon');
-            setIconLink('apple-touch-icon');
-          }
 
           if (logoUrl) {
             document.addEventListener('DOMContentLoaded', function () {
@@ -116,7 +152,7 @@
     </script>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <!-- Logo only globally — hero preloads are homepage-only (SPA shares this HTML on /cart, /login, …) -->
+    <!-- Logo only — do NOT preload old /images/categories/* (forces stale car art). -->
     <link rel="preload" href="/images/brand-logo.png" as="image" type="image/png" />
     <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
     <link rel="dns-prefetch" href="https://firebase.googleapis.com" />

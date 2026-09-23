@@ -569,7 +569,7 @@ function rankRoutesForHome(routes, service) {
 
 /**
  * Build homepage fleet groups — always 6 services in 3 paired rows when SuperAdmin has them on.
- * Live packages first; sheet defaults fill any service that has no matching live route yet.
+ * Live Firestore packages only (no sheet-default flash on new browsers).
  */
 export function buildHomeFleetSections(fleetRoutes = [], showcase = {}) {
   const pins = normalizeFleetShowcase(showcase);
@@ -582,22 +582,15 @@ export function buildHomeFleetSections(fleetRoutes = [], showcase = {}) {
     const pin = pins[serviceId] || { routeId: '', carIds: [], active: true };
     if (pin.active === false) return null;
 
-    let ranked = rankRoutesForHome(
+    const ranked = rankRoutesForHome(
       live.filter((route) => routeMatchesService(route, serviceId)),
       service,
     );
-    if (!ranked.length) {
-      ranked = rankRoutesForHome(routesFromDefaultProducts(service), service);
-    }
 
     const pinned = pin.routeId
       ? ranked.find((entry) => entry.route.id === pin.routeId)
       : null;
-    let best = pinned || ranked[0];
-    if (!best && pin.routeId) {
-      const seed = routesFromDefaultProducts(service).find((route) => route.id === pin.routeId);
-      if (seed) best = scoreRouteForHome(seed, service);
-    }
+    const best = pinned || ranked[0];
     if (!best?.cars?.length) return null;
 
     // One real route only — never mix cars from other routes (avoids fake/dummy cards)

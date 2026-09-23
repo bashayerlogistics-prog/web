@@ -15,14 +15,14 @@ const BRANDING_SYNC_CHANNEL = 'bashayer-site-content';
 function readCachedBranding() {
   try {
     const raw = localStorage.getItem(BRANDING_CACHE_KEY);
-    if (!raw) return DEFAULT_BRANDING;
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed?.data && parsed.at && typeof parsed.data === 'object' && !parsed.primaryColor) {
       return { ...DEFAULT_BRANDING, ...parsed.data };
     }
     return { ...DEFAULT_BRANDING, ...parsed };
   } catch {
-    return DEFAULT_BRANDING;
+    return null;
   }
 }
 
@@ -42,6 +42,19 @@ function clearBrandingCache() {
   } catch {
     // ignore
   }
+}
+
+function brandingSignature(b) {
+  if (!b) return '';
+  return [
+    b.primaryColor,
+    b.secondaryColor,
+    b.logoUrl,
+    b.faviconUrl,
+    b.adminFont,
+    b.userFontAr || b.userFont,
+    b.userFontEn || b.userFont,
+  ].join('|');
 }
 
 function getActiveLang() {
@@ -69,7 +82,6 @@ function applyFaviconToDom(branding) {
   if (typeof document === 'undefined') return;
   const rawHref = resolveFaviconHref(branding);
   const isDefault = rawHref === DEFAULT_FAVICON;
-  // Browsers cache favicons aggressively — bust cache when using a custom URL
   const href = isDefault
     ? rawHref
     : `${rawHref}${rawHref.includes('?') ? '&' : '?'}v=${encodeURIComponent(rawHref.slice(-48))}`;
@@ -129,72 +141,91 @@ function applyBrandingToDom(branding, isAdminRoute) {
   }
 }
 
-const initialBranding = readCachedBranding();
-if (typeof document !== 'undefined') {
-  applyBrandingToDom(initialBranding, window.location.pathname.startsWith('/admin'));
-}
-
-/** Server read — bypass IndexedDB so profiles never stick on stale colors. */
 async function fetchLiveBranding() {
   return runWithServerReads(() => getBrandingSettings());
 }
 
+const bootCached = typeof window !== 'undefined' ? readCachedBranding() : null;
+const bootBranding = bootCached || DEFAULT_BRANDING;
+if (typeof document !== 'undefined' && bootCached) {
+  applyBrandingToDom(bootBranding, window.location.pathname.startsWith('/admin'));
+}
+
 export function BrandingProvider({ children }) {
-  const [branding, setBranding] = useState(initialBranding);
-  const [loading, setLoading] = useState(true);
+  // Instant paint from last live cache; server revalidates quietly.
+  const [branding, setBranding] = useState(bootBranding);
+  const [loading, setLoading] = useState(!bootCached);
+  const [ready, setReady] = useState(Boolean(bootCached));
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
   const brandingRef = useRef(branding);
   brandingRef.current = branding;
   const hasServerBrandRef = useRef(false);
+  const sigRef = useRef(brandingSignature(bootBranding));
 
   const applyBranding = useCallback((partial) => {
-    setBranding((prev) => ({ ...prev, ...partial }));
+    setBranding((prev) => {
+      const next = { ...prev, ...partial };
+      sigRef.current = brandingSignature(next);
+      return next;
+    });
+  }, []);
+
+  const commitBranding = useCallback((data) => {
+    const sig = brandingSignature(data);
+    if (sig === sigRef.current && hasServerBrandRef.current) return;
+    sigRef.current = sig;
+    setBranding(data);
   }, []);
 
   const refresh = useCallback(async () => {
     try {
       const data = await fetchLiveBranding();
       hasServerBrandRef.current = true;
-      setBranding(data);
+      commitBranding(data);
+      setReady(true);
       return data;
     } catch {
+      setReady(true);
       return brandingRef.current;
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [commitBranding]);
 
-  // Live branding for every visitor profile (Fahad save → Jawwad sees new colors fast).
-  // Cache is paint-only; never skip sync with a 30‑minute “fresh” TTL.
   useEffect(() => {
     let cancelled = false;
-    hasServerBrandRef.current = false;
 
-    // Immediate server fetch so old localStorage paint is replaced ASAP.
-    fetchLiveBranding().then((data) => {
-      if (cancelled) return;
-      hasServerBrandRef.current = true;
-      setBranding(data);
-      setLoading(false);
-    });
+    // Cold start only — returning visitors already painted from cache; listener is enough.
+    if (!bootCached) {
+      fetchLiveBranding().then((data) => {
+        if (cancelled) return;
+        hasServerBrandRef.current = true;
+        commitBranding(data);
+        setLoading(false);
+        setReady(true);
+      }).catch(() => {
+        if (cancelled) return;
+        setLoading(false);
+        setReady(true);
+      });
+    }
 
     const unsub = subscribeBrandingSettings((data, meta) => {
       if (cancelled) return;
-      // Do not let IndexedDB overwrite a fresher server read.
-      if (meta?.fromCache && hasServerBrandRef.current) return;
+      if (meta?.fromCache && (hasServerBrandRef.current || bootCached)) return;
       if (!meta?.fromCache) hasServerBrandRef.current = true;
-      setBranding(data);
+      commitBranding(data);
       setLoading(false);
+      setReady(true);
     });
 
     return () => {
       cancelled = true;
       unsub?.();
     };
-  }, [isAdminRoute]);
+  }, [commitBranding]);
 
-  // Same Chrome profile / other tabs
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return undefined;
     const channel = new BroadcastChannel(BRANDING_SYNC_CHANNEL);
@@ -202,6 +233,7 @@ export function BrandingProvider({ children }) {
       const type = event?.data?.type;
       if (type !== 'branding' && type !== 'invalidate' && type !== 'soft') return;
       clearBrandingCache();
+      hasServerBrandRef.current = false;
       refresh();
     };
     return () => channel.close();
@@ -209,7 +241,9 @@ export function BrandingProvider({ children }) {
 
   useEffect(() => {
     applyBrandingToDom(branding, isAdminRoute);
-    persistBrandingCache(branding);
+    if (hasServerBrandRef.current || bootCached) {
+      persistBrandingCache(branding);
+    }
   }, [branding, isAdminRoute]);
 
   useEffect(() => {
@@ -228,7 +262,7 @@ export function BrandingProvider({ children }) {
   }, [isAdminRoute]);
 
   return (
-    <BrandingContext.Provider value={{ branding, loading, refresh, applyBranding }}>
+    <BrandingContext.Provider value={{ branding, loading, ready, refresh, applyBranding }}>
       {children}
     </BrandingContext.Provider>
   );
@@ -237,7 +271,13 @@ export function BrandingProvider({ children }) {
 export function useBranding() {
   const ctx = useContext(BrandingContext);
   if (!ctx) {
-    return { branding: DEFAULT_BRANDING, loading: false, refresh: () => {}, applyBranding: () => {} };
+    return {
+      branding: DEFAULT_BRANDING,
+      loading: false,
+      ready: true,
+      refresh: () => {},
+      applyBranding: () => {},
+    };
   }
   return ctx;
 }

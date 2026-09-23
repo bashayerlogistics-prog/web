@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 
+/** Hide splash as soon as React mounts — branding/CMS update in place (no hang). */
 export default function AppShell({ children }) {
   useEffect(() => {
     document.getElementById('initial-splash')?.classList.add('is-hidden');
@@ -7,7 +8,7 @@ export default function AppShell({ children }) {
 
     const timeout = window.setTimeout(() => {
       document.getElementById('initial-splash')?.remove();
-    }, 200);
+    }, 120);
 
     return () => window.clearTimeout(timeout);
   }, []);

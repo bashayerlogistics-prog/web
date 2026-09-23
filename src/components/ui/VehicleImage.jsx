@@ -7,6 +7,7 @@ const FALLBACK_SRC =
 
 /**
  * Vehicle promo images — centered crop, hides heavy bottom marketing bar when possible.
+ * Local `/images/...` paths skip cache-bust noise so the browser HTTP cache stays hot.
  */
 export default function VehicleImage({
   src,
@@ -18,8 +19,9 @@ export default function VehicleImage({
   priority = false,
   cacheKey = '',
 }) {
-  const bust = cacheKey || APP_CACHE_BUILD;
-  const resolved = optimizedImageUrl(src, width, 70, bust) || FALLBACK_SRC;
+  const isLocal = typeof src === 'string' && src.startsWith('/');
+  const bust = isLocal ? '' : (cacheKey || APP_CACHE_BUILD);
+  const resolved = optimizedImageUrl(src, width, 68, bust) || FALLBACK_SRC;
   const [imgSrc, setImgSrc] = useState(resolved);
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export default function VehicleImage({
         alt={alt}
         loading={priority ? 'eager' : 'lazy'}
         decoding="async"
-        fetchPriority={priority ? 'high' : 'auto'}
+        fetchPriority={priority ? 'high' : 'low'}
         width={width}
         height={Math.round(width * 0.72)}
         sizes="(max-width: 767px) 85vw, (max-width: 1279px) 33vw, 280px"

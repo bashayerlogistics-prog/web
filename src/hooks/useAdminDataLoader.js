@@ -1,41 +1,34 @@
 import { useEffect, useState, useCallback, useRef, startTransition } from 'react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import {
-  readAdminDataCache,
-  writeAdminDataCache,
+  readAdminMemoryCache,
+  writeAdminMemoryCache,
   clearAdminDataCache,
   adminCacheKey,
-  ADMIN_DATA_CACHE_TTL_MS,
+  ADMIN_SESSION_MEMORY_TTL_MS,
 } from '../utils/adminDataCache';
 import { withTimeout } from '../utils/withTimeout';
 import { runWithServerReads } from '../firebase/reads';
 
-/** Focus/visibility refetch — keep low to cut Firestore reads while admin is open. */
-const ADMIN_FOCUS_REFETCH_MS = 5 * 60_000;
+/** Focus/visibility refetch — avoid hammering Firestore while typing. */
+const ADMIN_FOCUS_REFETCH_MS = 3 * 60_000;
 
 /**
- * Fast admin list loader with local cache.
- * Explicit refresh/save uses server reads so IndexedDB never shows stale rows.
+ * SuperAdmin loader — session memory for instant tab switches,
+ * always revalidate from server in background (no localStorage first-paint flash).
  */
 export function useAdminDataLoader(loadFn, deps = [], options = {}) {
   const { isAdmin } = useAdminAuth();
-  const cacheEnabled = options.cache !== false;
-  const cacheTtl = options.cacheTtl ?? ADMIN_DATA_CACHE_TTL_MS;
-  const resolvedCacheKey = cacheEnabled
-    ? (options.cacheKey || adminCacheKey(deps) || loadFn?.name || '')
-    : '';
+  const memoryKey = options.cacheKey || adminCacheKey(deps) || loadFn?.name || 'admin-data';
+  const memoryTtl = options.memoryTtl ?? ADMIN_SESSION_MEMORY_TTL_MS;
 
-  const [data, setData] = useState(() => (
-    resolvedCacheKey ? readAdminDataCache(resolvedCacheKey, cacheTtl) : null
-  ));
-  const [loading, setLoading] = useState(() => {
-    if (!resolvedCacheKey) return true;
-    return readAdminDataCache(resolvedCacheKey, cacheTtl) == null;
-  });
+  const bootMemory = isAdmin ? readAdminMemoryCache(memoryKey, memoryTtl) : null;
+  const [data, setData] = useState(() => bootMemory);
+  const [loading, setLoading] = useState(() => bootMemory == null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const loadFnRef = useRef(loadFn);
-  const hasLoadedRef = useRef(data != null);
+  const hasLoadedRef = useRef(bootMemory != null);
   const requestIdRef = useRef(0);
   const lastFetchAtRef = useRef(0);
 
@@ -44,11 +37,11 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
   const refresh = useCallback(async (opts = {}) => {
     if (!isAdmin) return false;
     const silent = opts.silent ?? hasLoadedRef.current;
-    const fromServer = opts.fromServer ?? opts.bustCache ?? !silent;
+    const fromServer = opts.fromServer ?? opts.bustCache ?? true;
     const requestId = ++requestIdRef.current;
 
-    if (resolvedCacheKey && opts.bustCache) {
-      clearAdminDataCache(resolvedCacheKey);
+    if (opts.bustCache) {
+      clearAdminDataCache(memoryKey);
     }
 
     if (silent) setRefreshing(true);
@@ -61,18 +54,25 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
         : await load();
       if (requestId !== requestIdRef.current) return false;
       lastFetchAtRef.current = Date.now();
+      writeAdminMemoryCache(memoryKey, result);
       startTransition(() => {
         setData(result);
         setError('');
       });
-      if (resolvedCacheKey) {
-        writeAdminDataCache(resolvedCacheKey, result, cacheTtl);
-      }
       hasLoadedRef.current = true;
       return true;
     } catch (err) {
       if (requestId !== requestIdRef.current) return false;
       console.error('Admin data load error:', err);
+      if (!hasLoadedRef.current) {
+        const cached = readAdminMemoryCache(memoryKey, Infinity);
+        if (cached != null) {
+          setData(cached);
+          hasLoadedRef.current = true;
+          setError('');
+          return true;
+        }
+      }
       setError(err.code || 'load-failed');
       return false;
     } finally {
@@ -81,7 +81,7 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
         setRefreshing(false);
       }
     }
-  }, [isAdmin, resolvedCacheKey, cacheTtl]);
+  }, [isAdmin, memoryKey]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -92,21 +92,21 @@ export function useAdminDataLoader(loadFn, deps = [], options = {}) {
       return;
     }
 
-    if (resolvedCacheKey) {
-      const cached = readAdminDataCache(resolvedCacheKey, cacheTtl);
-      if (cached != null) {
-        setData(cached);
-        hasLoadedRef.current = true;
-        setLoading(false);
-        // Revalidate from server in background (avoids IndexedDB stale after publish)
-        refresh({ silent: true, fromServer: true });
-        return;
-      }
+    const mem = readAdminMemoryCache(memoryKey, memoryTtl);
+    if (mem != null) {
+      setData(mem);
+      hasLoadedRef.current = true;
+      setLoading(false);
+      // Background revalidate — UI stays smooth
+      refresh({ silent: true, fromServer: true });
+      return;
     }
 
-    refresh({ silent: hasLoadedRef.current, fromServer: true });
+    hasLoadedRef.current = false;
+    setData(null);
+    refresh({ silent: false, fromServer: true, bustCache: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, resolvedCacheKey, ...deps]);
+  }, [isAdmin, memoryKey, ...deps]);
 
   useEffect(() => {
     if (!isAdmin) return undefined;

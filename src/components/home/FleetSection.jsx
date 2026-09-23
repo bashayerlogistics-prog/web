@@ -15,7 +15,7 @@ import PremiumSwiper from '../ui/PremiumSwiper';
 import VehicleImage from '../ui/VehicleImage';
 import { buildWhatsAppUrl, buildVehicleWhatsAppMessage } from '../../utils/vehicleHelpers';
 
-function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
+function VehicleCard({ vehicle, routeTitle, routeId, lang, t, priority = false }) {
   const { addItem } = useCart();
   const [modalItem, setModalItem] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -24,8 +24,11 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
   const shortName = getShortVehicleName(vehicle.id, lang);
   const slug = getVehicleSlug(vehicle.id, routeId);
   const routeLabel = routeTitle[lang] || routeTitle.ar;
-  // SuperAdmin fleet product image first; bundled / catalog only as fallback.
-  const cardImage = vehicle.image || getCarImage(vehicle.id);
+  // Live package/CMS image first — bundled fallback only when empty.
+  const cardImage = vehicle.image || getCarImage(vehicle.id) || '';
+  const imageBust = String(
+    vehicle.updatedAt?.seconds || vehicle.updatedAt || vehicle.image || '',
+  );
 
   const discount =
     vehicle.originalPrice && vehicle.price
@@ -76,7 +79,9 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
             alt={shortName}
             className="fleet-card__image w-full"
             hoverZoom
-            cacheKey={String(vehicle.updatedAt?.seconds || vehicle.updatedAt || vehicle.image || '')}
+            width={360}
+            priority={priority}
+            cacheKey={imageBust}
           />
           <div className="fleet-card__media-gradient" aria-hidden="true" />
 
@@ -149,7 +154,7 @@ function VehicleCard({ vehicle, routeTitle, routeId, lang, t }) {
   );
 }
 
-function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
+function ServiceFleetGroup({ group, lang, t, cols = 2, priority = false }) {
   const title = group.title[lang] || group.title.ar;
   const routeTitle = group.routeTitle;
 
@@ -169,7 +174,7 @@ function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
       ? 'hidden lg:grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5'
       : 'hidden lg:grid grid-cols-2 gap-4 sm:gap-5';
 
-  const renderCard = (vehicle) => {
+  const renderCard = (vehicle, index = 0) => {
     const key = String(vehicle.id || '').split('-')[0];
     return (
       <VehicleCard
@@ -179,6 +184,7 @@ function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
         routeId={group.routeId}
         lang={lang}
         t={t}
+        priority={priority && index < 2}
       />
     );
   };
@@ -200,7 +206,7 @@ function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
       <div className="block lg:hidden">
         <PremiumSwiper
           items={vehicles}
-          renderSlide={(vehicle) => renderCard(vehicle)}
+          renderSlide={(vehicle, index) => renderCard(vehicle, index)}
           paginationClass={`fleet-group-pagination-${group.id}`}
           swiperClass="premium-swiper premium-swiper--fleet"
           autoplayDelay={4800}
@@ -209,7 +215,7 @@ function ServiceFleetGroup({ group, lang, t, cols = 2 }) {
       </div>
 
       <div className={gridClass}>
-        {vehicles.map((vehicle) => renderCard(vehicle))}
+        {vehicles.map((vehicle, index) => renderCard(vehicle, index))}
       </div>
     </div>
   );
@@ -219,9 +225,10 @@ export default function FleetSection() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
   const { fleetRoutes, fleetShowcase, fleetHydrated } = useSiteContent();
+  // Live SuperAdmin packages only — no sheet-default flash before Firestore.
   const homeSections = useMemo(
-    () => (fleetHydrated ? buildHomeFleetSections(fleetRoutes, fleetShowcase) : []),
-    [fleetRoutes, fleetShowcase, fleetHydrated],
+    () => buildHomeFleetSections(fleetRoutes, fleetShowcase),
+    [fleetRoutes, fleetShowcase],
   );
 
   const byId = useMemo(() => {
@@ -232,16 +239,11 @@ export default function FleetSection() {
 
   if (!fleetHydrated) {
     return (
-      <section id="fleet" className="section-padding overflow-x-clip relative" aria-busy="true">
-        <div className="section-container relative z-10">
-          <div className="section-header">
-            <div className="h-4 w-28 rounded-full bg-gray-100 animate-pulse" />
-            <div className="h-8 w-64 max-w-full rounded-xl bg-gray-100 animate-pulse mt-2" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5 mt-8">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-52 rounded-2xl bg-gray-100/80 animate-pulse" />
-            ))}
+      <section id="fleet" className="section-padding" aria-busy="true">
+        <div className="section-container">
+          <div className="section-skeleton__grid grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="h-48 sm:h-56 rounded-2xl bg-gray-100/80 animate-pulse" />
+            <div className="h-48 sm:h-56 rounded-2xl bg-gray-100/80 animate-pulse hidden md:block" />
           </div>
         </div>
       </section>
@@ -258,7 +260,7 @@ export default function FleetSection() {
       </div>
 
       <div className="section-container relative z-10">
-        <div className="section-header" data-aos="fade-up">
+        <div className="section-header">
           <span className="text-xs font-bold text-brand tracking-widest uppercase bg-brand/5 border border-brand/10 px-3 py-1 rounded-full">
             {t('fleet.badge')}
           </span>
@@ -268,19 +270,20 @@ export default function FleetSection() {
           <p className="text-gray-500 text-xs sm:text-sm max-w-xl mt-1">{t('fleet.subtitle')}</p>
         </div>
 
-        <div
-          className="flex flex-col gap-10 sm:gap-12 md:gap-14"
-          data-aos="fade-up"
-          data-aos-delay="80"
-        >
-          {HOME_FLEET_PAIRS.map(([leftId, rightId]) => {
+        <div className="flex flex-col gap-10 sm:gap-12 md:gap-14">
+          {HOME_FLEET_PAIRS.map(([leftId, rightId], pairIndex) => {
             const left = byId[leftId];
             const right = byId[rightId];
             if (!left && !right) return null;
+            const priority = pairIndex === 0;
             return (
               <div key={`${leftId}-${rightId}`} className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5">
-                {left ? <ServiceFleetGroup group={left} lang={lang} t={t} cols={2} /> : <div className="hidden md:block" />}
-                {right ? <ServiceFleetGroup group={right} lang={lang} t={t} cols={2} /> : <div className="hidden md:block" />}
+                {left
+                  ? <ServiceFleetGroup group={left} lang={lang} t={t} cols={2} priority={priority} />
+                  : <div className="hidden md:block" />}
+                {right
+                  ? <ServiceFleetGroup group={right} lang={lang} t={t} cols={2} priority={priority} />
+                  : <div className="hidden md:block" />}
               </div>
             );
           })}

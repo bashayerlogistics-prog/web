@@ -422,16 +422,46 @@ export default function AdminCars() {
       return false;
     }
 
+    const nextImage = draft.imageUrl.trim();
+    const nextNameEn = draft.nameEn.trim();
+    const nextNameAr = draft.nameAr.trim();
+    const savedAt = Date.now();
+
     setSavingId(targetId);
     try {
-      const synced = await updateCarAndSyncPackages(
+      // Optimistic catalog so public + admin preview show the new image immediately.
+      const optimisticCars = (Array.isArray(dbCars) ? dbCars : []).map((c) => (
+        c.id === targetId
+          ? {
+            ...c,
+            imageUrl: nextImage,
+            nameEn: nextNameEn,
+            nameAr: nextNameAr,
+            modelEn: (draft.modelEn || nextNameEn).trim(),
+            modelAr: (draft.modelAr || nextNameAr).trim(),
+            updatedAt: savedAt,
+          }
+          : c
+      ));
+      if (!optimisticCars.some((c) => c.id === targetId)) {
+        optimisticCars.push({
+          id: targetId,
+          imageUrl: nextImage,
+          nameEn: nextNameEn,
+          nameAr: nextNameAr,
+          updatedAt: savedAt,
+        });
+      }
+      setLiveCarCatalog(mergeCarCatalog(optimisticCars));
+
+      await updateCarAndSyncPackages(
         targetId,
         {
-          nameEn: draft.nameEn.trim(),
-          nameAr: draft.nameAr.trim(),
-          modelEn: (draft.modelEn || draft.nameEn).trim(),
-          modelAr: (draft.modelAr || draft.nameAr).trim(),
-          imageUrl: draft.imageUrl.trim(),
+          nameEn: nextNameEn,
+          nameAr: nextNameAr,
+          modelEn: (draft.modelEn || nextNameEn).trim(),
+          modelAr: (draft.modelAr || nextNameAr).trim(),
+          imageUrl: nextImage,
           passengers: Number(draft.passengers) || 4,
           vip: Boolean(draft.vip),
           sortOrder: Number(draft.sortOrder) ?? (BOOKING_CAR_TYPES.indexOf(targetId) >= 0 ? BOOKING_CAR_TYPES.indexOf(targetId) : 99),
@@ -443,31 +473,20 @@ export default function AdminCars() {
           nameAr: original?.nameAr,
           modelEn: original?.modelEn,
           modelAr: original?.modelAr,
+          imageUrl: original?.imageUrl,
         },
         {
-          // Publish as soon as the car doc is written so category/hero images
-          // appear on the public site without waiting for every package sync.
+          // Don't block Save on hundreds of package writes — sync in background.
+          backgroundSync: true,
           onCarSaved: async () => {
-            setLiveCarCatalog(
-              mergeCarCatalog(
-                (Array.isArray(dbCars) ? dbCars : []).map((c) => (
-                  c.id === targetId
-                    ? {
-                      ...c,
-                      imageUrl: draft.imageUrl,
-                      nameEn: draft.nameEn,
-                      nameAr: draft.nameAr,
-                      updatedAt: Date.now(),
-                    }
-                    : c
-                )),
-              ),
-            );
             await publishSite('soft');
+          },
+          onPackagesSynced: () => {
+            void publishSite('soft');
           },
         },
       );
-      await publishSite('soft');
+
       const ok = await refresh({ bustCache: true });
       if (ok) {
         setDrafts((prev) => {
@@ -476,14 +495,7 @@ export default function AdminCars() {
           return next;
         });
       }
-      setLiveCarCatalog(
-        mergeCarCatalog(
-          (Array.isArray(dbCars) ? dbCars : []).map((c) =>
-            (c.id === targetId ? { ...c, imageUrl: draft.imageUrl, nameEn: draft.nameEn, nameAr: draft.nameAr, updatedAt: Date.now() } : c),
-          ),
-        ),
-      );
-      toast.success(t('admin.cars.saved', { count: synced }));
+      toast.success(t('admin.cars.savedFast'));
       return true;
     } catch (err) {
       console.error(err);

@@ -16,6 +16,7 @@ import {
   isFirebaseAdminUser,
   subscribeAdminSessionCleared,
 } from '../firebase/adminIdentity';
+import { purgeClientSessionCaches } from '../utils/purgeClientSessionCaches';
 
 const DEFAULT_USERNAME = 'superadmin';
 const ADMIN_UID = String(import.meta.env.VITE_SUPERADMIN_UID || '').trim();
@@ -115,6 +116,9 @@ export function AdminAuthProvider({ children }) {
         throw new Error('invalid-credentials');
       }
 
+      // Always land on live CMS after login — never reopen with yesterday's cache.
+      purgeClientSessionCaches();
+
       localStorage.setItem(ADMIN_SESSION_KEY, 'true');
       setAdminUser({
         username: DEFAULT_USERNAME,
@@ -144,6 +148,7 @@ export function AdminAuthProvider({ children }) {
   const logout = useCallback(async () => {
     localStorage.removeItem(ADMIN_SESSION_KEY);
     setAdminUser(null);
+    purgeClientSessionCaches();
     try {
       await signOut(auth);
     } catch {

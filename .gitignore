@@ -15,6 +15,9 @@ dist-ssr
 .env.local
 hostinger-upload.zip
 hostinger-upload/
+backups/
+hostinger/api/config.php
+hostinger/api/bashayer-mysql-import.sql
 
 # Editor directories and files
 .vscode/*

@@ -159,7 +159,7 @@ const VEHICLE_DESC = {
 };
 
 /** Bump when replacing bundled category photos so browsers drop stale cache. */
-const CATEGORY_IMAGE_VERSION = '20260817';
+const CATEGORY_IMAGE_VERSION = '20260923h';
 
 function withCategoryImageVersion(path) {
   const base = String(path || '').split('?')[0];
@@ -209,7 +209,9 @@ function mediaPathOnly(url) {
 }
 
 function isFirebaseStorageUrl(url) {
-  return /firebasestorage\.googleapis\.com|storage\.googleapis\.com/i.test(String(url || ''));
+  return /firebasestorage\.googleapis\.com|storage\.googleapis\.com|firebasestorage\.app/i.test(
+    String(url || ''),
+  );
 }
 
 function isRemoteCmsImageUrl(url) {
@@ -255,6 +257,16 @@ export function getCategoryCircleFocus(carKey, imageUrl) {
 export function getCategoryHeroImage(carKey, candidateUrl = '') {
   const key = String(carKey || '').split('-')[0].toLowerCase();
   return preferBundledCarImage(key, candidateUrl);
+}
+
+/**
+ * Fast local WebP for cold-start preload only.
+ * Live SuperAdmin CMS images use preferBundledCarImage / getCarImage instead.
+ */
+export function getHomeCardImage(carKey) {
+  const key = String(carKey || '').split('-')[0].toLowerCase();
+  const raw = CATEGORY_HERO_IMAGES[key] || VEHICLE_IMAGES[key] || VEHICLE_IMAGES.camry;
+  return String(raw).split('?')[0];
 }
 
 export const SHORT_NAMES = {

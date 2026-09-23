@@ -261,8 +261,8 @@ export async function addBookingTimelineEntry(bookingId, entry) {
   });
 }
 
-/** In-memory cache — fleet tabs share reads within a short TTL */
-const PRODUCTS_CACHE_TTL_MS = 15 * 60_000;
+/** In-memory cache — fleet tabs share reads within a short TTL (keep low = fresher UI). */
+const PRODUCTS_CACHE_TTL_MS = 30_000;
 const productsByTripTypeCache = new Map();
 
 function readProductsCache(tripType) {
@@ -1326,19 +1326,21 @@ export async function upsertCar(carId, data) {
 }
 
 /**
- * Update car catalog + push names to every package for that car key.
- * Does NOT overwrite package imageUrl — fleet product images stay independent
- * (SuperAdmin /admin/fleet owns those; /admin/categories owns catalog art).
- * Returns how many packages were updated.
+ * Update car catalog + push names (and changed image) to every package for that car key.
+ * When SuperAdmin changes the catalog image, ALL matching packages get the new image
+ * so homepage / Round Trip / fleet cards update together.
  * @param {object} [opts]
- * @param {() => void | Promise<void>} [opts.onCarSaved] — fires right after vehicles/{id}
- *   write so SuperAdmin can publish category images before the package batch finishes.
+ * @param {() => void | Promise<void>} [opts.onCarSaved] — after vehicles/{id} write
+ * @param {boolean} [opts.backgroundSync] — return after car save; sync packages in background
+ * @param {(count: number) => void} [opts.onPackagesSynced]
  */
 export async function updateCarAndSyncPackages(carId, data, previous = {}, opts = {}) {
   const id = String(carId || '').trim();
   const nameEn = String(data.nameEn || '').trim();
   const nameAr = String(data.nameAr || '').trim();
   const imageUrl = String(data.imageUrl || '').trim();
+  const prevImage = String(previous.imageUrl || '').trim();
+  const imageChanged = Boolean(imageUrl && imageUrl !== prevImage);
 
   await upsertCar(id, {
     nameEn,
@@ -1359,42 +1361,64 @@ export async function updateCarAndSyncPackages(carId, data, previous = {}, opts 
     console.warn('onCarSaved after car upsert failed:', err?.code || err?.message || err);
   }
 
-  const products = await getAllProducts();
-  const matching = products.filter(
-    (p) => String(p.vehicleKey || '').split('-')[0] === id,
-  );
+  const runPackageSync = async () => {
+    const products = await getAllProducts();
+    const matching = products.filter(
+      (p) => String(p.vehicleKey || '').split('-')[0] === id,
+    );
 
-  const prevEn = previous.nameEn || previous.modelEn || '';
-  const prevAr = previous.nameAr || previous.modelAr || '';
-  const BATCH_SIZE = 400;
+    const prevEn = previous.nameEn || previous.modelEn || '';
+    const prevAr = previous.nameAr || previous.modelAr || '';
+    const BATCH_SIZE = 400;
+    let updated = 0;
 
-  for (let i = 0; i < matching.length; i += BATCH_SIZE) {
-    const slice = matching.slice(i, i + BATCH_SIZE);
-    const batch = writeBatch(db);
-    slice.forEach((p) => {
-      const payload = {
-        carModelEn: nameEn,
-        carModelAr: nameAr,
-        updatedAt: serverTimestamp(),
-      };
-      // Only fill empty package images — never clobber SuperAdmin fleet uploads.
-      if (imageUrl && !String(p.imageUrl || '').trim()) {
-        payload.imageUrl = imageUrl;
-      }
-      if (nameEn) {
-        payload.nameEn = replaceCarNamePrefix(p.nameEn, prevEn, nameEn) || p.nameEn;
-      }
-      if (nameAr) {
-        payload.nameAr = replaceCarNamePrefix(p.nameAr, prevAr, nameAr) || p.nameAr;
-      }
-      batch.update(doc(db, 'packages', p.id), payload);
-    });
-    await batch.commit();
+    for (let i = 0; i < matching.length; i += BATCH_SIZE) {
+      const slice = matching.slice(i, i + BATCH_SIZE);
+      const batch = writeBatch(db);
+      slice.forEach((p) => {
+        const payload = {
+          carModelEn: nameEn,
+          carModelAr: nameAr,
+          updatedAt: serverTimestamp(),
+        };
+        const currentImg = String(p.imageUrl || '').trim();
+        // Catalog image change → push to every package for this car (all public sections).
+        if (imageUrl && (imageChanged || !currentImg || currentImg === prevImage)) {
+          payload.imageUrl = imageUrl;
+        }
+        if (nameEn) {
+          payload.nameEn = replaceCarNamePrefix(p.nameEn, prevEn, nameEn) || p.nameEn;
+        }
+        if (nameAr) {
+          payload.nameAr = replaceCarNamePrefix(p.nameAr, prevAr, nameAr) || p.nameAr;
+        }
+        batch.update(doc(db, 'packages', p.id), payload);
+      });
+      await batch.commit();
+      updated += slice.length;
+    }
+
+    invalidateProductsCache();
+    await logActivity('car_synced_packages', { carId: id, count: updated, imageChanged });
+    return updated;
+  };
+
+  if (opts.backgroundSync) {
+    void runPackageSync()
+      .then((count) => {
+        try {
+          opts.onPackagesSynced?.(count);
+        } catch (err) {
+          console.warn('onPackagesSynced failed:', err?.code || err?.message || err);
+        }
+      })
+      .catch((err) => {
+        console.warn('Background package sync failed:', err?.code || err?.message || err);
+      });
+    return 0;
   }
 
-  invalidateProductsCache();
-  await logActivity('car_synced_packages', { carId: id, count: matching.length });
-  return matching.length;
+  return runPackageSync();
 }
 
 /**

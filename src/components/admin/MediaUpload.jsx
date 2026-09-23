@@ -121,7 +121,10 @@ export default function MediaUpload({
           size: formatFileSize(file.size),
         });
       } else {
-        const message = err.message || t('common.error');
+        const raw = err?.message || String(err || '');
+        const message = /failed to fetch/i.test(raw)
+          ? 'Network blocked ImgBB — retry (Firebase Storage fallback). If it still fails, confirm SuperAdmin login + Storage rules.'
+          : (raw || t('common.error'));
         window.alert(t('admin.media.uploadFailed', { error: message }));
       }
     } finally {

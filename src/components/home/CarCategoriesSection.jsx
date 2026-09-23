@@ -7,22 +7,24 @@ import {
   getCarDisplayName,
   getCarImage,
   getCategoryCircleFocus,
-  getLiveCarCatalog,
 } from '../../data/staticData';
 import { useSiteContent } from '../../context/SiteContentContext';
 import { optimizedImageUrl } from '../../utils/mediaPerf';
 import { APP_CACHE_BUILD } from '../../utils/siteContentRefresh';
 import VehicleImage from '../ui/VehicleImage';
 
-const CARD_IMAGE_WIDTH = 640;
+/** Circle max ~11.5rem — no need for 640w downloads. */
+const CARD_IMAGE_WIDTH = 360;
 
-function CategoryCard({ car, lang, t }) {
+function CategoryCard({ car, lang, t, priority = false }) {
   const name = lang === 'ar'
     ? car.nameAr || getCarDisplayName(car.id, 'ar')
     : car.nameEn || getCarDisplayName(car.id, 'en');
+  // Live SuperAdmin CMS only — never flash bundled /images/categories/* on cold start.
   const image = car.imageUrl || getCarImage(car.id);
   const focus = getCategoryCircleFocus(car.id, image);
-  const photoUrl = optimizedImageUrl(image, CARD_IMAGE_WIDTH, 70, APP_CACHE_BUILD);
+  const bust = String(car.updatedAt?.seconds || car.updatedAt || APP_CACHE_BUILD);
+  const photoUrl = optimizedImageUrl(image, CARD_IMAGE_WIDTH, 68, bust);
 
   return (
     <Link
@@ -42,8 +44,8 @@ function CategoryCard({ car, lang, t }) {
           className="car-category-card__image"
           imgClassName="car-category-card__photo"
           width={CARD_IMAGE_WIDTH}
-          priority
-          cacheKey={String(car.updatedAt?.seconds || car.updatedAt || APP_CACHE_BUILD)}
+          priority={priority}
+          cacheKey={bust}
         />
         <span className="car-category-card__shade" aria-hidden="true" />
         <span className="car-category-card__passengers">
@@ -66,29 +68,45 @@ export default function CarCategoriesSection() {
   const lang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
   const { carCatalog, fleetHydrated } = useSiteContent();
 
+  // Live Firestore catalog only — never paint getDefaultCarCatalog (old WebP flash).
   const cars = useMemo(() => {
-    const live = (carCatalog?.length ? carCatalog : getLiveCarCatalog()).filter(
+    if (!fleetHydrated) return [];
+    const live = (Array.isArray(carCatalog) ? carCatalog : []).filter(
       (c) => c.active !== false,
     );
+    if (!live.length) return [];
     const byId = new Map(live.map((c) => [c.id, c]));
-    return BOOKING_CAR_TYPES.map((id) => byId.get(id) || {
-      id,
-      nameEn: getCarDisplayName(id, 'en'),
-      nameAr: getCarDisplayName(id, 'ar'),
-      imageUrl: getCarImage(id),
-      passengers: 4,
-    });
-  }, [carCatalog]);
+    return BOOKING_CAR_TYPES.map((id) => byId.get(id)).filter(Boolean);
+  }, [carCatalog, fleetHydrated]);
+
+  if (!fleetHydrated) {
+    return (
+      <section id="vehicles" className="section-padding" aria-busy="true">
+        <div className="section-container">
+          <div className="car-category-cards">
+            {BOOKING_CAR_TYPES.map((id) => (
+              <div
+                key={id}
+                className="rounded-full aspect-square max-w-[11.5rem] mx-auto w-full bg-gray-100/80 animate-pulse"
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!cars.length) return null;
 
   return (
-    <section id="vehicles" className="section-padding overflow-x-clip relative" aria-busy={!fleetHydrated}>
+    <section id="vehicles" className="section-padding overflow-x-clip relative">
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-10 end-0 w-72 h-72 bg-brand/5 rounded-full blur-[120px]" />
         <div className="absolute bottom-10 start-0 w-64 h-64 bg-gold/8 rounded-full blur-[100px]" />
       </div>
 
       <div className="section-container relative z-10">
-        <div className="section-header" data-aos="fade-up">
+        <div className="section-header">
           <span className="text-xs font-bold text-brand tracking-widest uppercase bg-brand/5 border border-brand/10 px-3 py-1 rounded-full">
             {t('carCategories.badge')}
           </span>
@@ -100,21 +118,16 @@ export default function CarCategoriesSection() {
           </p>
         </div>
 
-        <div
-          className="car-category-cards"
-          data-aos="fade-up"
-          data-aos-delay="80"
-        >
-          {!fleetHydrated
-            ? BOOKING_CAR_TYPES.map((id) => (
-              <div key={id} className="car-category-card animate-pulse">
-                <div className="car-category-card__visual bg-gray-100 min-h-[10rem] rounded-2xl" />
-                <div className="h-4 w-24 mx-auto mt-3 rounded bg-gray-100" />
-              </div>
-            ))
-            : cars.map((car) => (
-              <CategoryCard key={car.id} car={car} lang={lang} t={t} />
-            ))}
+        <div className="car-category-cards">
+          {cars.map((car, index) => (
+            <CategoryCard
+              key={`${car.id}-${car.updatedAt?.seconds || car.updatedAt || car.imageUrl || ''}`}
+              car={car}
+              lang={lang}
+              t={t}
+              priority={index < 3}
+            />
+          ))}
         </div>
       </div>
     </section>

@@ -21,11 +21,11 @@ export default function ScrollReveal() {
     // Mobile / reduced motion: show immediately — no wait for scroll intersection.
     if (prefersReduced || isMobile) {
       revealAll(targets);
-      const mo = new MutationObserver(() => {
+      // One short catch-up for late-mounted sections — avoid permanent body MutationObserver (jank).
+      const catchUp = window.setTimeout(() => {
         revealAll(collect().filter((el) => !el.classList.contains('aos-inview')));
-      });
-      mo.observe(document.body, { childList: true, subtree: true });
-      return () => mo.disconnect();
+      }, 400);
+      return () => window.clearTimeout(catchUp);
     }
 
     const io = new IntersectionObserver(

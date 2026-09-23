@@ -59,6 +59,11 @@ jobs:
           FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
           VITE_CLERK_EXCHANGE_URL: ${{ secrets.VITE_CLERK_EXCHANGE_URL }}
+          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          MYSQL_ADMIN_KEY: ${{ secrets.MYSQL_ADMIN_KEY }}
         run: |
           cp hostinger/resend-send.php dist/resend-send.php
           cp hostinger/moyasar-verify.php dist/moyasar-verify.php

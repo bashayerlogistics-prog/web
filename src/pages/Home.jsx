@@ -1,11 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import Hero from '../components/home/Hero';
 import BookingForm from '../components/home/BookingForm';
+// Near-fold fleet UI — static import so cards/images paint without a chunk wait.
+import CarCategoriesSection from '../components/home/CarCategoriesSection';
+import FleetSection from '../components/home/FleetSection';
 import { useSiteContent } from '../context/SiteContentContext';
-
-// Near-fold sections — load immediately (no scroll wait).
-const CarCategoriesSection = lazy(() => import('../components/home/CarCategoriesSection'));
-const FleetSection = lazy(() => import('../components/home/FleetSection'));
+import { BOOKING_CAR_TYPES } from '../data/staticData';
+import { optimizedImageUrl } from '../utils/mediaPerf';
+import { APP_CACHE_BUILD } from '../utils/siteContentRefresh';
 
 const TravelReservationsSection = lazy(() => import('../components/home/TravelReservationsSection'));
 const InstantPriceSection = lazy(() => import('../components/home/InstantPriceSection'));
@@ -15,6 +17,37 @@ const FAQSection = lazy(() => import('../components/home/FAQSection'));
 const StatsSection = lazy(() => import('../components/home/StatsSection'));
 const AboutSection = lazy(() => import('../components/home/AboutSection'));
 const BlogSection = lazy(() => import('../components/home/BlogSection'));
+
+/** Warm live CMS category images once Firestore is ready (never bundled seed). */
+function usePrefetchFleetImages() {
+  const { carCatalog, fleetHydrated } = useSiteContent();
+
+  useEffect(() => {
+    if (!fleetHydrated || !carCatalog?.length) return undefined;
+
+    const urls = BOOKING_CAR_TYPES.map((id) => {
+      const car = carCatalog.find((c) => c.id === id);
+      const raw = car?.imageUrl;
+      if (!raw) return null;
+      const bust = String(car?.updatedAt?.seconds || car?.updatedAt || APP_CACHE_BUILD);
+      return optimizedImageUrl(raw, 360, 68, bust);
+    }).filter(Boolean);
+
+    const links = urls.map((href) => {
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'image';
+      link.href = href;
+      link.fetchPriority = 'high';
+      document.head.appendChild(link);
+      return link;
+    });
+
+    return () => {
+      links.forEach((link) => link.remove());
+    };
+  }, [carCatalog, fleetHydrated]);
+}
 
 function SectionFallback() {
   return (
@@ -105,7 +138,9 @@ export default function Home() {
   const showInstant = isSectionActive('instantPrice');
   const showBooking = isSectionActive('booking');
   const heroActive = isSectionActive('hero');
+  const showFleet = isSectionActive('fleet');
   usePrefetchBelowFold();
+  usePrefetchFleetImages();
 
   return (
     <>
@@ -121,13 +156,9 @@ export default function Home() {
         <TravelReservationsSection />
       </EagerSection>
 
-      {/* Categories + Fleet: eager — SuperAdmin images must appear without scroll delay */}
-      <EagerSection when={isSectionActive('fleet')}>
-        <CarCategoriesSection />
-      </EagerSection>
-      <EagerSection when={isSectionActive('fleet')}>
-        <FleetSection />
-      </EagerSection>
+      {/* Categories + Fleet: sync modules — live CMS images + cache bust */}
+      {showFleet && <CarCategoriesSection />}
+      {showFleet && <FleetSection />}
 
       <LazySection when={showInstant}>
         <InstantPriceSection />

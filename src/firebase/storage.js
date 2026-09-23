@@ -1,4 +1,5 @@
 import { uploadToImgbb } from './imgbb';
+import { uploadToFirebaseStorage } from './uploadFirebase';
 import {
   compressImageFile,
   DEFAULT_IMAGE_MAX_KB,
@@ -16,17 +17,27 @@ function isVideoFile(file) {
   return /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(file.name || '');
 }
 
+function isNetworkFetchError(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  return (
+    msg.includes('failed to fetch')
+    || msg.includes('networkerror')
+    || msg.includes('network error')
+    || msg.includes('load failed')
+    || err?.name === 'TypeError'
+  );
+}
+
 /**
- * Images only → compress to target KB, then ImgBB.
- * Folder kept for call-site compatibility (ImgBB has no folders).
+ * Images only → compress, then Firebase Storage (reliable on LAN).
+ * ImgBB used as secondary when Firebase rejects (rules / not signed in).
  * @param {File} file
  * @param {string} [folder]
  * @param {{ maxSizeKB?: number }} [opts]
  */
 export async function uploadMedia(file, folder = 'uploads', opts = {}) {
-  void folder;
   if (isVideoFile(file)) {
-    throw new Error('Video upload needs a direct URL (Paste URL). ImgBB is images-only.');
+    throw new Error('Video upload needs a direct URL (Paste URL). Image hosts are images-only.');
   }
 
   const maxSizeKB = opts.maxSizeKB ?? DEFAULT_IMAGE_MAX_KB;
@@ -54,7 +65,24 @@ export async function uploadMedia(file, folder = 'uploads', opts = {}) {
     throw err;
   }
 
-  return uploadToImgbb(compressed);
+  // Prefer Firebase — works when ImgBB is blocked (common on LAN / KSA networks).
+  try {
+    return await uploadToFirebaseStorage(compressed, folder);
+  } catch (firebaseErr) {
+    console.warn('Firebase Storage upload failed, trying ImgBB:', firebaseErr?.code || firebaseErr?.message);
+    try {
+      return await uploadToImgbb(compressed);
+    } catch (imgbbErr) {
+      const fbMsg = firebaseErr?.code || firebaseErr?.message || 'Firebase upload failed';
+      const ibMsg = imgbbErr?.message || 'ImgBB upload failed';
+      if (isNetworkFetchError(imgbbErr) || isNetworkFetchError(firebaseErr)) {
+        throw new Error(
+          `Upload failed (network). Sign in as SuperAdmin and check Storage rules. Details: ${fbMsg} / ${ibMsg}`,
+        );
+      }
+      throw new Error(`${fbMsg} · ${ibMsg}`);
+    }
+  }
 }
 
 export async function uploadImage(file, folder = 'uploads', opts = {}) {
@@ -62,7 +90,7 @@ export async function uploadImage(file, folder = 'uploads', opts = {}) {
 }
 
 export async function deleteImageByUrl(_url) {
-  // imgbb has no client-side delete API — no-op
+  // Client-side delete not used — no-op
 }
 
 export { isVideoFile };

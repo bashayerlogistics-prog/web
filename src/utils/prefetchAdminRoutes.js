@@ -30,13 +30,16 @@ const ADMIN_ROUTE_LOADERS = {
   '/admin/backup': () => import('../pages/admin/AdminBackup'),
 };
 
-const WARM_ROUTES = [
+/** Desktop can warm a few hubs; mobile only current-adjacent to avoid main-thread hang. */
+const WARM_ROUTES_DESKTOP = [
   '/admin',
-  '/admin/booking-forms',
   '/admin/fleet',
   '/admin/orders',
-  '/admin/cars',
-  '/admin/settings',
+];
+
+const WARM_ROUTES_MOBILE = [
+  '/admin',
+  '/admin/fleet',
 ];
 
 function loaderFor(path) {
@@ -56,5 +59,11 @@ export function prefetchAdminRoute(path) {
 }
 
 export function warmAdminRoutes() {
-  WARM_ROUTES.forEach((path) => prefetchAdminRoute(path));
+  if (typeof window === 'undefined') return;
+  // Save data/CPU on cellular — hover/focus still prefetches individual links.
+  const saveData = Boolean(navigator.connection?.saveData);
+  const mobile = window.matchMedia('(max-width: 767px)').matches;
+  if (saveData) return;
+  const routes = mobile ? WARM_ROUTES_MOBILE : WARM_ROUTES_DESKTOP;
+  routes.forEach((path) => prefetchAdminRoute(path));
 }

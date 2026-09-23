@@ -5,7 +5,7 @@
 
 const UNSPLASH_HOST = /images\.unsplash\.com/i;
 const PEXELS_IMG = /images\.pexels\.com/i;
-const FIREBASE_STORAGE = /firebasestorage\.googleapis\.com/i;
+const FIREBASE_STORAGE = /firebasestorage\.googleapis\.com|firebasestorage\.app|storage\.googleapis\.com/i;
 const IMGBB_HOST = /i\.ibb\.co/i;
 
 function withUnsplashParams(url, { w, q = 72 } = {}) {

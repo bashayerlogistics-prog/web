@@ -77,6 +77,17 @@ for (const php of ['resend-send.php', 'moyasar-verify.php', 'clerk-exchange.php'
   fs.copyFileSync(src, dest);
 }
 
+// MySQL CMS API (schema lives in hostinger/sql; config.php is server-only)
+const apiSrc = path.join(hostinger, 'api');
+const apiDest = path.join(upload, 'api');
+if (fs.existsSync(apiSrc)) {
+  fs.mkdirSync(apiDest, { recursive: true });
+  for (const entry of fs.readdirSync(apiSrc)) {
+    if (entry === 'config.php') continue; // never overwrite live secrets
+    copyRecursive(path.join(apiSrc, entry), path.join(apiDest, entry));
+  }
+}
+
 const assets = fs.readdirSync(path.join(upload, 'assets'));
 const checks = {
   index: fs.existsSync(path.join(upload, 'index.html')),

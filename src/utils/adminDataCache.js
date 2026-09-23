@@ -1,6 +1,10 @@
 const PREFIX = 'bashayer-admin-data-v3-';
 const LEGACY_PREFIXES = ['bashayer-admin-data-v2-', 'bashayer-admin-data-v1-'];
 export const ADMIN_DATA_CACHE_TTL_MS = 15 * 60_000;
+/** In-tab memory — instant SuperAdmin navigation without localStorage flash. */
+export const ADMIN_SESSION_MEMORY_TTL_MS = 60_000;
+
+const memoryCache = new Map();
 
 function storage() {
   try {
@@ -18,6 +22,22 @@ export function adminCacheKey(parts) {
     .join('|');
 }
 
+export function readAdminMemoryCache(key, ttlMs = ADMIN_SESSION_MEMORY_TTL_MS) {
+  if (!key) return null;
+  const hit = memoryCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > ttlMs) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return hit.data;
+}
+
+export function writeAdminMemoryCache(key, data) {
+  if (!key) return;
+  memoryCache.set(key, { at: Date.now(), data });
+}
+
 export function readAdminDataCache(key, ttlMs = ADMIN_DATA_CACHE_TTL_MS) {
   if (!key) return null;
   try {
@@ -33,6 +53,7 @@ export function readAdminDataCache(key, ttlMs = ADMIN_DATA_CACHE_TTL_MS) {
 
 export function writeAdminDataCache(key, data, ttlMs = ADMIN_DATA_CACHE_TTL_MS) {
   if (!key) return;
+  writeAdminMemoryCache(key, data);
   try {
     storage()?.setItem(
       PREFIX + key,
@@ -45,6 +66,11 @@ export function writeAdminDataCache(key, data, ttlMs = ADMIN_DATA_CACHE_TTL_MS) 
 
 export function clearAdminDataCache(key) {
   try {
+    if (key) {
+      memoryCache.delete(key);
+    } else {
+      memoryCache.clear();
+    }
     const store = storage();
     if (!store) return;
     if (key) {

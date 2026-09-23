@@ -2,6 +2,13 @@
   RewriteEngine On
   RewriteBase /
 
+  # MySQL CMS API + local uploads — never rewrite to SPA
+  RewriteRule ^api/ - [L]
+  RewriteRule ^uploads/ - [L]
+
+  # Existing PHP bridges on public_html root
+  RewriteRule ^(clerk-exchange|moyasar-verify|resend-send)\.php$ - [L]
+
   # Serve existing files/folders as-is
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
