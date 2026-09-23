@@ -595,7 +595,7 @@ export function SiteContentProvider({ children }) {
     if (scheduleRefreshTimerRef.current) window.clearTimeout(scheduleRefreshTimerRef.current);
     scheduleRefreshTimerRef.current = window.setTimeout(() => {
       scheduleRefreshTimerRef.current = null;
-      refresh({ silent: true, phase });
+      refresh({ silent: true, phase, forceServer: true });
     }, import.meta.env.DEV ? 40 : 80);
   }, [refresh]);
 
